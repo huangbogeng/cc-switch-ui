@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "cc-switch-lib",
+    "cc-switch-web",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85.0"
+license = "MIT"
+authors = ["huangbogeng"]
+repository = "https://github.com/huangbogeng/cc-switch-ui"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+
+# HTTP server
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "socks"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled", "backup", "hooks"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.11", features = ["v4"] }
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+rand = "0.8"
+url = "2.5"
+log = "0.4"
+env_logger = "0.11"
+thiserror = "2.0"
+anyhow = "1.0"
+indexmap = { version = "2", features = ["serde"] }
+rust_decimal = "1.33"
+json5 = "0.4"
+toml = "0.8"
+zip = "2.2"
+tempfile = "3"
+dirs = "5.0"
+once_cell = "1.21.3"
+regex = "1.10"
+flate2 = "1.0"
+brotli = "7.0"
+
+# TLS
+rustls = "0.23"
+rustls-native-certs = "0.8"
+webpki-roots = "0.26"
+tokio-rustls = "0.26"
+
+# Async
+futures = "0.3"
+async-stream = "0.3"
+bytes = "1.5"
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+httparse = "1"
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio", "http1", "client-legacy"] }
+hyper-rustls = { version = "0.27", features = ["http1", "tls12", "ring", "webpki-tokio"] }
+tower-layer = "0.3"

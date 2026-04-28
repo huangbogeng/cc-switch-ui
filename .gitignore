@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+target/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude Code
+/.claude
+
+# Misc
+*.tsbuildinfo
+.vite/
+
+# Backup directories (not for commit, for reference only)
+src.bak/
+src-tauri.bak/
+
+# .bak files
+**/*.bak

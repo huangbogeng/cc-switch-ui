@@ -1,0 +1,153 @@
+const API_BASE = '/api';
+
+let authToken = localStorage.getItem('ccswitch_token') || '';
+
+export function setAuthToken(token: string) {
+  authToken = token;
+  localStorage.setItem('ccswitch_token', token);
+}
+
+export function clearAuthToken() {
+  authToken = '';
+  localStorage.removeItem('ccswitch_token');
+}
+
+async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    clearAuthToken();
+    window.location.reload();
+    throw new Error('Unauthorized');
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+// Auth
+export async function login(token: string) {
+  return api<{ success: boolean; message: string }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+// OAuth
+export async function getOAuthStatus() {
+  return api<{
+    authenticated: boolean;
+    accounts: { id: string; login: string; is_default: boolean }[];
+  }>('/codex/oauth/status');
+}
+
+export async function startOAuth() {
+  return api<{
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_in: number;
+    interval: number;
+  }>('/codex/oauth/start', { method: 'POST' });
+}
+
+export async function pollOAuth(device_code: string) {
+  return api<{
+    success?: boolean;
+    pending?: boolean;
+    account?: { id: string; login: string };
+    error?: string;
+  }>('/codex/oauth/poll', {
+    method: 'POST',
+    body: JSON.stringify({ device_code }),
+  });
+}
+
+// Proxy
+export async function getProxyStatus() {
+  return api<{
+    running: boolean;
+    listen_addr: string | null;
+    upstream_url: string;
+  }>('/proxy/status');
+}
+
+export async function startProxy() {
+  return api<{ success: boolean; listen_addr?: string; error?: string }>(
+    '/proxy/start',
+    { method: 'POST' }
+  );
+}
+
+export async function stopProxy() {
+  return api<{ success: boolean; message?: string; error?: string }>(
+    '/proxy/stop',
+    { method: 'POST' }
+  );
+}
+
+// Providers
+export interface Provider {
+  id: string;
+  name: string;
+  settingsConfig: unknown;
+  websiteUrl?: string;
+  category?: string;
+  createdAt?: number;
+  sortIndex?: number;
+  notes?: string;
+  icon?: string;
+  iconColor?: string;
+  meta: unknown;
+  inFailoverQueue: boolean;
+}
+
+export async function listProviders() {
+  return api<{ providers: Record<string, Provider> }>('/providers');
+}
+
+export async function getProvider(id: string) {
+  return api<{ provider: Provider }>(`/providers/${id}`);
+}
+
+export async function getCurrentProviderId() {
+  return api<{ current_provider_id: string | null }>('/providers/current');
+}
+
+export async function saveProvider(provider: Provider) {
+  return api<{ success: boolean }>('/providers', {
+    method: 'POST',
+    body: JSON.stringify(provider),
+  });
+}
+
+export async function updateProvider(provider: Provider) {
+  return api<{ success: boolean }>(`/providers/${provider.id}`, {
+    method: 'PUT',
+    body: JSON.stringify(provider),
+  });
+}
+
+export async function deleteProvider(id: string) {
+  return api<{ success: boolean }>(`/providers/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function switchProvider(id: string) {
+  return api<{ success: boolean }>(`/providers/${id}/switch`, {
+    method: 'POST',
+  });
+}

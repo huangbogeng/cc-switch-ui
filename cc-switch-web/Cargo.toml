@@ -1,0 +1,35 @@
+[package]
+name = "cc-switch-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Web Admin server for cc-switch"
+
+[[bin]]
+name = "cc-switch-web"
+path = "src/main.rs"
+
+[dependencies]
+cc-switch-lib = { path = "../cc-switch-lib" }
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
+http.workspace = true
+tower-layer.workspace = true
+dirs.workspace = true
+rand.workspace = true
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
