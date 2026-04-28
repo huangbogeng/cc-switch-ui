@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "cc-switch-lib"
-version = "3.14.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "cc-switch-web"
-version = "3.14.1"
+version = "0.1.0"
 dependencies = [
  "axum",
  "cc-switch-lib",
