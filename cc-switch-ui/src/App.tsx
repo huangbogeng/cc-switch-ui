@@ -2,9 +2,10 @@ import { useState } from 'react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProvidersPage from './pages/ProvidersPage';
+import SettingsPage from './pages/SettingsPage';
 import { clearAuthToken } from './api';
 
-type Page = 'dashboard' | 'providers';
+type Page = 'dashboard' | 'providers' | 'settings';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(!!localStorage.getItem('ccswitch_token'));
@@ -37,12 +38,19 @@ export default function App() {
           >
             Providers
           </button>
+          <button
+            style={{ ...styles.navBtn, ...(currentPage === 'settings' ? styles.navBtnActive : {}) }}
+            onClick={() => setCurrentPage('settings')}
+          >
+            Settings
+          </button>
           <button style={styles.navBtn} onClick={handleLogout}>Logout</button>
         </div>
       </nav>
       <main style={styles.main}>
         {currentPage === 'dashboard' && <DashboardPage />}
         {currentPage === 'providers' && <ProvidersPage />}
+        {currentPage === 'settings' && <SettingsPage />}
       </main>
     </div>
   );

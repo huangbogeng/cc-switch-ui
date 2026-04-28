@@ -24,8 +24,9 @@ use tokio::sync::RwLock;
 
 use cc_switch_lib::database::Database;
 use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager;
+use cc_switch_lib::oauth::copilot_auth::CopilotAuthManager;
 
-use handlers::{auth, oauth, providers};
+use handlers::{auth, oauth, providers, copilot_oauth};
 use state::AppState;
 
 fn generate_token() -> String {
@@ -70,6 +71,7 @@ async fn main() {
     let proxy_port = std::env::var("CC_SWITCH_PROXY_PORT").unwrap_or_else(|_| "15721".to_string()).parse().unwrap_or(15721);
 
     let codex_oauth = CodexOAuthManager::new(config_dir.clone());
+    let copilot_oauth = CopilotAuthManager::new(config_dir.clone());
     let db = Database::init().expect("failed to initialize database");
 
     let ui_dist_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -77,6 +79,7 @@ async fn main() {
 
     let app_state = Arc::new(AppState {
         codex_oauth: Arc::new(codex_oauth),
+        copilot_oauth: Arc::new(copilot_oauth),
         token: token.clone(),
         proxy_server: Arc::new(RwLock::new(None)),
         proxy_listen_port: proxy_port,
@@ -94,10 +97,18 @@ async fn main() {
         .route("/", get(|| async { Redirect::permanent("/ui") }))
         // Auth
         .route("/api/auth/login", post(auth::login))
-        // OAuth
+        // Codex OAuth
         .route("/api/codex/oauth/status", get(oauth::codex_oauth_status))
         .route("/api/codex/oauth/start", post(oauth::codex_oauth_start))
         .route("/api/codex/oauth/poll", post(oauth::codex_oauth_poll))
+        // Copilot OAuth
+        .route("/api/copilot/oauth/status", get(copilot_oauth::copilot_oauth_status))
+        .route("/api/copilot/oauth/start", post(copilot_oauth::copilot_oauth_start))
+        .route("/api/copilot/oauth/poll", post(copilot_oauth::copilot_oauth_poll))
+        .route("/api/copilot/oauth/remove", post(copilot_oauth::copilot_oauth_remove))
+        .route("/api/copilot/oauth/set-default", post(copilot_oauth::copilot_oauth_set_default))
+        // Copilot Usage
+        .route("/api/copilot/usage", get(copilot_oauth::copilot_usage))
         // Proxy
         .route("/api/proxy/start", post(proxy::proxy_start))
         .route("/api/proxy/stop", post(proxy::proxy_stop))

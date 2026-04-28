@@ -75,6 +75,74 @@ export async function pollOAuth(device_code: string) {
   });
 }
 
+// Copilot OAuth
+export interface CopilotAccount {
+  id: string;
+  login: string;
+  avatar_url: string | null;
+  github_domain: string;
+}
+
+export interface CopilotUsageResponse {
+  copilot_plan: string;
+  quota_reset_date: string;
+  quota_snapshots: {
+    chat: { entitlement: number; remaining: number; percent_remaining: number; unlimited: boolean };
+    completions: { entitlement: number; remaining: number; percent_remaining: number; unlimited: boolean };
+    premium_interactions: { entitlement: number; remaining: number; percent_remaining: number; unlimited: boolean };
+  };
+  endpoints?: { api: string; telemetry?: string };
+}
+
+export async function getCopilotOAuthStatus() {
+  return api<{
+    authenticated: boolean;
+    accounts: CopilotAccount[];
+    default_account_id: string | null;
+  }>('/copilot/oauth/status');
+}
+
+export async function startCopilotOAuth(github_domain?: string) {
+  return api<{
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_in: number;
+  }>('/copilot/oauth/start', {
+    method: 'POST',
+    body: JSON.stringify({ github_domain }),
+  });
+}
+
+export async function pollCopilotOAuth(device_code: string, github_domain?: string) {
+  return api<{
+    success: boolean;
+    account?: CopilotAccount;
+    error?: string;
+  }>('/copilot/oauth/poll', {
+    method: 'POST',
+    body: JSON.stringify({ device_code, github_domain }),
+  });
+}
+
+export async function removeCopilotAccount(account_id: string) {
+  return api<{ success: boolean }>('/copilot/oauth/remove', {
+    method: 'POST',
+    body: JSON.stringify({ account_id }),
+  });
+}
+
+export async function setDefaultCopilotAccount(account_id: string) {
+  return api<{ success: boolean }>('/copilot/oauth/set-default', {
+    method: 'POST',
+    body: JSON.stringify({ account_id }),
+  });
+}
+
+export async function getCopilotUsage() {
+  return api<CopilotUsageResponse>('/copilot/usage');
+}
+
 // Proxy
 export async function getProxyStatus() {
   return api<{

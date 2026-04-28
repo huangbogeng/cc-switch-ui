@@ -470,10 +470,15 @@ impl CopilotAuthManager {
         Self::sorted_accounts(&accounts, default_account_id.as_deref())
     }
 
-    /// 获取指定账号信息
+/// 获取指定账号信息
     pub async fn get_account(&self, account_id: &str) -> Option<GitHubAccount> {
         let accounts = self.accounts.read().await;
         accounts.get(account_id).map(GitHubAccount::from)
+    }
+
+    /// 获取默认账号 ID
+    pub async fn get_default_account_id(&self) -> Option<String> {
+        self.resolve_default_account_id().await
     }
 
     /// 移除指定账号
