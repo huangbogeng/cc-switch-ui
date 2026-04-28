@@ -6,6 +6,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+**[中文版](README_zh.md)**
+
 ---
 
 ## Acknowledgments
@@ -101,7 +103,3 @@ cc-switch-web/       # Axum Web backend
 ## License
 
 MIT License - See [LICENSE](LICENSE) file for details.
-
----
-
-**中文版**: [README_zh.md](README_zh.md)

@@ -6,6 +6,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+**[English Version](README.md)**
+
 ---
 
 ## 致谢
@@ -104,4 +106,4 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
-**English version**: [README.md](README.md)
+**[English Version](README.md)**
