@@ -18,8 +18,12 @@ export interface ProviderPreset {
   icon: string;
   iconColor: string;
   description?: string;
+  authMode?: 'api_key' | 'oauth_proxy';
+  providerType?: 'codex_oauth';
   requiresOAuth?: boolean;
-  apiFormat?: 'anthropic' | 'openai_responses';
+  apiKeyField?: 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
+  apiFormat?: 'anthropic' | 'openai_chat' | 'openai_responses' | 'gemini_native';
+  isFullUrl?: boolean;
 }
 
 export const providerPresets: ProviderPreset[] = [
@@ -97,7 +101,9 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'openai',
     iconColor: '#000000',
-    description: 'OpenAI Codex (需要 OAuth)',
+    description: 'OpenAI Codex official account through OAuth + local proxy',
+    authMode: 'oauth_proxy',
+    providerType: 'codex_oauth',
     requiresOAuth: true,
     apiFormat: 'openai_responses',
   },

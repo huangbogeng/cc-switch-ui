@@ -45,15 +45,23 @@ export async function login(token: string) {
   });
 }
 
-// OAuth
-export async function getOAuthStatus() {
-  return api<{
-    authenticated: boolean;
-    accounts: { id: string; login: string; is_default: boolean }[];
-  }>('/codex/oauth/status');
+// Codex OAuth
+export interface CodexAccount {
+  id: string;
+  login: string;
+  is_default: boolean;
 }
 
-export async function startOAuth() {
+export interface CodexOAuthStatus {
+  authenticated: boolean;
+  accounts: CodexAccount[];
+}
+
+export async function getCodexOAuthStatus() {
+  return api<CodexOAuthStatus>('/codex/oauth/status');
+}
+
+export async function startCodexOAuth() {
   return api<{
     device_code: string;
     user_code: string;
@@ -63,11 +71,11 @@ export async function startOAuth() {
   }>('/codex/oauth/start', { method: 'POST' });
 }
 
-export async function pollOAuth(device_code: string) {
+export async function pollCodexOAuth(device_code: string) {
   return api<{
     success?: boolean;
     pending?: boolean;
-    account?: { id: string; login: string };
+    account?: CodexAccount;
     error?: string;
   }>('/codex/oauth/poll', {
     method: 'POST',

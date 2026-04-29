@@ -1,27 +1,37 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  getCodexOAuthStatus, startCodexOAuth, pollCodexOAuth,
   getProxyStatus, startProxy, stopProxy,
   getCopilotOAuthStatus, startCopilotOAuth, pollCopilotOAuth,
   getCopilotUsage,
   listProviders, switchProvider, getCurrentProviderId,
   type Provider,
 } from '../api';
-import type { CopilotAccount, CopilotUsageResponse } from '../api';
+import type { CodexOAuthStatus, CopilotAccount, CopilotUsageResponse } from '../api';
 import { PageHeader } from '@/components/PageHeader';
 import {
-  CopilotOAuthModal,
+  CodexOAuthStatusCard,
   CurrentProviderCard,
+  DeviceOAuthModal,
   OAuthStatusCard,
   ProviderGrid,
   ProxyCard,
   UsageCard,
 } from '@/components/dashboard/DashboardPanels';
+import { sortProviders } from '@/lib/provider';
 
 export default function DashboardPage() {
   // Current provider state
   const [currentProviderId, setCurrentProviderId] = useState<string | null>(null);
   const [providers, setProviders] = useState<Record<string, Provider>>({});
   const [loadingProviders, setLoadingProviders] = useState(true);
+
+  // Codex OAuth + Proxy state
+  const [codexStatus, setCodexStatus] = useState<CodexOAuthStatus | null>(null);
+  const [codexPending, setCodexPending] = useState(false);
+  const [codexDeviceCode, setCodexDeviceCode] = useState('');
+  const [codexUserCode, setCodexUserCode] = useState('');
+  const [codexVerificationUri, setCodexVerificationUri] = useState('');
 
   // Copilot OAuth state
   const [copilotStatus, setCopilotStatus] = useState<{
@@ -50,6 +60,15 @@ export default function DashboardPage() {
       setUsage(data);
     } catch (e) {
       console.error('Usage error:', e);
+    }
+  }, []);
+
+  const loadCodexStatus = useCallback(async () => {
+    try {
+      const status = await getCodexOAuthStatus();
+      setCodexStatus(status);
+    } catch (e) {
+      console.error('Codex status error:', e);
     }
   }, []);
 
@@ -89,11 +108,12 @@ export default function DashboardPage() {
 
   const loadAll = useCallback(async () => {
     await Promise.all([
+      loadCodexStatus(),
       loadCopilotStatus(),
       loadProxyStatus(),
       loadProviders(),
     ]);
-  }, [loadCopilotStatus, loadProviders, loadProxyStatus]);
+  }, [loadCodexStatus, loadCopilotStatus, loadProviders, loadProxyStatus]);
 
   useEffect(() => {
     Promise.resolve().then(loadAll);
@@ -102,6 +122,31 @@ export default function DashboardPage() {
   }, [loadAll]);
 
   // Handlers
+  const handleStartCodexOAuth = async () => {
+    try {
+      const data = await startCodexOAuth();
+      setCodexDeviceCode(data.device_code);
+      setCodexUserCode(data.user_code);
+      setCodexVerificationUri(data.verification_uri);
+      setCodexPending(true);
+    } catch (e) {
+      console.error('Start Codex OAuth error:', e);
+    }
+  };
+
+  const handlePollCodexOAuth = async () => {
+    if (!codexDeviceCode) return;
+    try {
+      const data = await pollCodexOAuth(codexDeviceCode);
+      if (data.success) {
+        setCodexPending(false);
+        loadCodexStatus();
+      }
+    } catch (e) {
+      console.error('Poll Codex OAuth error:', e);
+    }
+  };
+
   const handleStartCopilotOAuth = async () => {
     try {
       const data = await startCopilotOAuth();
@@ -150,18 +195,25 @@ export default function DashboardPage() {
   };
 
   const currentProvider = currentProviderId ? providers[currentProviderId] : null;
-  const providerList = Object.values(providers);
+  const providerList = sortProviders(providers);
 
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        description="Monitor active routing, OAuth state, local proxy health, and Copilot usage."
+        description="Monitor active routing, account OAuth state, local proxy health, and Copilot usage."
       />
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <CurrentProviderCard loading={loadingProviders} provider={currentProvider} />
+          <CodexOAuthStatusCard
+            status={codexStatus}
+            pending={codexPending}
+            onConnect={handleStartCodexOAuth}
+          />
           <OAuthStatusCard
+            title="Copilot OAuth"
+            providerName="GitHub Copilot"
             status={copilotStatus}
             pending={copilotPending}
             onConnect={handleStartCopilotOAuth}
@@ -177,8 +229,17 @@ export default function DashboardPage() {
         />
       </div>
 
-      <CopilotOAuthModal
+      <DeviceOAuthModal
+        open={codexPending}
+        title="Connect ChatGPT Codex"
+        verificationUri={codexVerificationUri}
+        userCode={codexUserCode}
+        onAuthorized={handlePollCodexOAuth}
+      />
+
+      <DeviceOAuthModal
         open={copilotPending}
+        title="Connect GitHub Copilot"
         verificationUri={copilotVerificationUri}
         userCode={copilotUserCode}
         onAuthorized={handlePollCopilotOAuth}

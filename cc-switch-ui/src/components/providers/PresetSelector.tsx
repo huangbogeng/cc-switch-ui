@@ -13,6 +13,7 @@ export function PresetSelector({ onSelect, selectedId }: Props) {
     <div className="grid gap-3 sm:grid-cols-2">
       {providerPresets.map((preset) => {
         const selected = selectedId === preset.id;
+        const usesOAuthProxy = preset.authMode === 'oauth_proxy';
 
         return (
           <button
@@ -36,10 +37,10 @@ export function PresetSelector({ onSelect, selectedId }: Props) {
               <span className="min-w-0">
                 <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                   <span className="truncate text-sm font-semibold leading-5 text-foreground">{preset.name}</span>
-                  {preset.requiresOAuth && (
+                  {usesOAuthProxy && (
                     <Badge variant="outline" className="shrink-0 gap-1 text-[10px] leading-4">
                       <KeyRound className="h-3 w-3" />
-                      OAuth
+                      OAuth Proxy
                     </Badge>
                   )}
                 </span>

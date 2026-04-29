@@ -21,6 +21,7 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { sortProviders } from '@/lib/provider';
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState<Record<string, Provider>>({});
@@ -32,8 +33,9 @@ export default function ProvidersPage() {
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
   const [formData, setFormData] = useState<ProviderFormData>(emptyProviderForm);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
-  const providerList = Object.values(providers);
+  const providerList = sortProviders(providers);
 
   const applyProviders = async () => {
     try {
@@ -77,6 +79,7 @@ export default function ProvidersPage() {
   }, []);
 
   const handlePresetSelect = (preset: ProviderPreset) => {
+    setFormError('');
     setSelectedPreset(preset);
     setEditingId(null);
     setFormData(formFromPreset(preset));
@@ -84,6 +87,7 @@ export default function ProvidersPage() {
   };
 
   const handleAdd = () => {
+    setFormError('');
     setSelectedPreset(null);
     setEditingId(null);
     setFormData(emptyProviderForm);
@@ -91,6 +95,7 @@ export default function ProvidersPage() {
   };
 
   const handleEdit = (provider: Provider) => {
+    setFormError('');
     setEditingId(provider.id);
     setSelectedPreset(null);
     setFormData(formFromProvider(provider));
@@ -120,13 +125,22 @@ export default function ProvidersPage() {
     e.preventDefault();
     setSaving(true);
     setError('');
+    setFormError('');
 
     try {
+      const id = formData.id.trim();
+      const name = formData.name.trim();
+      if (!id || !name) {
+        throw new Error('Provider ID and name are required.');
+      }
+      if (formData.authMode !== 'oauth_proxy' && selectedPreset && !formData.apiKey.trim()) {
+        throw new Error(`${selectedPreset.name} requires an API key.`);
+      }
       await saveProvider(buildProvider(formData, selectedPreset));
       setShowForm(false);
-      applyProviders();
+      await applyProviders();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
+      setFormError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -183,9 +197,16 @@ export default function ProvidersPage() {
         selectedPreset={selectedPreset}
         formData={formData}
         saving={saving}
-        onChange={setFormData}
+        error={formError}
+        onChange={(next) => {
+          setFormData(next);
+          if (formError) setFormError('');
+        }}
         onPresetSelect={handlePresetSelect}
-        onCancel={() => setShowForm(false)}
+        onCancel={() => {
+          setShowForm(false);
+          setFormError('');
+        }}
         onSubmit={handleSubmit}
       />
     </div>

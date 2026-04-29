@@ -1,16 +1,21 @@
 import { CheckCircle2, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap } from 'lucide-react';
-import type { CopilotAccount, CopilotUsageResponse, Provider } from '@/api';
+import type { CodexAccount, CopilotAccount, CopilotUsageResponse, Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { providerHost, providerInitial } from '@/lib/provider';
+import { providerAuthLabel, providerAuthMode, providerInitial } from '@/lib/provider';
 import { usagePercent } from '@/lib/usage';
 
 interface CopilotStatus {
   authenticated: boolean;
   accounts: CopilotAccount[];
   default_account_id: string | null;
+}
+
+interface CodexStatus {
+  authenticated: boolean;
+  accounts: CodexAccount[];
 }
 
 interface ProxyStatus {
@@ -69,10 +74,14 @@ export function CurrentProviderCard({
 }
 
 export function OAuthStatusCard({
+  title = 'OAuth Status',
+  providerName = 'GitHub Copilot',
   status,
   pending,
   onConnect,
 }: {
+  title?: string;
+  providerName?: string;
   status: CopilotStatus | null;
   pending: boolean;
   onConnect: () => void;
@@ -84,7 +93,7 @@ export function OAuthStatusCard({
       <CardHeader className="border-b border-white/10">
         <CardTitle className="grid grid-cols-[16px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-muted-foreground">
           <Server className="h-4 w-4" />
-          OAuth Status
+          {title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -100,7 +109,7 @@ export function OAuthStatusCard({
               </div>
             )}
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium leading-5">GitHub Copilot</div>
+              <div className="truncate text-sm font-medium leading-5">{providerName}</div>
               <div className="truncate text-xs leading-4 text-muted-foreground">
                 {status?.authenticated ? accountName : 'Not connected'}
               </div>
@@ -109,6 +118,55 @@ export function OAuthStatusCard({
           {!pending && (
             <Button size="sm" variant={status?.authenticated ? 'ghost' : 'default'} onClick={onConnect}>
               {status?.authenticated ? 'Manage' : 'Connect'}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CodexOAuthStatusCard({
+  status,
+  pending,
+  onConnect,
+}: {
+  status: CodexStatus | null;
+  pending: boolean;
+  onConnect: () => void;
+}) {
+  const accountName = status?.accounts.find((a) => a.is_default)?.login || status?.accounts[0]?.login || 'Connected';
+
+  return (
+    <Card>
+      <CardHeader className="border-b border-white/10">
+        <CardTitle className="grid grid-cols-[16px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Server className="h-4 w-4" />
+          Codex OAuth
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-white/[0.04] p-3">
+          <div className="grid min-w-0 grid-cols-[32px_minmax(0,1fr)] items-center gap-3">
+            {status?.authenticated ? (
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              </div>
+            ) : (
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+                <Circle className="h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium leading-5">ChatGPT Codex</div>
+              <div className="truncate text-xs leading-4 text-muted-foreground">
+                {status?.authenticated ? accountName : 'OAuth Proxy provider only'}
+              </div>
+            </div>
+          </div>
+          {!pending && (
+            <Button size="sm" variant={status?.authenticated ? 'ghost' : 'default'} onClick={onConnect}>
+              {status?.authenticated ? 'Reconnect' : 'Connect'}
             </Button>
           )}
         </div>
@@ -244,8 +302,11 @@ export function ProviderGrid({
             </div>
             <div className="truncate text-sm font-medium leading-5">{provider.name}</div>
             <div className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
-              {providerHost(provider.websiteUrl)}
+              {providerAuthLabel(provider)}
             </div>
+            <div className={`mt-2 h-1.5 w-10 rounded-full ${
+              providerAuthMode(provider) === 'oauth_proxy' ? 'bg-emerald-500' : 'bg-primary'
+            }`} />
           </button>
         ))}
       </div>
@@ -253,13 +314,15 @@ export function ProviderGrid({
   );
 }
 
-export function CopilotOAuthModal({
+export function DeviceOAuthModal({
   open,
+  title,
   verificationUri,
   userCode,
   onAuthorized,
 }: {
   open: boolean;
+  title: string;
   verificationUri: string;
   userCode: string;
   onAuthorized: () => void;
@@ -269,7 +332,7 @@ export function CopilotOAuthModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-card/95 p-6 shadow-2xl shadow-black/30">
-        <h2 className="mb-2 text-xl font-semibold">Connect GitHub Copilot</h2>
+        <h2 className="mb-2 text-xl font-semibold">{title}</h2>
         <p className="mb-6 text-sm text-muted-foreground">Visit the URL and enter the code to authorize</p>
         <a
           href={verificationUri}

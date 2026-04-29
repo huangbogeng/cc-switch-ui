@@ -3,7 +3,7 @@ import type { Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { providerInitial } from '@/lib/provider';
+import { providerApiFormat, providerAuthLabel, providerAuthMode, providerBaseUrl, providerInitial } from '@/lib/provider';
 
 interface ProviderCardProps {
   provider: Provider;
@@ -14,6 +14,10 @@ interface ProviderCardProps {
 }
 
 export function ProviderCard({ provider, active, onSwitch, onEdit, onDelete }: ProviderCardProps) {
+  const authMode = providerAuthMode(provider);
+  const apiFormat = providerApiFormat(provider);
+  const baseUrl = providerBaseUrl(provider);
+
   return (
     <Card className={active ? 'ring-1 ring-primary/45' : undefined}>
       <CardContent className="p-4">
@@ -32,6 +36,19 @@ export function ProviderCard({ provider, active, onSwitch, onEdit, onDelete }: P
                   </Badge>
                 )}
               </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant={authMode === 'oauth_proxy' ? 'success' : 'outline'} className="leading-4">
+                  {providerAuthLabel(provider)}
+                </Badge>
+                <Badge variant="outline" className="leading-4">
+                  {apiFormat}
+                </Badge>
+              </div>
+              {baseUrl && (
+                <div className="mt-2 truncate font-mono text-xs leading-4 text-muted-foreground">
+                  {baseUrl}
+                </div>
+              )}
               {provider.websiteUrl && (
                 <a
                   href={provider.websiteUrl}
