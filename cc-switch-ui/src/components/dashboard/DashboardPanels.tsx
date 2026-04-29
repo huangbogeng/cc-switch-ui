@@ -22,6 +22,9 @@ interface ProxyStatus {
   running: boolean;
   listen_addr: string | null;
   upstream_url: string;
+  http_proxy_url: string | null;
+  active_target_provider_id: string | null;
+  active_target_provider_name: string | null;
 }
 
 export function CurrentProviderCard({
@@ -130,10 +133,14 @@ export function CodexOAuthStatusCard({
   status,
   pending,
   onConnect,
+  onSetDefault,
+  onRemove,
 }: {
   status: CodexStatus | null;
   pending: boolean;
   onConnect: () => void;
+  onSetDefault: (accountId: string) => void;
+  onRemove: (accountId: string) => void;
 }) {
   const accountName = status?.accounts.find((a) => a.is_default)?.login || status?.accounts[0]?.login || 'Connected';
 
@@ -170,6 +177,25 @@ export function CodexOAuthStatusCard({
             </Button>
           )}
         </div>
+        {status?.accounts.map((account) => (
+          <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-2xl border border-white/10 px-3 py-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm leading-5 text-foreground">{account.login}</div>
+              <div className="truncate text-xs leading-4 text-muted-foreground">{account.id}</div>
+            </div>
+            <Button
+              size="sm"
+              variant={account.is_default ? 'secondary' : 'outline'}
+              onClick={() => onSetDefault(account.id)}
+              disabled={account.is_default}
+            >
+              {account.is_default ? 'Default' : 'Set Default'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onRemove(account.id)}>
+              Remove
+            </Button>
+          </div>
+        ))}
       </CardContent>
     </Card>
   );
@@ -177,10 +203,16 @@ export function CodexOAuthStatusCard({
 
 export function ProxyCard({
   status,
+  targetProviders,
+  error,
   onToggle,
+  onTargetChange,
 }: {
   status: ProxyStatus | null;
+  targetProviders: Provider[];
+  error?: string;
   onToggle: () => void;
+  onTargetChange: (providerId: string) => void;
 }) {
   const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/chat/completions` : '';
 
@@ -193,6 +225,38 @@ export function ProxyCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {error && (
+          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive">
+            {error}
+          </div>
+        )}
+        <div className="space-y-2">
+          <label htmlFor="proxy-target" className="text-xs font-medium leading-4 text-muted-foreground">
+            Active Target
+          </label>
+          <select
+            id="proxy-target"
+            value={status?.active_target_provider_id || ''}
+            onChange={(event) => onTargetChange(event.target.value)}
+            disabled={status?.running || targetProviders.length === 0}
+            className="h-10 w-full rounded-xl border border-input bg-white/[0.04] px-3 text-sm leading-5 text-foreground shadow-inner shadow-black/10 outline-none transition focus:border-primary/70 focus:ring-4 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <option value="">Select OAuth Proxy provider</option>
+            {targetProviders.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.name}
+              </option>
+            ))}
+          </select>
+          <p className="truncate text-xs leading-4 text-muted-foreground">
+            {status?.active_target_provider_name || 'No proxy target selected'}
+          </p>
+          {status?.http_proxy_url && (
+            <p className="truncate font-mono text-xs leading-4 text-primary">
+              via {status.http_proxy_url}
+            </p>
+          )}
+        </div>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
           <div className="grid min-w-0 grid-cols-[12px_minmax(0,1fr)] items-center gap-3">
             <div className={`h-3 w-3 rounded-full ${status?.running ? 'animate-pulse bg-emerald-500' : 'bg-muted'}`} />

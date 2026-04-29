@@ -14,7 +14,7 @@ use axum::{
     extract::{Request, State},
     http::header::AUTHORIZATION,
     middleware::Next,
-    response::{IntoResponse, Response, Redirect},
+    response::{Response, Redirect},
     routing::{get, post, delete, put},
     Router,
 };
@@ -101,6 +101,8 @@ async fn main() {
         .route("/api/codex/oauth/status", get(oauth::codex_oauth_status))
         .route("/api/codex/oauth/start", post(oauth::codex_oauth_start))
         .route("/api/codex/oauth/poll", post(oauth::codex_oauth_poll))
+        .route("/api/codex/oauth/remove", post(oauth::codex_oauth_remove))
+        .route("/api/codex/oauth/set-default", post(oauth::codex_oauth_set_default))
         // Copilot OAuth
         .route("/api/copilot/oauth/status", get(copilot_oauth::copilot_oauth_status))
         .route("/api/copilot/oauth/start", post(copilot_oauth::copilot_oauth_start))
@@ -113,6 +115,8 @@ async fn main() {
         .route("/api/proxy/start", post(proxy::proxy_start))
         .route("/api/proxy/stop", post(proxy::proxy_stop))
         .route("/api/proxy/status", get(proxy::proxy_status))
+        .route("/api/proxy/target", get(proxy::proxy_target))
+        .route("/api/proxy/target", post(proxy::proxy_set_target))
         // Providers
         .route("/api/providers", get(providers::list_providers))
         .route("/api/providers", post(providers::save_provider))

@@ -8,6 +8,7 @@ use std::time::Instant;
 pub struct ProxyConfig {
     pub listen_addr: SocketAddr,
     pub upstream_url: String,
+    pub http_proxy_url: Option<String>,
 }
 
 impl Default for ProxyConfig {
@@ -15,6 +16,7 @@ impl Default for ProxyConfig {
         Self {
             listen_addr: "127.0.0.1:15721".parse().unwrap(),
             upstream_url: "https://api.openai.com".to_string(),
+            http_proxy_url: None,
         }
     }
 }

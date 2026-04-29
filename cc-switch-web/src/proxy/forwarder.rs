@@ -20,17 +20,22 @@ pub struct Forwarder {
 }
 
 impl Forwarder {
-    pub fn new(config: ProxyConfig) -> Self {
-        let http_client = reqwest::Client::builder()
-            .use_rustls_tls()
+    pub fn new(config: ProxyConfig) -> Result<Self, String> {
+        let mut builder = reqwest::Client::builder().use_rustls_tls();
+        if let Some(proxy_url) = config.http_proxy_url.as_deref().filter(|value| !value.trim().is_empty()) {
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|e| format!("Invalid Codex HTTP proxy URL: {e}"))?;
+            builder = builder.proxy(proxy);
+        }
+        let http_client = builder
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
-        Self {
+        Ok(Self {
             config,
             status: RwLock::new(ProxyStatus::new()),
             http_client,
-        }
+        })
     }
 
     pub async fn set_running(&self, running: bool, listen_addr: Option<std::net::SocketAddr>) {
@@ -62,7 +67,11 @@ impl Forwarder {
 
         // Get Codex OAuth token
         let codex_oauth = state.codex_oauth.clone();
-        let token = match codex_oauth.get_valid_token().await {
+        let token_result = match state.codex_account_id.as_deref() {
+            Some(account_id) => codex_oauth.get_valid_token_for_account(account_id).await,
+            None => codex_oauth.get_valid_token().await,
+        };
+        let token = match token_result {
             Ok(t) => t,
             Err(e) => {
                 log::error!("[Proxy] Failed to get Codex OAuth token: {}", e);
@@ -71,7 +80,10 @@ impl Forwarder {
         };
 
         // Get account ID for ChatGPT-Account-Id header
-        let account_id = codex_oauth.get_status().await.default_account_id;
+        let account_id = match state.codex_account_id.clone() {
+            Some(account_id) => Some(account_id),
+            None => codex_oauth.get_status().await.default_account_id,
+        };
 
         // Build upstream URL
         let path = req.uri().path();
@@ -130,10 +142,11 @@ impl Forwarder {
 #[derive(Clone)]
 pub struct ProxyState {
     pub codex_oauth: Arc<CodexOAuthManager>,
+    pub codex_account_id: Option<String>,
 }
 
 impl ProxyState {
-    pub fn new(codex_oauth: Arc<CodexOAuthManager>) -> Self {
-        Self { codex_oauth }
+    pub fn new(codex_oauth: Arc<CodexOAuthManager>, codex_account_id: Option<String>) -> Self {
+        Self { codex_oauth, codex_account_id }
     }
 }

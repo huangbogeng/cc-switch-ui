@@ -98,6 +98,11 @@ impl Database {
                 id INTEGER PRIMARY KEY,
                 config_json TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS proxy_target_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                active_target_provider_id TEXT
+            );
             "
         )?;
         Ok(())
@@ -257,6 +262,34 @@ impl Database {
             Some(row) => Ok(Some(row.get(0)?)),
             None => Ok(None),
         }
+    }
+
+    /// Get the active provider target for the local proxy.
+    pub fn get_proxy_target_provider_id(&self) -> Result<Option<String>, AppError> {
+        let conn = self.conn();
+        let result: Result<Option<String>, rusqlite::Error> = conn.query_row(
+            "SELECT active_target_provider_id FROM proxy_target_config WHERE id = 1",
+            [],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => return Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    /// Set the active provider target for the local proxy.
+    pub fn set_proxy_target_provider_id(&self, provider_id: &str) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO proxy_target_config (id, active_target_provider_id) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET active_target_provider_id = excluded.active_target_provider_id",
+            params![provider_id],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
     }
 }
 
