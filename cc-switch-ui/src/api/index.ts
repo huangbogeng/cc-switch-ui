@@ -258,3 +258,28 @@ export async function switchProvider(id: string) {
     method: 'POST',
   });
 }
+
+// Proxy Settings
+export interface ProxyConfig {
+  enabled: boolean;
+  proxyType: string;
+  host: string;
+  port: number;
+}
+
+export async function getProxyConfig() {
+  return api<ProxyConfig>('/settings/proxy');
+}
+
+export async function setProxyConfig(config: ProxyConfig) {
+  return api<{ success: boolean }>('/settings/proxy', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
+export async function deleteProxyConfig() {
+  return api<{ success: boolean }>('/settings/proxy', {
+    method: 'DELETE',
+  });
+}
