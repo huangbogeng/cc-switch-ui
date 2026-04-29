@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   getCodexOAuthStatus, startCodexOAuth, pollCodexOAuth,
-  getProxyStatus, startProxy, stopProxy,
+  removeCodexAccount, setDefaultCodexAccount,
+  getProxyStatus, startProxy, stopProxy, setProxyTarget,
   getCopilotOAuthStatus, startCopilotOAuth, pollCopilotOAuth,
   getCopilotUsage,
   listProviders, switchProvider, getCurrentProviderId,
@@ -18,7 +19,7 @@ import {
   ProxyCard,
   UsageCard,
 } from '@/components/dashboard/DashboardPanels';
-import { sortProviders } from '@/lib/provider';
+import { providerAuthMode, sortProviders } from '@/lib/provider';
 
 export default function DashboardPage() {
   // Current provider state
@@ -52,7 +53,10 @@ export default function DashboardPage() {
     running: boolean;
     listen_addr: string | null;
     upstream_url: string;
+    active_target_provider_id: string | null;
+    active_target_provider_name: string | null;
   } | null>(null);
+  const [proxyError, setProxyError] = useState('');
 
   const loadUsage = useCallback(async () => {
     try {
@@ -147,6 +151,25 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSetDefaultCodexAccount = async (accountId: string) => {
+    try {
+      await setDefaultCodexAccount(accountId);
+      loadCodexStatus();
+    } catch (e) {
+      console.error('Set default Codex account error:', e);
+    }
+  };
+
+  const handleRemoveCodexAccount = async (accountId: string) => {
+    if (!confirm('Remove this ChatGPT account?')) return;
+    try {
+      await removeCodexAccount(accountId);
+      loadCodexStatus();
+    } catch (e) {
+      console.error('Remove Codex account error:', e);
+    }
+  };
+
   const handleStartCopilotOAuth = async () => {
     try {
       const data = await startCopilotOAuth();
@@ -176,26 +199,50 @@ export default function DashboardPage() {
     try {
       await switchProvider(id);
       setCurrentProviderId(id);
+      if (providers[id] && providerAuthMode(providers[id]) === 'oauth_proxy') {
+        await setProxyTarget(id);
+        loadProxyStatus();
+      }
     } catch (e) {
       console.error('Switch provider error:', e);
     }
   };
 
-  const handleToggleProxy = async () => {
+  const handleProxyTargetChange = async (id: string) => {
+    if (!id) return;
     try {
-      if (proxyStatus?.running) {
-        await stopProxy();
-      } else {
-        await startProxy();
+      setProxyError('');
+      const result = await setProxyTarget(id);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to set proxy target');
       }
       loadProxyStatus();
     } catch (e) {
+      setProxyError(e instanceof Error ? e.message : 'Failed to set proxy target');
+      console.error('Set proxy target error:', e);
+    }
+  };
+
+  const handleToggleProxy = async () => {
+    try {
+      setProxyError('');
+      if (proxyStatus?.running) {
+        const result = await stopProxy();
+        if (!result.success) throw new Error(result.error || 'Failed to stop proxy');
+      } else {
+        const result = await startProxy();
+        if (!result.success) throw new Error(result.error || 'Failed to start proxy');
+      }
+      loadProxyStatus();
+    } catch (e) {
+      setProxyError(e instanceof Error ? e.message : 'Proxy operation failed');
       console.error('Toggle proxy error:', e);
     }
   };
 
   const currentProvider = currentProviderId ? providers[currentProviderId] : null;
   const providerList = sortProviders(providers);
+  const proxyTargetProviders = providerList.filter((provider) => providerAuthMode(provider) === 'oauth_proxy');
 
   return (
     <div>
@@ -210,6 +257,8 @@ export default function DashboardPage() {
             status={codexStatus}
             pending={codexPending}
             onConnect={handleStartCodexOAuth}
+            onSetDefault={handleSetDefaultCodexAccount}
+            onRemove={handleRemoveCodexAccount}
           />
           <OAuthStatusCard
             title="Copilot OAuth"
@@ -218,7 +267,13 @@ export default function DashboardPage() {
             pending={copilotPending}
             onConnect={handleStartCopilotOAuth}
           />
-          <ProxyCard status={proxyStatus} onToggle={handleToggleProxy} />
+          <ProxyCard
+            status={proxyStatus}
+            targetProviders={proxyTargetProviders}
+            error={proxyError}
+            onToggle={handleToggleProxy}
+            onTargetChange={handleProxyTargetChange}
+          />
           {usage && <UsageCard usage={usage} />}
         </div>
 

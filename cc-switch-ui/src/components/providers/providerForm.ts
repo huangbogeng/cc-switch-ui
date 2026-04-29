@@ -22,6 +22,7 @@ export interface ProviderFormData {
   apiTimeoutMs: string;
   disableNonessentialTraffic: boolean;
   promptCacheKey: string;
+  codexAccountId: string;
 }
 
 export const emptyProviderForm: ProviderFormData = {
@@ -42,6 +43,7 @@ export const emptyProviderForm: ProviderFormData = {
   apiTimeoutMs: '',
   disableNonessentialTraffic: false,
   promptCacheKey: '',
+  codexAccountId: '',
 };
 
 export function formFromPreset(preset: ProviderPreset): ProviderFormData {
@@ -67,6 +69,7 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
     apiTimeoutMs: env.API_TIMEOUT_MS || '',
     disableNonessentialTraffic: env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1',
     promptCacheKey: '',
+    codexAccountId: '',
   };
 }
 
@@ -95,6 +98,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     apiTimeoutMs: env.API_TIMEOUT_MS || '',
     disableNonessentialTraffic: env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1',
     promptCacheKey: meta.promptCacheKey || '',
+    codexAccountId: meta.authBinding?.accountId || '',
   };
 }
 
@@ -141,6 +145,13 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
       source: 'managed_account',
       authProvider: 'codex_oauth',
     };
+    if (formData.codexAccountId.trim()) {
+      meta.authBinding = {
+        source: 'managed_account',
+        authProvider: 'codex_oauth',
+        accountId: formData.codexAccountId.trim(),
+      };
+    }
   }
 
   return {
@@ -170,6 +181,7 @@ function providerMeta(provider: Provider): {
   promptCacheKey?: string;
   authMode?: 'api_key' | 'oauth_proxy';
   providerType?: string;
+  authBinding?: { accountId?: string };
 } {
   return (provider.meta || {}) as {
     apiFormat?: ApiFormat;
@@ -178,6 +190,7 @@ function providerMeta(provider: Provider): {
     promptCacheKey?: string;
     authMode?: 'api_key' | 'oauth_proxy';
     providerType?: string;
+    authBinding?: { accountId?: string };
   };
 }
 

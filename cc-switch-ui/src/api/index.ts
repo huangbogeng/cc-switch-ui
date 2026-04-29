@@ -83,6 +83,20 @@ export async function pollCodexOAuth(device_code: string) {
   });
 }
 
+export async function removeCodexAccount(account_id: string) {
+  return api<{ success: boolean }>('/codex/oauth/remove', {
+    method: 'POST',
+    body: JSON.stringify({ account_id }),
+  });
+}
+
+export async function setDefaultCodexAccount(account_id: string) {
+  return api<{ success: boolean }>('/codex/oauth/set-default', {
+    method: 'POST',
+    body: JSON.stringify({ account_id }),
+  });
+}
+
 // Copilot OAuth
 export interface CopilotAccount {
   id: string;
@@ -157,6 +171,8 @@ export async function getProxyStatus() {
     running: boolean;
     listen_addr: string | null;
     upstream_url: string;
+    active_target_provider_id: string | null;
+    active_target_provider_name: string | null;
   }>('/proxy/status');
 }
 
@@ -172,6 +188,20 @@ export async function stopProxy() {
     '/proxy/stop',
     { method: 'POST' }
   );
+}
+
+export async function getProxyTarget() {
+  return api<{
+    provider_id: string | null;
+    provider: Provider | null;
+  }>('/proxy/target');
+}
+
+export async function setProxyTarget(provider_id: string) {
+  return api<{ success: boolean; error?: string }>('/proxy/target', {
+    method: 'POST',
+    body: JSON.stringify({ provider_id }),
+  });
 }
 
 // Providers

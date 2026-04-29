@@ -32,14 +32,18 @@ impl ProxyServer {
     }
 
     /// Start the proxy server
-    pub async fn start(&self, codex_oauth: Arc<cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager>) -> Result<SocketAddr, String> {
+    pub async fn start(
+        &self,
+        codex_oauth: Arc<cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager>,
+        codex_account_id: Option<String>,
+    ) -> Result<SocketAddr, String> {
         // Check if already running
         if self.server_task.read().await.is_some() {
             return Err("Proxy already running".to_string());
         }
 
         let forwarder = Arc::new(Forwarder::new(self.config.clone()));
-        let proxy_state = Arc::new(ProxyState::new(codex_oauth.clone()));
+        let proxy_state = Arc::new(ProxyState::new(codex_oauth.clone(), codex_account_id));
         let shutdown_tx = tokio::sync::oneshot::channel().0;
 
         let app = Router::new()

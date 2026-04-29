@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { ProviderPreset } from '@/config/providerPresets';
 import { PresetSelector } from './PresetSelector';
 import type { ApiFormat, ApiKeyField, ProviderFormData } from './providerForm';
+import type { CodexAccount } from '@/api';
 
 interface ProviderFormDialogProps {
   open: boolean;
@@ -16,6 +17,7 @@ interface ProviderFormDialogProps {
   formData: ProviderFormData;
   saving: boolean;
   error?: string;
+  codexAccounts?: CodexAccount[];
   onChange: (formData: ProviderFormData) => void;
   onPresetSelect: (preset: ProviderPreset) => void;
   onCancel: () => void;
@@ -29,6 +31,7 @@ export function ProviderFormDialog({
   formData,
   saving,
   error,
+  codexAccounts = [],
   onChange,
   onPresetSelect,
   onCancel,
@@ -149,8 +152,25 @@ export function ProviderFormDialog({
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-sm leading-5 text-primary">
-                  Uses managed ChatGPT OAuth credentials. This provider is still saved as a switchable route.
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-sm leading-5 text-primary">
+                    Uses managed ChatGPT OAuth credentials. This provider is still saved as a switchable route.
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="codex-account">ChatGPT Account</Label>
+                    <Select
+                      id="codex-account"
+                      value={formData.codexAccountId}
+                      onChange={(value) => onChange({ ...formData, codexAccountId: value })}
+                    >
+                      <option value="">Default account</option>
+                      {codexAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.login}{account.is_default ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 </div>
               )}
             </FormSection>

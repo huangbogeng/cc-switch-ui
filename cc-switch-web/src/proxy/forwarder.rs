@@ -62,7 +62,11 @@ impl Forwarder {
 
         // Get Codex OAuth token
         let codex_oauth = state.codex_oauth.clone();
-        let token = match codex_oauth.get_valid_token().await {
+        let token_result = match state.codex_account_id.as_deref() {
+            Some(account_id) => codex_oauth.get_valid_token_for_account(account_id).await,
+            None => codex_oauth.get_valid_token().await,
+        };
+        let token = match token_result {
             Ok(t) => t,
             Err(e) => {
                 log::error!("[Proxy] Failed to get Codex OAuth token: {}", e);
@@ -71,7 +75,10 @@ impl Forwarder {
         };
 
         // Get account ID for ChatGPT-Account-Id header
-        let account_id = codex_oauth.get_status().await.default_account_id;
+        let account_id = match state.codex_account_id.clone() {
+            Some(account_id) => Some(account_id),
+            None => codex_oauth.get_status().await.default_account_id,
+        };
 
         // Build upstream URL
         let path = req.uri().path();
@@ -130,10 +137,11 @@ impl Forwarder {
 #[derive(Clone)]
 pub struct ProxyState {
     pub codex_oauth: Arc<CodexOAuthManager>,
+    pub codex_account_id: Option<String>,
 }
 
 impl ProxyState {
-    pub fn new(codex_oauth: Arc<CodexOAuthManager>) -> Self {
-        Self { codex_oauth }
+    pub fn new(codex_oauth: Arc<CodexOAuthManager>, codex_account_id: Option<String>) -> Self {
+        Self { codex_oauth, codex_account_id }
     }
 }

@@ -6,8 +6,11 @@ import {
   deleteProvider,
   switchProvider,
   getCurrentProviderId,
+  getCodexOAuthStatus,
+  setProxyTarget,
   type Provider,
 } from '../api';
+import type { CodexAccount } from '../api';
 import type { ProviderPreset } from '../config/providerPresets';
 import { ProviderCard } from '@/components/providers/ProviderCard';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
@@ -21,7 +24,7 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { sortProviders } from '@/lib/provider';
+import { providerAuthMode, sortProviders } from '@/lib/provider';
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState<Record<string, Provider>>({});
@@ -34,6 +37,7 @@ export default function ProvidersPage() {
   const [formData, setFormData] = useState<ProviderFormData>(emptyProviderForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
 
   const providerList = sortProviders(providers);
 
@@ -78,6 +82,12 @@ export default function ProvidersPage() {
     };
   }, []);
 
+  useEffect(() => {
+    getCodexOAuthStatus()
+      .then((status) => setCodexAccounts(status.accounts))
+      .catch(() => setCodexAccounts([]));
+  }, []);
+
   const handlePresetSelect = (preset: ProviderPreset) => {
     setFormError('');
     setSelectedPreset(preset);
@@ -115,6 +125,9 @@ export default function ProvidersPage() {
   const handleSwitch = async (id: string) => {
     try {
       await switchProvider(id);
+      if (providers[id] && providerAuthMode(providers[id]) === 'oauth_proxy') {
+        await setProxyTarget(id);
+      }
       setCurrentProviderId(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Switch failed');
@@ -198,6 +211,7 @@ export default function ProvidersPage() {
         formData={formData}
         saving={saving}
         error={formError}
+        codexAccounts={codexAccounts}
         onChange={(next) => {
           setFormData(next);
           if (formError) setFormError('');

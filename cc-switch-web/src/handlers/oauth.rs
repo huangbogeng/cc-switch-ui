@@ -56,6 +56,11 @@ pub struct PollRequest {
     device_code: String,
 }
 
+#[derive(Deserialize)]
+pub struct AccountRequest {
+    account_id: String,
+}
+
 pub async fn codex_oauth_poll(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<PollRequest>,
@@ -78,6 +83,32 @@ pub async fn codex_oauth_poll(
         Err(CodexOAuthError::AuthorizationPending) => Json(serde_json::json!({"pending": true})).into_response(),
         Err(e) => {
             log::error!("OAuth poll error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
+        }
+    }
+}
+
+pub async fn codex_oauth_remove(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AccountRequest>,
+) -> impl IntoResponse {
+    match state.codex_oauth.remove_account(&payload.account_id).await {
+        Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
+        Err(e) => {
+            log::error!("Codex OAuth remove error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
+        }
+    }
+}
+
+pub async fn codex_oauth_set_default(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AccountRequest>,
+) -> impl IntoResponse {
+    match state.codex_oauth.set_default_account(&payload.account_id).await {
+        Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
+        Err(e) => {
+            log::error!("Codex OAuth set default error: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
         }
     }
