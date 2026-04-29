@@ -36,6 +36,34 @@ pub struct Provider {
     pub in_failover_queue: bool,
 }
 
+/// Proxy configuration for OAuth authentication
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    pub enabled: bool,
+    pub proxy_type: ProxyType,
+    pub host: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyType {
+    Http,
+    Socks5,
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            proxy_type: ProxyType::Http,
+            host: String::new(),
+            port: 10809,
+        }
+    }
+}
+
 /// Database connection wrapper
 pub struct Database {
     pub(crate) conn: Mutex<Connection>,
@@ -95,7 +123,7 @@ impl Database {
             );
 
             CREATE TABLE IF NOT EXISTS proxy_config (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY CHECK (id = 1),
                 config_json TEXT NOT NULL
             );
 
@@ -289,6 +317,49 @@ impl Database {
             params![provider_id],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Get proxy configuration
+    pub fn get_proxy_config(&self) -> Result<Option<ProxyConfig>, AppError> {
+        let conn = self.conn();
+        let result: Result<String, rusqlite::Error> = conn.query_row(
+            "SELECT config_json FROM proxy_config WHERE id = 1",
+            [],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(json_str) => {
+                let config: ProxyConfig = serde_json::from_str(&json_str)
+                    .map_err(|e| AppError::Database(format!("Invalid proxy config JSON: {}", e)))?;
+                Ok(Some(config))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    /// Set proxy configuration
+    pub fn set_proxy_config(&self, config: &ProxyConfig) -> Result<(), AppError> {
+        let conn = self.conn();
+        let config_json = serde_json::to_string(config)
+            .map_err(|e| AppError::JsonSerialize { source: e })?;
+
+        conn.execute(
+            "INSERT INTO proxy_config (id, config_json) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET config_json = excluded.config_json",
+            params![config_json],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Delete proxy configuration
+    pub fn delete_proxy_config(&self) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM proxy_config WHERE id = 1", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
 }
