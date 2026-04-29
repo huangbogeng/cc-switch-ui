@@ -36,3 +36,4 @@ src-tauri.bak/
 
 # .bak files
 **/*.bak
+.codex

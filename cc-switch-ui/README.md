@@ -1,73 +1,60 @@
-# React + TypeScript + Vite
+# cc-switch-ui
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React frontend for **CC Switch Web**.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS v3
+- Radix UI primitives
+- lucide-react icons
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The Vite dev server proxies `/api` to `http://localhost:5007`, so run the backend from the repository root in another terminal:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cargo run --bin cc-switch-web
 ```
+
+## Build
+
+```bash
+npm run lint
+npm run build
+```
+
+The production build is written to `dist/`. The Rust Web server serves this directory at `/ui`.
+
+## Structure
+
+```text
+src/
+├── api/                  # API client and shared frontend API types
+├── components/
+│   ├── dashboard/        # Dashboard display panels
+│   ├── providers/        # Provider list, preset selector, provider form dialog
+│   └── ui/               # Shared low-level UI primitives
+├── config/               # Provider presets
+├── lib/                  # Small reusable helpers
+├── pages/                # Stateful page orchestration
+├── App.tsx               # Auth gate and app shell
+└── main.tsx              # React entrypoint
+```
+
+## Tailwind
+
+This project uses Tailwind CSS v3 via PostCSS:
+
+- `tailwind.config.js`
+- `postcss.config.cjs`
+- `src/index.css`
+
+Do not switch back to Tailwind v4 casually; the current layout was tuned against Tailwind v3 output.

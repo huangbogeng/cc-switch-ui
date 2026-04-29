@@ -1,14 +1,94 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-body {
-  margin: 0;
-  background: #1a1a2e;
-}
+@layer base {
+  :root {
+    --background: 220 22% 7%;
+    --foreground: 220 22% 96%;
 
-#root {
-  min-height: 100vh;
+    --card: 220 20% 12%;
+    --card-foreground: 220 20% 97%;
+
+    --popover: 220 20% 11%;
+    --popover-foreground: 220 20% 97%;
+
+    --primary: 211 100% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 15% 17%;
+    --secondary-foreground: 220 16% 88%;
+
+    --muted: 220 13% 20%;
+    --muted-foreground: 220 10% 62%;
+
+    --accent: 220 14% 22%;
+    --accent-foreground: 220 20% 95%;
+
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 24%;
+    --input: 220 13% 24%;
+    --ring: 211 100% 62%;
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.16), transparent 34rem),
+      linear-gradient(135deg, hsl(220 24% 8%), hsl(220 18% 5%) 68%);
+    color: hsl(var(--foreground));
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+
+  ::selection {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
 }

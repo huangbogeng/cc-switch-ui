@@ -1,4 +1,11 @@
 import { useState } from 'react';
+import { Check, RotateCcw, Save } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 type Language = 'en' | 'zh';
 type Theme = 'dark' | 'light';
@@ -35,89 +42,102 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.header}>Settings</h1>
+    <div>
+      <PageHeader
+        title="Settings"
+        description="Adjust local interface preferences and proxy defaults."
+        action={
+          <>
+            <Button variant="outline" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </Button>
+            <Button onClick={handleSave}>
+              {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+              {saved ? 'Saved' : 'Save'}
+            </Button>
+          </>
+        }
+      />
 
-      {/* Language Settings */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Language / 语言</h2>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Interface Language</label>
-          <div style={styles.buttonGroup}>
-            <button
-              style={{ ...styles.toggleButton, ...(settings.language === 'en' ? styles.toggleActive : {}) }}
-              onClick={() => setSettings({ ...settings, language: 'en' })}
-            >
-              English
-            </button>
-            <button
-              style={{ ...styles.toggleButton, ...(settings.language === 'zh' ? styles.toggleActive : {}) }}
-              onClick={() => setSettings({ ...settings, language: 'zh' })}
-            >
-              中文
-            </button>
-          </div>
+      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="border-b border-white/10">
+              <CardTitle>Language</CardTitle>
+              <p className="text-sm leading-5 text-muted-foreground">Choose the interface language used by local preferences.</p>
+            </CardHeader>
+            <CardContent>
+              <div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.035] p-1">
+                {[
+                  ['en', 'English'],
+                  ['zh', '中文'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSettings({ ...settings, language: value as Language })}
+                    className={cn(
+                      "rounded-xl px-4 py-2 text-sm font-medium leading-5 transition",
+                      settings.language === value
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="border-b border-white/10">
+              <CardTitle>Proxy</CardTitle>
+              <p className="text-sm leading-5 text-muted-foreground">Set the default local port used by the proxy server.</p>
+            </CardHeader>
+            <CardContent>
+              <div className="max-w-xs space-y-2">
+                <Label htmlFor="proxy-port">Proxy Listen Port</Label>
+                <Input
+                  id="proxy-port"
+                  type="number"
+                  value={settings.proxyPort}
+                  onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) || 15721 })}
+                  min={1024}
+                  max={65535}
+                />
+                <p className="text-xs leading-4 text-muted-foreground">Default: 15721</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
 
-      {/* Proxy Settings */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Proxy Settings</h2>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Proxy Listen Port</label>
-          <input
-            type="number"
-            style={styles.input}
-            value={settings.proxyPort}
-            onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) || 15721 })}
-            min={1024}
-            max={65535}
-          />
-          <span style={styles.hint}>Port for the proxy server to listen on (default: 15721)</span>
-        </div>
-      </div>
-
-      {/* About */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>About</h2>
-        <div style={styles.aboutInfo}>
-          <p><strong>CC Switch Web</strong></p>
-          <p style={styles.version}>Version 0.1.0</p>
-          <p style={styles.description}>
-            A lightweight pure Web architecture Claude Code provider manager.
-            Forked from <a href="https://github.com/farion1231/cc-switch" target="_blank" rel="noopener noreferrer" style={styles.link}>cc-switch</a>.
-          </p>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div style={styles.actions}>
-        <button style={styles.buttonSecondary} onClick={handleReset}>Reset to Defaults</button>
-        <button style={styles.buttonPrimary} onClick={handleSave}>
-          {saved ? 'Saved!' : 'Save Settings'}
-        </button>
+        <Card>
+          <CardHeader className="border-b border-white/10">
+            <CardTitle>About</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div>
+              <div className="text-base font-semibold leading-6 text-foreground">CC Switch Web</div>
+              <div className="mt-1 text-sm leading-5 text-primary">Version 0.1.0</div>
+            </div>
+            <p className="leading-6">
+              A lightweight pure Web architecture Claude Code provider manager.
+              Forked from{' '}
+              <a
+                href="https://github.com/farion1231/cc-switch"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                cc-switch
+              </a>
+              .
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: { padding: '40px', maxWidth: '600px', margin: '0 auto', background: '#1a1a2e', minHeight: '100vh', color: '#eee', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
-  header: { color: '#00d4ff', marginBottom: '30px' },
-  card: { background: '#16213e', borderRadius: '8px', padding: '24px', marginBottom: '20px', border: '1px solid #0f3460' },
-  cardTitle: { color: '#00d4ff', marginBottom: '15px', fontSize: '1.1em' },
-  formGroup: { marginBottom: '15px' },
-  label: { display: 'block', color: '#888', marginBottom: '8px', fontSize: '0.9em' },
-  buttonGroup: { display: 'flex', gap: '10px' },
-  toggleButton: { padding: '8px 16px', background: '#0f3460', border: '1px solid #0f3460', borderRadius: '6px', cursor: 'pointer', color: '#888', transition: 'all 0.2s' },
-  toggleActive: { background: '#00d4ff', color: '#1a1a2e', borderColor: '#00d4ff' },
-  input: { width: '100%', padding: '10px', background: '#0f3460', border: '1px solid #0f3460', borderRadius: '6px', color: '#eee', fontSize: '1em', boxSizing: 'border-box' },
-  hint: { display: 'block', color: '#666', fontSize: '0.8em', marginTop: '4px' },
-  aboutInfo: { color: '#888', lineHeight: 1.6 },
-  version: { color: '#00d4ff', margin: '5px 0' },
-  description: { marginTop: '10px', lineHeight: 1.5 },
-  link: { color: '#00d4ff', textDecoration: 'none' },
-  actions: { display: 'flex', gap: '10px', justifyContent: 'flex-end' },
-  buttonPrimary: { padding: '10px 20px', background: '#00d4ff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', color: '#1a1a2e' },
-  buttonSecondary: { padding: '10px 20px', background: 'transparent', border: '1px solid #0f3460', borderRadius: '6px', cursor: 'pointer', color: '#888' },
-};
