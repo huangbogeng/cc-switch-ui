@@ -26,7 +26,7 @@ use cc_switch_lib::database::Database;
 use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager;
 use cc_switch_lib::oauth::copilot_auth::CopilotAuthManager;
 
-use handlers::{auth, oauth, providers, copilot_oauth};
+use handlers::{auth, oauth, providers, copilot_oauth, settings};
 use state::AppState;
 
 fn generate_token() -> String {
@@ -117,6 +117,10 @@ async fn main() {
         .route("/api/proxy/status", get(proxy::proxy_status))
         .route("/api/proxy/target", get(proxy::proxy_target))
         .route("/api/proxy/target", post(proxy::proxy_set_target))
+        // Settings (Proxy Config)
+        .route("/api/settings/proxy", get(settings::get_proxy_config))
+        .route("/api/settings/proxy", put(settings::set_proxy_config))
+        .route("/api/settings/proxy", delete(settings::delete_proxy_config))
         // Providers
         .route("/api/providers", get(providers::list_providers))
         .route("/api/providers", post(providers::save_provider))
