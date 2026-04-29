@@ -20,17 +20,22 @@ pub struct Forwarder {
 }
 
 impl Forwarder {
-    pub fn new(config: ProxyConfig) -> Self {
-        let http_client = reqwest::Client::builder()
-            .use_rustls_tls()
+    pub fn new(config: ProxyConfig) -> Result<Self, String> {
+        let mut builder = reqwest::Client::builder().use_rustls_tls();
+        if let Some(proxy_url) = config.http_proxy_url.as_deref().filter(|value| !value.trim().is_empty()) {
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|e| format!("Invalid Codex HTTP proxy URL: {e}"))?;
+            builder = builder.proxy(proxy);
+        }
+        let http_client = builder
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
-        Self {
+        Ok(Self {
             config,
             status: RwLock::new(ProxyStatus::new()),
             http_client,
-        }
+        })
     }
 
     pub async fn set_running(&self, running: bool, listen_addr: Option<std::net::SocketAddr>) {

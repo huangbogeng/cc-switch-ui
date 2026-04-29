@@ -22,6 +22,7 @@ interface ProxyStatus {
   running: boolean;
   listen_addr: string | null;
   upstream_url: string;
+  http_proxy_url: string | null;
   active_target_provider_id: string | null;
   active_target_provider_name: string | null;
 }
@@ -250,6 +251,11 @@ export function ProxyCard({
           <p className="truncate text-xs leading-4 text-muted-foreground">
             {status?.active_target_provider_name || 'No proxy target selected'}
           </p>
+          {status?.http_proxy_url && (
+            <p className="truncate font-mono text-xs leading-4 text-primary">
+              via {status.http_proxy_url}
+            </p>
+          )}
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
           <div className="grid min-w-0 grid-cols-[12px_minmax(0,1fr)] items-center gap-3">

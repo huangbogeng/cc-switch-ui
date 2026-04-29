@@ -53,6 +53,7 @@ pub async fn proxy_start(
     let config = ProxyConfig {
         listen_addr: proxy_addr,
         upstream_url,
+        http_proxy_url: provider_codex_http_proxy(&target_provider),
     };
     let server = ProxyServer::new(config);
     let listen_port = state.proxy_listen_port;
@@ -94,6 +95,7 @@ pub async fn proxy_status(
         "upstream_url": active_target.as_ref()
             .and_then(provider_base_url)
             .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex".to_string()),
+        "http_proxy_url": active_target.as_ref().and_then(provider_codex_http_proxy),
         "active_target_provider_id": active_target.as_ref().map(|provider| provider.id.clone()),
         "active_target_provider_name": active_target.as_ref().map(|provider| provider.name.clone()),
     })).into_response()
@@ -170,5 +172,15 @@ fn provider_codex_account_id(provider: &cc_switch_lib::database::Provider) -> Op
         .get("authBinding")
         .and_then(|value| value.get("accountId"))
         .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+}
+
+fn provider_codex_http_proxy(provider: &cc_switch_lib::database::Provider) -> Option<String> {
+    provider
+        .meta
+        .get("codexHttpProxy")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
         .map(|value| value.to_string())
 }

@@ -281,6 +281,21 @@ export function ProviderFormDialog({
                 />
               </div>
 
+              {usesOAuthProxy && (
+                <div className="space-y-2">
+                  <Label htmlFor="codex-http-proxy">Codex HTTP Proxy URL</Label>
+                  <Input
+                    id="codex-http-proxy"
+                    value={formData.codexHttpProxy}
+                    onChange={(e) => onChange({ ...formData, codexHttpProxy: e.target.value })}
+                    placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7890"
+                  />
+                  <p className="text-xs leading-4 text-muted-foreground">
+                    Applies to Codex upstream forwarding for this provider.
+                  </p>
+                </div>
+              )}
+
               <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
                 <input
                   type="checkbox"

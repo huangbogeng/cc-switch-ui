@@ -42,7 +42,7 @@ impl ProxyServer {
             return Err("Proxy already running".to_string());
         }
 
-        let forwarder = Arc::new(Forwarder::new(self.config.clone()));
+        let forwarder = Arc::new(Forwarder::new(self.config.clone())?);
         let proxy_state = Arc::new(ProxyState::new(codex_oauth.clone(), codex_account_id));
         let shutdown_tx = tokio::sync::oneshot::channel().0;
 

@@ -23,6 +23,7 @@ export interface ProviderFormData {
   disableNonessentialTraffic: boolean;
   promptCacheKey: string;
   codexAccountId: string;
+  codexHttpProxy: string;
 }
 
 export const emptyProviderForm: ProviderFormData = {
@@ -44,6 +45,7 @@ export const emptyProviderForm: ProviderFormData = {
   disableNonessentialTraffic: false,
   promptCacheKey: '',
   codexAccountId: '',
+  codexHttpProxy: '',
 };
 
 export function formFromPreset(preset: ProviderPreset): ProviderFormData {
@@ -70,6 +72,7 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
     disableNonessentialTraffic: env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1',
     promptCacheKey: '',
     codexAccountId: '',
+    codexHttpProxy: '',
   };
 }
 
@@ -99,6 +102,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     disableNonessentialTraffic: env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1',
     promptCacheKey: meta.promptCacheKey || '',
     codexAccountId: meta.authBinding?.accountId || '',
+    codexHttpProxy: meta.codexHttpProxy || '',
   };
 }
 
@@ -112,6 +116,7 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
   const notes = formData.notes.trim();
   const apiTimeoutMs = formData.apiTimeoutMs.trim();
   const promptCacheKey = formData.promptCacheKey.trim();
+  const codexHttpProxy = formData.codexHttpProxy.trim();
   const env: Record<string, string> = selectedPreset ? { ...selectedPreset.settingsConfig.env } : {};
 
   if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
@@ -141,6 +146,7 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
   if (promptCacheKey) meta.promptCacheKey = promptCacheKey;
   if (authMode === 'oauth_proxy') {
     meta.providerType = selectedPreset?.providerType || 'codex_oauth';
+    if (codexHttpProxy) meta.codexHttpProxy = codexHttpProxy;
     meta.authBinding = {
       source: 'managed_account',
       authProvider: 'codex_oauth',
@@ -182,6 +188,7 @@ function providerMeta(provider: Provider): {
   authMode?: 'api_key' | 'oauth_proxy';
   providerType?: string;
   authBinding?: { accountId?: string };
+  codexHttpProxy?: string;
 } {
   return (provider.meta || {}) as {
     apiFormat?: ApiFormat;
@@ -191,6 +198,7 @@ function providerMeta(provider: Provider): {
     authMode?: 'api_key' | 'oauth_proxy';
     providerType?: string;
     authBinding?: { accountId?: string };
+    codexHttpProxy?: string;
   };
 }
 

@@ -53,6 +53,7 @@ export default function DashboardPage() {
     running: boolean;
     listen_addr: string | null;
     upstream_url: string;
+    http_proxy_url: string | null;
     active_target_provider_id: string | null;
     active_target_provider_name: string | null;
   } | null>(null);
