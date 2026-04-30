@@ -179,18 +179,28 @@ export default function ProvidersPage() {
       )}
 
       {loading ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm leading-5 text-muted-foreground">Loading providers...</CardContent>
+        <Card className="border-white/5 bg-card/40">
+          <CardContent className="p-12 flex flex-col items-center justify-center text-sm leading-5 text-muted-foreground">
+            <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin mb-4"></div>
+            Loading providers...
+          </CardContent>
         </Card>
       ) : providerList.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <div className="text-sm font-medium leading-5 text-foreground">No providers yet</div>
-            <div className="mt-1 text-sm leading-5 text-muted-foreground">Add a preset or configure a custom endpoint.</div>
+        <Card className="border-dashed border-2 border-white/10 bg-white/[0.01]">
+          <CardContent className="p-16 flex flex-col items-center justify-center text-center">
+            <div className="h-16 w-16 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
+              <Plus className="h-8 w-8 text-muted-foreground/50" />
+            </div>
+            <div className="text-lg font-semibold leading-5 text-foreground mb-2">No providers yet</div>
+            <div className="text-sm leading-5 text-muted-foreground max-w-sm">Add a preset or configure a custom endpoint to start managing your Claude Code routes.</div>
+            <Button onClick={handleAdd} className="mt-6 shadow-[0_0_20px_rgba(var(--primary),0.15)]">
+              <Plus className="h-4 w-4 mr-2" />
+              Add First Provider
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           {providerList.map((provider) => (
             <ProviderCard
               key={provider.id}

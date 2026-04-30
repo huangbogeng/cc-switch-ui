@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, Loader2, Server, RotateCcw, Save, Check } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, Server, RotateCcw, Save, Check, Trash2 } from 'lucide-react';
 import { providerAuthMode, sortProviders } from '@/lib/provider';
 
 interface CopilotStatus {
@@ -267,105 +267,118 @@ export default function OAuthPage() {
 
       <div className="space-y-6">
         {/* Codex OAuth Section */}
-        <Card>
-          <CardHeader className="border-b border-white/10">
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-4 w-4" />
+        <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
+          <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+            <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
+              <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+                <Server className="h-4 w-4 text-primary" />
+              </div>
               ChatGPT Codex OAuth
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-2xl bg-white/[0.04] p-4">
-              <div className="flex items-center gap-3">
+          <CardContent className="space-y-4 pt-5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-2xl bg-black/20 border border-white/5 p-4 shadow-inner">
+              <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-4">
                 {codexStatus?.authenticated ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 drop-shadow-sm" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                    <Circle className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 border border-white/5">
+                    <Circle className="h-5 w-5 text-muted-foreground/50" />
                   </div>
                 )}
-                <div>
-                  <div className="font-medium">ChatGPT Codex</div>
-                  <div className="text-sm text-muted-foreground">
+                <div className="min-w-0">
+                  <div className="truncate text-[15px] font-bold tracking-tight leading-5">ChatGPT Codex</div>
+                  <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
                     {codexStatus?.authenticated
                       ? codexStatus.accounts.find((a) => a.is_default)?.login || codexStatus.accounts[0]?.login || 'Connected'
                       : 'OAuth Proxy provider only'}
                   </div>
                 </div>
               </div>
-              <Button onClick={handleStartCodexOAuth} disabled={codexPending}>
+              <Button size="sm" variant={codexStatus?.authenticated ? 'secondary' : 'default'} onClick={handleStartCodexOAuth} disabled={codexPending} className="rounded-xl px-4">
                 {codexStatus?.authenticated ? 'Reconnect' : 'Connect'}
               </Button>
             </div>
 
-            {codexStatus?.accounts.map((account) => (
-              <div key={account.id} className="flex items-center justify-between rounded-xl border border-white/10 px-4 py-3">
-                <div>
-                  <div className="font-medium">{account.login}</div>
-                  <div className="text-xs text-muted-foreground">{account.id}</div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant={account.is_default ? 'secondary' : 'outline'}
-                    onClick={() => handleSetDefaultCodexAccount(account.id)}
-                    disabled={account.is_default}
-                  >
-                    {account.is_default ? 'Default' : 'Set Default'}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleRemoveCodexAccount(account.id)}>
-                    Remove
-                  </Button>
-                </div>
+            {codexStatus?.accounts && codexStatus.accounts.length > 0 && (
+              <div className="space-y-2.5 pt-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 px-1">Linked Accounts</div>
+                {codexStatus.accounts.map((account) => (
+                  <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3 transition-colors hover:bg-white/[0.04]">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold leading-5 text-foreground">{account.login}</div>
+                      <div className="truncate font-mono text-[10px] leading-4 text-muted-foreground/60">{account.id}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={account.is_default ? 'default' : 'secondary'}
+                      onClick={() => handleSetDefaultCodexAccount(account.id)}
+                      disabled={account.is_default}
+                      className={`h-8 rounded-lg text-xs font-medium px-3 ${account.is_default ? 'bg-primary/20 text-primary hover:bg-primary/30 cursor-default opacity-100' : ''}`}
+                    >
+                      {account.is_default ? 'Default' : 'Set Default'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleRemoveCodexAccount(account.id)} className="h-8 w-8 p-0 rounded-lg text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 
         {/* Copilot OAuth Section */}
-        <Card>
-          <CardHeader className="border-b border-white/10">
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-4 w-4" />
+        <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
+          <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+            <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
+              <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+                <Server className="h-4 w-4 text-primary" />
+              </div>
               GitHub Copilot OAuth
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-2xl bg-white/[0.04] p-4">
-              <div className="flex items-center gap-3">
+          <CardContent className="space-y-4 pt-5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-2xl bg-black/20 border border-white/5 p-4 shadow-inner">
+              <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-4">
                 {copilotStatus?.authenticated ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 drop-shadow-sm" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                    <Circle className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 border border-white/5">
+                    <Circle className="h-5 w-5 text-muted-foreground/50" />
                   </div>
                 )}
-                <div>
-                  <div className="font-medium">GitHub Copilot</div>
-                  <div className="text-sm text-muted-foreground">
+                <div className="min-w-0">
+                  <div className="truncate text-[15px] font-bold tracking-tight leading-5">GitHub Copilot</div>
+                  <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
                     {copilotStatus?.authenticated
                       ? copilotStatus.accounts.find((a) => a.id === copilotStatus.default_account_id)?.login || 'Connected'
                       : 'Not connected'}
                   </div>
                 </div>
               </div>
-              <Button onClick={handleStartCopilotOAuth} disabled={copilotPending}>
+              <Button size="sm" variant={copilotStatus?.authenticated ? 'secondary' : 'default'} onClick={handleStartCopilotOAuth} disabled={copilotPending} className="rounded-xl px-4">
                 {copilotStatus?.authenticated ? 'Reconnect' : 'Connect'}
               </Button>
             </div>
 
-            {copilotStatus?.accounts.map((account) => (
-              <div key={account.id} className="flex items-center justify-between rounded-xl border border-white/10 px-4 py-3">
-                <div>
-                  <div className="font-medium">{account.login}</div>
-                  <div className="text-xs text-muted-foreground">{account.github_domain}</div>
-                </div>
+            {copilotStatus?.accounts && copilotStatus.accounts.length > 0 && (
+              <div className="space-y-2.5 pt-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 px-1">Linked Accounts</div>
+                {copilotStatus.accounts.map((account) => (
+                  <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3 transition-colors hover:bg-white/[0.04]">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold leading-5 text-foreground">{account.login}</div>
+                      <div className="truncate font-mono text-[10px] leading-4 text-muted-foreground/60">{account.github_domain}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 

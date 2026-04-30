@@ -80,15 +80,27 @@
 
   ::-webkit-scrollbar-thumb {
     background: hsl(var(--muted));
-    border-radius: 3px;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground));
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
   ::selection {
-    background: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.3);
     color: hsl(var(--primary-foreground));
   }
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
