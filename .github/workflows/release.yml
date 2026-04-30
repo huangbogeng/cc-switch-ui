@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: cc-switch-web
             asset_name: cc-switch-web-linux-x86_64
@@ -71,7 +71,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Backend (Rust)
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            # 开启 musl 静态链接，避免 GLIBC 版本问题
+            rustup target add x86_64-unknown-linux-musl
+            sudo apt-get update && sudo apt-get install -y musl-tools
+            cargo build --release --target x86_64-unknown-linux-musl
+            # 将编译出的 musl 文件覆盖到原 target 路径下，保持后续打包脚本一致
+            mkdir -p target/${{ matrix.target }}/release/
+            cp target/x86_64-unknown-linux-musl/release/${{ matrix.binary_name }} target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
 
       - name: Prepare Release Asset
         shell: bash
