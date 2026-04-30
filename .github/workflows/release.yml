@@ -15,15 +15,15 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build and Release
+  build:
+    name: Build ${{ matrix.asset_name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             binary_name: cc-switch-web
             asset_name: cc-switch-web-linux-x86_64
           - os: macos-latest
@@ -47,41 +47,42 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          cache: npm
+          cache-dependency-path: cc-switch-ui/package-lock.json
 
       - name: Build Frontend
         working-directory: ./cc-switch-ui
         run: |
-          pnpm install
-          pnpm build
+          npm ci
+          npm run build
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.95
           targets: ${{ matrix.target }}
 
-      - name: Add Rust Target (Fallback)
-        run: rustup target add ${{ matrix.target }}
+      - name: Install Linux Build Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
       - name: Build Backend (Rust)
+        run: cargo build --release --package cc-switch-web --target ${{ matrix.target }}
+
+      - name: Verify Linux Static Binary
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            # 开启 musl 静态链接，避免 GLIBC 版本问题
-            rustup target add x86_64-unknown-linux-musl
-            sudo apt-get update && sudo apt-get install -y musl-tools
-            cargo build --release --target x86_64-unknown-linux-musl
-            # 将编译出的 musl 文件覆盖到原 target 路径下，保持后续打包脚本一致
-            mkdir -p target/${{ matrix.target }}/release/
-            cp target/x86_64-unknown-linux-musl/release/${{ matrix.binary_name }} target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          if ldd target/${{ matrix.target }}/release/${{ matrix.binary_name }} 2>&1 | grep -q "not a dynamic executable"; then
+            echo "Linux binary is static"
           else
-            cargo build --release --target ${{ matrix.target }}
+            ldd target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+            exit 1
           fi
 
       - name: Prepare Release Asset
@@ -105,11 +106,31 @@ jobs:
           fi
           cd ..
 
-      - name: Upload Release Asset
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ env.ASSET_FILE }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cc-switch-web-*
+          path: release_assets
+          merge-multiple: true
+
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET_FILE }}
+          files: release_assets/*
           generate_release_notes: true
           draft: false
           prerelease: false
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
