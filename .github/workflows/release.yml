@@ -3,127 +3,103 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*.*.*' # Trigger when pushing tags like v1.0.0
 
 permissions:
   contents: write
 
 jobs:
-  build-darwin:
+  build-and-release:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: darwin-arm64
-            target: aarch64-apple-darwin
-          - platform: darwin-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: cc-switch-web
+            asset_name: cc-switch-web-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            binary_name: cc-switch-web
+            asset_name: cc-switch-web-linux-aarch64
+          - os: macos-latest
             target: x86_64-apple-darwin
-    runs-on: macos-latest
+            binary_name: cc-switch-web
+            asset_name: cc-switch-web-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_name: cc-switch-web
+            asset_name: cc-switch-web-macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: cc-switch-web.exe
+            asset_name: cc-switch-web-windows-x86_64.exe
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Setup Node.js (for frontend build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Build Frontend
+        working-directory: ./cc-switch-ui
+        run: |
+          pnpm install
+          pnpm build
+
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: cc-switch-ui/pnpm-lock.yaml
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Build frontend
+      - name: Install Cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
-          cd cc-switch-ui
-          pnpm install
-          pnpm build
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
-      - name: Build backend
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Backend (Rust)
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare Release Asset
+        shell: bash
         run: |
-          cargo build --release --bin cc-switch-web --target ${{ matrix.target }}
+          mkdir -p release_assets/cc-switch-web/dist
+          
+          # 复制前端 dist 和后端二进制文件到临时目录
+          cp -r cc-switch-ui/dist/* release_assets/cc-switch-web/dist/
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} release_assets/cc-switch-web/
+          
+          cd release_assets
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            # Windows 打包为 zip
+            7z a ../${{ matrix.asset_name }}.zip cc-switch-web
+            echo "ASSET_FILE=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
+          else
+            # Linux 和 macOS 打包为 tar.gz
+            tar -czf ../${{ matrix.asset_name }}.tar.gz cc-switch-web
+            echo "ASSET_FILE=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
+          fi
+          cd ..
 
-      - name: Package
-        run: |
-          mkdir -p release
-          tar -czf "release/cc-switch-web-${{ matrix.platform }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" cc-switch-web \
-            -C "../../cc-switch-ui" dist
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cc-switch-web-${{ matrix.platform }}
-          path: release/cc-switch-web-${{ matrix.platform }}.tar.gz
-
-  build-linux:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: cc-switch-ui/pnpm-lock.yaml
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Build frontend
-        run: |
-          cd cc-switch-ui
-          pnpm install
-          pnpm build
-
-      - name: Build backend
-        run: |
-          cargo build --release --bin cc-switch-web
-
-      - name: Package
-        run: |
-          mkdir -p release
-          tar -czf "release/cc-switch-web-linux-x64.tar.gz" \
-            -C "target/release" cc-switch-web \
-            -C "cc-switch-ui" dist
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cc-switch-web-linux-x64
-          path: release/cc-switch-web-linux-x64.tar.gz
-
-  create-release:
-    needs: [build-darwin, build-linux]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Create Release
+      - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/cc-switch-web-darwin-arm64/cc-switch-web-darwin-arm64.tar.gz
-            artifacts/cc-switch-web-darwin-x64/cc-switch-web-darwin-x64.tar.gz
-            artifacts/cc-switch-web-linux-x64/cc-switch-web-linux-x64.tar.gz
+          files: ${{ env.ASSET_FILE }}
+          generate_release_notes: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

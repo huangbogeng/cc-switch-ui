@@ -2,87 +2,92 @@
 set -e
 
 REPO="huangbogeng/cc-switch-ui"
+INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.cc-switch}"
 
-# Get latest release version
+echo "=========================================="
+echo "    Installing CC Switch Web Admin"
+echo "=========================================="
+
+# 1. Fetch the latest release version
+echo "-> Fetching latest release info from GitHub..."
 VERSION=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep tag_name | cut -d'"' -f4)
 if [ -z "$VERSION" ]; then
-  echo "Failed to get latest release version"
+  echo "❌ Failed to get latest release version. Are you rate-limited by GitHub API?"
   exit 1
 fi
+echo "-> Found latest version: $VERSION"
 
-echo "Installing cc-switch-web $VERSION..."
-
-# Detect platform
+# 2. Detect platform and architecture
 PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
 case "$PLATFORM-$ARCH" in
   darwin-arm64)
-    DEST="darwin-arm64"
+    DEST="macos-aarch64"
     ;;
   darwin-x86_64)
-    DEST="darwin-x64"
+    DEST="macos-x86_64"
     ;;
   linux-x86_64)
-    DEST="linux-x64"
+    DEST="linux-x86_64"
     ;;
   linux-aarch64|linux-arm64)
-    DEST="linux-arm64"
-    ;;
-  cygwin*|mingw*|msys*|win*)
-    DEST="windows-x64"
+    DEST="linux-aarch64"
     ;;
   *)
-    echo "Unsupported platform: $PLATFORM-$ARCH"
+    echo "❌ Unsupported platform: $PLATFORM-$ARCH"
+    echo "Please build from source: cargo build --release"
     exit 1
     ;;
 esac
 
-# Download
+# 3. Download the tarball
 FILENAME="cc-switch-web-$DEST.tar.gz"
 URL="https://github.com/$REPO/releases/download/$VERSION/$FILENAME"
 
-INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.cc-switch}"
-mkdir -p "$INSTALL_DIR"
-
-echo "Downloading $URL..."
+echo "-> Downloading $URL..."
 if ! curl -fSL "$URL" -o /tmp/$FILENAME; then
-  echo "Failed to download. This release might not support $DEST."
+  echo "❌ Failed to download the release asset."
   exit 1
 fi
 
-echo "Extracting to $INSTALL_DIR..."
-tar -xzf /tmp/$FILENAME -C "$INSTALL_DIR"
+# 4. Extract and Install
+echo "-> Extracting to $INSTALL_DIR..."
+# Ensure the directory exists
+mkdir -p "$INSTALL_DIR"
+
+# Extract directly into INSTALL_DIR. 
+# The tarball contains a 'cc-switch-web' folder, so we strip 1 component.
+tar -xzf /tmp/$FILENAME -C "$INSTALL_DIR" --strip-components=1
 rm -f /tmp/$FILENAME
 
-# Add to PATH
+# Ensure it's executable
+chmod +x "$INSTALL_DIR/cc-switch-web"
+
+# 5. Add to PATH
 SHELL_RC=""
-if [ -f "$HOME/.bashrc" ]; then
-  SHELL_RC="$HOME/.bashrc"
-elif [ -f "$HOME/.zshrc" ]; then
+if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
   SHELL_RC="$HOME/.zshrc"
+elif [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ]; then
+  SHELL_RC="$HOME/.bashrc"
 else
   SHELL_RC="$HOME/.profile"
 fi
 
-# Check if already in PATH
-if ! grep -q "$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
+if ! grep -q "export PATH=.*$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
   echo "" >> "$SHELL_RC"
-  echo "# Added by cc-switch-web installer" >> "$SHELL_RC"
-  echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$SHELL_RC"
-  echo "Added $INSTALL_DIR to PATH in $SHELL_RC"
-  echo "Please run 'source $SHELL_RC' or restart your terminal to use 'cc-switch-web'"
+  echo "# Added by CC Switch Web Installer" >> "$SHELL_RC"
+  echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$SHELL_RC"
+  echo "-> ✅ Added $INSTALL_DIR to PATH in $SHELL_RC"
 else
-  echo "$INSTALL_DIR already in PATH"
+  echo "-> ℹ️  $INSTALL_DIR is already in your PATH."
 fi
 
 echo ""
-echo "========================================"
-echo "  cc-switch-web installed successfully!"
+echo "🎉 CC Switch Web has been successfully installed!"
 echo ""
-echo "  Installation dir: $INSTALL_DIR"
-echo "  Version: $VERSION"
+echo "To get started, simply run:"
+echo "    source $SHELL_RC"
+echo "    cc-switch-web"
 echo ""
-echo "  Run 'cc-switch-web' to start the server"
-echo "  Then open: http://localhost:5007/ui"
-echo "========================================"
+echo "The admin UI will be available at: http://localhost:5007/ui"
