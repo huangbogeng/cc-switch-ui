@@ -3,7 +3,7 @@
 use super::super::state::AppState;
 use axum::response::IntoResponse;
 use axum::{extract::State, http::StatusCode, Json};
-use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthError;
+use cc_switch_lib::oauth::codex::CodexOAuthError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

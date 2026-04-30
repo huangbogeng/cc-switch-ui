@@ -1,13 +1,13 @@
 //! OAuth authentication modules
 //!
-//! - copilot_auth: GitHub Copilot authentication
-//! - codex_oauth_auth: OpenAI Codex/ChatGPT OAuth
+//! - copilot: GitHub Copilot authentication
+//! - codex: OpenAI Codex/ChatGPT OAuth
 //! - http_client: Shared HTTP client with proxy and timeout support
 
-pub mod codex_oauth_auth;
-pub mod copilot_auth;
+pub mod codex;
+pub mod copilot;
 pub mod http_client;
 
-pub use codex_oauth_auth::*;
-pub use copilot_auth::*;
+pub use codex::*;
+pub use copilot::*;
 pub use http_client::{new_http_client, new_http_client_with_proxy};

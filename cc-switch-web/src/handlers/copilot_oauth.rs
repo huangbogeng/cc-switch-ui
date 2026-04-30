@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::state::AppState;
-use cc_switch_lib::oauth::copilot_auth::{CopilotAuthError, CopilotUsageResponse};
+use cc_switch_lib::oauth::copilot::{CopilotAuthError, CopilotUsageResponse};
 
 #[derive(Debug, Serialize)]
 pub struct OAuthStatusResponse {

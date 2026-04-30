@@ -28,7 +28,7 @@ impl ProxyServer {
     /// Start the proxy server
     pub async fn start(
         &self,
-        codex_oauth: Arc<cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager>,
+        codex_oauth: Arc<cc_switch_lib::oauth::codex::CodexOAuthManager>,
         codex_account_id: Option<String>,
     ) -> Result<SocketAddr, String> {
         // Check if already running

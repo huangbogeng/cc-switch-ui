@@ -6,7 +6,7 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager;
+use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::sync::Arc;

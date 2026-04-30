@@ -2,8 +2,8 @@
 
 use super::proxy::ProxyServer;
 use cc_switch_lib::database::Database;
-use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager;
-use cc_switch_lib::oauth::copilot_auth::CopilotAuthManager;
+use cc_switch_lib::oauth::codex::CodexOAuthManager;
+use cc_switch_lib::oauth::copilot::CopilotAuthManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

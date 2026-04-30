@@ -25,8 +25,8 @@ use tower_http::{cors::CorsLayer, services::fs::ServeDir, trace::TraceLayer};
 
 use cc_switch_lib::config::get_app_config_dir;
 use cc_switch_lib::database::Database;
-use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager;
-use cc_switch_lib::oauth::copilot_auth::CopilotAuthManager;
+use cc_switch_lib::oauth::codex::CodexOAuthManager;
+use cc_switch_lib::oauth::copilot::CopilotAuthManager;
 
 use handlers::{auth, copilot_oauth, oauth, providers, settings};
 use state::AppState;
