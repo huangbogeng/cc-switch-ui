@@ -52,6 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/insta
 cc-switch-web
 ```
 
+安装脚本默认把程序放在 `~/.local/share/cc-switch-web`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
+
 ### 源码编译
 
 如果你更倾向于从源码编译：

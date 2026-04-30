@@ -2,7 +2,8 @@
 set -e
 
 REPO="huangbogeng/cc-switch-ui"
-INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.cc-switch}"
+INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.local/share/cc-switch-web}"
+DATA_DIR="$HOME/.cc-switch"
 
 echo "=========================================="
 echo "    Installing CC Switch Web Admin"
@@ -95,6 +96,8 @@ done
 
 echo ""
 echo "🎉 CC Switch Web has been successfully installed!"
+echo "Install directory: $INSTALL_DIR"
+echo "Data directory: $DATA_DIR"
 echo ""
 echo "To get started, simply run:"
 if [[ " ${SHELL_FILES[*]} " =~ ".zshrc" ]]; then

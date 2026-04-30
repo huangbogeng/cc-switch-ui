@@ -52,6 +52,8 @@ After installation, simply run:
 cc-switch-web
 ```
 
+The installer places the application under `~/.local/share/cc-switch-web` by default. User data stays in `~/.cc-switch`, including the SQLite database.
+
 ### Build from Source
 
 If you prefer to build from source:
