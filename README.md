@@ -38,7 +38,23 @@ Configuring API Providers for Claude Code traditionally requires manually editin
 
 ## 🏁 Quick Start
 
-### 1. Start the Backend Server
+### Easy Installation (Linux & macOS)
+
+The easiest way to install CC Switch Web is using our installation script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/install.sh | bash
+```
+
+After installation, simply run:
+
+```bash
+cc-switch-web
+```
+
+### Build from Source
+
+If you prefer to build from source:
 
 ```bash
 # Build the release binary

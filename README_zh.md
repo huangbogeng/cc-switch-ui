@@ -38,7 +38,23 @@
 
 ## 🏁 快速开始
 
-### 1. 启动后端服务
+### 一键安装 (Linux & macOS)
+
+最简单的安装方式是使用我们的自动安装脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/install.sh | bash
+```
+
+安装完成后，直接运行即可启动服务：
+
+```bash
+cc-switch-web
+```
+
+### 源码编译
+
+如果你更倾向于从源码编译：
 
 ```bash
 # 编译
@@ -48,7 +64,7 @@ cargo build --release
 cargo run --bin cc-switch-web
 ```
 
-### 2. 访问 Web UI
+### 访问 Web UI
 
 打开浏览器并访问：**http://localhost:5007/ui**
 
