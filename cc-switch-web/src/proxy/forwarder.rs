@@ -3,7 +3,7 @@
 use axum::{
     body::{to_bytes, Body},
     extract::Request,
-    http::{header, HeaderMap, HeaderName, StatusCode},
+    http::{header, StatusCode},
     response::Response,
 };
 use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthManager;
@@ -12,6 +12,9 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use super::headers::{add_codex_session_headers, copy_forward_headers, copy_response_headers};
+use super::responses_aggregate::responses_sse_to_anthropic_message;
+use super::session::{build_prompt_cache_key, extract_session_id};
 use super::streaming_responses::responses_sse_to_anthropic;
 use super::transform_responses::anthropic_to_codex_responses;
 use super::types::{ProxyConfig, ProxyStatus};
@@ -113,10 +116,24 @@ impl Forwarder {
             StatusCode::BAD_REQUEST
         })?;
         apply_model_mapping(&mut body_json, &self.config.model_mapping);
-        let session_id = extract_session_id(&body_json);
-        let prompt_cache_key =
-            build_prompt_cache_key(session_id.as_deref(), &self.config.prompt_cache_key);
-        let request_json = match anthropic_to_codex_responses(body_json, &prompt_cache_key) {
+        let requested_stream = body_json.get("stream").and_then(Value::as_bool) != Some(false);
+        let session = extract_session_id(&headers, &body_json);
+        let prompt_cache_key = build_prompt_cache_key(
+            self.config.prompt_cache_key.as_deref(),
+            session.as_ref().map(|result| result.session_id.as_str()),
+            &self.config.prompt_cache_key_fallback,
+        );
+        log::info!(
+            "[Proxy] session_source={:?}, prompt_cache_key_hash={} (len={})",
+            session.as_ref().map(|session| session.source),
+            cache_key_log_id(&prompt_cache_key),
+            prompt_cache_key.chars().count()
+        );
+        let request_json = match anthropic_to_codex_responses(
+            body_json,
+            Some(&prompt_cache_key),
+            self.config.codex_fast_mode,
+        ) {
             Ok(value) => value,
             Err(e) => {
                 log::error!("[Proxy] Failed to convert request body for {}: {}", path, e);
@@ -165,8 +182,8 @@ impl Forwarder {
         if let Some(ref id) = account_id {
             upstream_req = upstream_req.header("chatgpt-account-id", id);
         }
-        if let Some(session_id) = session_id.as_deref() {
-            upstream_req = add_codex_session_headers(upstream_req, session_id);
+        if let Some(session) = session.as_ref() {
+            upstream_req = add_codex_session_headers(upstream_req, &session.session_id);
         }
 
         // Copy other headers (excluding hop-by-hop)
@@ -200,10 +217,25 @@ impl Forwarder {
             return Ok(response.body(Body::from(body)).unwrap());
         }
 
-        let stream = responses_sse_to_anthropic(upstream_res.bytes_stream());
+        if requested_stream {
+            let stream = responses_sse_to_anthropic(upstream_res.bytes_stream());
+            return Ok(response
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(stream))
+                .unwrap());
+        }
+
+        let body = upstream_res.bytes().await.map_err(|e| {
+            log::error!("[Proxy] Failed to read upstream response body: {}", e);
+            StatusCode::BAD_GATEWAY
+        })?;
+        let message = responses_sse_to_anthropic_message(&body).map_err(|e| {
+            log::error!("[Proxy] Failed to aggregate Responses SSE: {}", e);
+            StatusCode::BAD_GATEWAY
+        })?;
         Ok(response
-            .header(header::CONTENT_TYPE, "text/event-stream")
-            .body(Body::from_stream(stream))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(message.to_string()))
             .unwrap())
     }
 }
@@ -219,151 +251,13 @@ fn apply_model_mapping(body: &mut Value, mapping: &super::types::ModelMapping) {
     }
 }
 
-fn extract_session_id(body: &Value) -> Option<String> {
-    let metadata = body.get("metadata")?;
-    metadata
-        .get("user_id")
-        .and_then(Value::as_str)
-        .and_then(parse_session_from_user_id)
-        .or_else(|| {
-            metadata
-                .get("session_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
-        .or_else(|| {
-            metadata
-                .get("user_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
-}
-
-fn parse_session_from_user_id(user_id: &str) -> Option<String> {
-    let marker = "_session_";
-    let pos = user_id.find(marker)?;
-    let session_id = user_id[pos + marker.len()..].trim();
-    (!session_id.is_empty()).then(|| session_id.to_string())
-}
-
-fn build_prompt_cache_key(session_id: Option<&str>, fallback: &str) -> String {
-    let raw = session_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(fallback);
-    normalize_prompt_cache_key(raw)
-}
-
-fn normalize_prompt_cache_key(raw: &str) -> String {
-    const MAX_LEN: usize = 64;
-    let trimmed = raw.trim();
-    if trimmed.chars().count() <= MAX_LEN {
-        return trimmed.to_string();
-    }
-
-    let hash = fnv1a64_hex(trimmed);
-    let prefix: String = trimmed.chars().take(MAX_LEN - 17).collect();
-    format!("{prefix}-{hash}")
-}
-
-fn fnv1a64_hex(value: &str) -> String {
+fn cache_key_log_id(value: &str) -> String {
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in value.as_bytes() {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("{hash:016x}")
-}
-
-fn add_codex_session_headers(
-    mut request: reqwest::RequestBuilder,
-    session_id: &str,
-) -> reqwest::RequestBuilder {
-    let session_id = session_id.trim();
-    if session_id.is_empty() {
-        return request;
-    }
-    let window_id = format!("{session_id}:0");
-    request = request
-        .header("session_id", session_id)
-        .header("x-client-request-id", session_id)
-        .header("x-codex-window-id", window_id);
-    request
-}
-
-fn copy_forward_headers(
-    mut request: reqwest::RequestBuilder,
-    headers: &HeaderMap,
-) -> reqwest::RequestBuilder {
-    const SKIP_HEADERS: &[&str] = &[
-        "accept",
-        "accept-encoding",
-        "authorization",
-        "connection",
-        "content-length",
-        "content-type",
-        "host",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailers",
-        "transfer-encoding",
-        "upgrade",
-        "x-forwarded-host",
-        "x-forwarded-port",
-        "x-forwarded-proto",
-        "forwarded",
-        "cf-connecting-ip",
-        "cf-ray",
-        "true-client-ip",
-        "x-request-id",
-        "x-correlation-id",
-        "x-trace-id",
-        "traceparent",
-        "tracestate",
-    ];
-
-    for (name, value) in headers {
-        let name_lower = name.as_str().to_ascii_lowercase();
-        if SKIP_HEADERS.contains(&name_lower.as_str()) {
-            continue;
-        }
-        if let Ok(header_name) = HeaderName::from_bytes(name.as_str().as_bytes()) {
-            request = request.header(header_name, value.clone());
-        }
-    }
-    request
-}
-
-fn copy_response_headers(
-    mut response: axum::http::response::Builder,
-    headers: &reqwest::header::HeaderMap,
-) -> axum::http::response::Builder {
-    const SKIP_HEADERS: &[&str] = &[
-        "connection",
-        "content-encoding",
-        "content-length",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailers",
-        "transfer-encoding",
-        "upgrade",
-    ];
-
-    for (name, value) in headers {
-        let name_lower = name.as_str().to_ascii_lowercase();
-        if !SKIP_HEADERS.contains(&name_lower.as_str()) {
-            response = response.header(name, value);
-        }
-    }
-    response
 }
 
 /// Shared state for proxy server
@@ -379,28 +273,5 @@ impl ProxyState {
             codex_oauth,
             codex_account_id,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn prompt_cache_key_prefers_session_and_caps_length() {
-        let long_provider_id = "provider-".repeat(20);
-        let long_session_id = format!("session-{}", "x".repeat(120));
-
-        let key = build_prompt_cache_key(Some(&long_session_id), &long_provider_id);
-
-        assert!(key.starts_with("session-"));
-        assert_eq!(key.chars().count(), 64);
-    }
-
-    #[test]
-    fn prompt_cache_key_uses_short_fallback_without_session() {
-        let key = build_prompt_cache_key(None, "codex_oauth");
-
-        assert_eq!(key, "codex_oauth");
     }
 }

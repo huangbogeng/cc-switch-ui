@@ -299,6 +299,10 @@ fn usage_from_responses(usage: Option<&Value>) -> Value {
 }
 
 fn stop_reason(response: &Value) -> &'static str {
+    stop_reason_from_response(response)
+}
+
+fn stop_reason_from_response(response: &Value) -> &'static str {
     match response.get("status").and_then(Value::as_str) {
         Some("incomplete") => "max_tokens",
         _ => "end_turn",

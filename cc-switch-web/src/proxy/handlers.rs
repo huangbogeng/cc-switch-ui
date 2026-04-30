@@ -59,6 +59,8 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         http_proxy_url: provider_codex_http_proxy(&target_provider)
             .or_else(|| global_http_proxy_url(&state)),
         prompt_cache_key: provider_prompt_cache_key(&target_provider),
+        prompt_cache_key_fallback: target_provider.id.clone(),
+        codex_fast_mode: provider_codex_fast_mode(&target_provider),
         model_mapping: provider_model_mapping(&target_provider),
     };
     let server = ProxyServer::new(config);
@@ -188,7 +190,7 @@ fn provider_codex_http_proxy(provider: &Provider) -> Option<String> {
         .map(|value| value.to_string())
 }
 
-fn provider_prompt_cache_key(provider: &Provider) -> String {
+fn provider_prompt_cache_key(provider: &Provider) -> Option<String> {
     provider
         .meta
         .get("promptCacheKey")
@@ -196,10 +198,14 @@ fn provider_prompt_cache_key(provider: &Provider) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        // Default to provider.name (truncated to 64 chars per API limit)
-        .unwrap_or_else(|| {
-            provider.name.chars().take(64).collect()
-        })
+}
+
+fn provider_codex_fast_mode(provider: &Provider) -> bool {
+    provider
+        .meta
+        .get("codexFastMode")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 fn provider_model_mapping(provider: &Provider) -> ModelMapping {

@@ -2,9 +2,12 @@
 
 use serde_json::{json, Value};
 
-pub fn anthropic_to_codex_responses(body: Value, cache_key: &str) -> Result<Value, String> {
+pub fn anthropic_to_codex_responses(
+    body: Value,
+    cache_key: Option<&str>,
+    codex_fast_mode: bool,
+) -> Result<Value, String> {
     let mut result = json!({});
-    let _ = cache_key;
 
     if let Some(model) = body.get("model").and_then(Value::as_str) {
         result["model"] = json!(model);
@@ -54,6 +57,12 @@ pub fn anthropic_to_codex_responses(body: Value, cache_key: &str) -> Result<Valu
     result["store"] = json!(false);
     result["include"] = json!(["reasoning.encrypted_content"]);
     result["stream"] = json!(true);
+    if codex_fast_mode {
+        result["service_tier"] = json!("priority");
+    }
+    if let Some(cache_key) = cache_key {
+        result["prompt_cache_key"] = json!(cache_key);
+    }
 
     let object = result
         .as_object_mut()
@@ -295,12 +304,13 @@ mod tests {
             ]
         });
 
-        let converted = anthropic_to_codex_responses(body, "session").unwrap();
+        let converted = anthropic_to_codex_responses(body, Some("session"), false).unwrap();
         assert_eq!(converted["model"], "gpt-5.4");
         assert_eq!(converted["instructions"], "Be concise");
         assert_eq!(converted["store"], false);
         assert_eq!(converted["stream"], true);
-        assert!(converted.get("prompt_cache_key").is_none());
+        assert_eq!(converted["include"], json!(["reasoning.encrypted_content"]));
+        assert_eq!(converted["prompt_cache_key"], "session");
         assert!(converted.get("max_output_tokens").is_none());
         assert!(converted.get("temperature").is_none());
         assert_eq!(converted["input"][0]["content"][0]["type"], "input_text");
@@ -308,16 +318,46 @@ mod tests {
     }
 
     #[test]
-    fn omits_prompt_cache_key() {
+    fn can_omit_prompt_cache_key() {
         let body = json!({
             "model": "gpt-5.4",
             "messages": [{"role": "user", "content": "hello"}]
         });
-        let long_key = "provider-".repeat(20);
 
-        let converted = anthropic_to_codex_responses(body, &long_key).unwrap();
+        let converted = anthropic_to_codex_responses(body, None, false).unwrap();
 
         assert!(converted.get("prompt_cache_key").is_none());
+    }
+
+    #[test]
+    fn fast_mode_sets_priority_service_tier() {
+        let body = json!({
+            "model": "gpt-5.4",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+
+        let converted = anthropic_to_codex_responses(body, Some("session"), true).unwrap();
+
+        assert_eq!(converted["service_tier"], "priority");
+    }
+
+    #[test]
+    fn codex_oauth_strips_unsupported_fields_and_forces_stream() {
+        let body = json!({
+            "model": "gpt-5.4",
+            "max_output_tokens": 1024,
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "stream": false,
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+
+        let converted = anthropic_to_codex_responses(body, Some("session"), false).unwrap();
+
+        assert_eq!(converted["stream"], true);
+        assert!(converted.get("max_output_tokens").is_none());
+        assert!(converted.get("temperature").is_none());
+        assert!(converted.get("top_p").is_none());
     }
 
     #[test]
@@ -333,7 +373,7 @@ mod tests {
             }]
         });
 
-        let converted = anthropic_to_codex_responses(body, "session").unwrap();
+        let converted = anthropic_to_codex_responses(body, Some("session"), false).unwrap();
         assert_eq!(converted["input"][0]["type"], "function_call_output");
         assert_eq!(converted["input"][0]["call_id"], "call_1");
     }
@@ -355,7 +395,7 @@ mod tests {
             }]
         });
 
-        let converted = anthropic_to_codex_responses(body, "session").unwrap();
+        let converted = anthropic_to_codex_responses(body, Some("session"), false).unwrap();
         assert_eq!(converted["reasoning"]["effort"], "medium");
         assert!(converted["tools"][0]["parameters"]["properties"]["url"]
             .get("format")
@@ -374,7 +414,7 @@ mod tests {
             }]
         });
 
-        let converted = anthropic_to_codex_responses(body, "session").unwrap();
+        let converted = anthropic_to_codex_responses(body, Some("session"), false).unwrap();
         assert_eq!(converted["input"][0]["content"][1]["type"], "input_image");
         assert_eq!(
             converted["input"][0]["content"][1]["image_url"],

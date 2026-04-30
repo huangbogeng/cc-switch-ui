@@ -9,7 +9,9 @@ pub struct ProxyConfig {
     pub listen_addr: SocketAddr,
     pub upstream_url: String,
     pub http_proxy_url: Option<String>,
-    pub prompt_cache_key: String,
+    pub prompt_cache_key: Option<String>,
+    pub prompt_cache_key_fallback: String,
+    pub codex_fast_mode: bool,
     pub model_mapping: ModelMapping,
 }
 
@@ -51,7 +53,9 @@ impl Default for ProxyConfig {
             listen_addr: "127.0.0.1:15721".parse().unwrap(),
             upstream_url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
             http_proxy_url: None,
-            prompt_cache_key: "codex_oauth".to_string(),
+            prompt_cache_key: None,
+            prompt_cache_key_fallback: "codex_oauth".to_string(),
+            codex_fast_mode: false,
             model_mapping: ModelMapping::default(),
         }
     }
