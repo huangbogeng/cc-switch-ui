@@ -78,10 +78,11 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          if ldd target/${{ matrix.target }}/release/${{ matrix.binary_name }} 2>&1 | grep -q "not a dynamic executable"; then
+          ldd_output="$(ldd target/${{ matrix.target }}/release/${{ matrix.binary_name }} 2>&1)"
+          echo "$ldd_output"
+          if echo "$ldd_output" | grep -Eq "not a dynamic executable|statically linked"; then
             echo "Linux binary is static"
           else
-            ldd target/${{ matrix.target }}/release/${{ matrix.binary_name }}
             exit 1
           fi
 
