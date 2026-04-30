@@ -71,6 +71,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Backend (Rust)
+        shell: bash
         run: |
           if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
             # 开启 musl 静态链接，避免 GLIBC 版本问题
