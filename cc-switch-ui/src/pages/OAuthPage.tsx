@@ -132,7 +132,7 @@ export default function OAuthPage() {
   }, [loadProviders, loadCodexStatus, loadCopilotStatus, loadProxyStatus]);
 
   useEffect(() => {
-    loadProxyConfig();
+    void Promise.resolve().then(loadProxyConfig);
     Promise.resolve().then(loadAll);
   }, [loadAll, loadProxyConfig]);
 
@@ -619,8 +619,13 @@ function DeviceOAuthModal({
     const timer = window.setInterval(() => {
       void checkAuthorization();
     }, 3000);
-    void checkAuthorization();
-    return () => window.clearInterval(timer);
+    const initialTimer = window.setTimeout(() => {
+      void checkAuthorization();
+    }, 0);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(initialTimer);
+    };
   }, [checkAuthorization]);
 
   return (
