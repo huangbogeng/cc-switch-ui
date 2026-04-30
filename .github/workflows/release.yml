@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            target: aarch64-apple-darwin
+          - platform: darwin-x64
+            target: x86_64-apple-darwin
+          - platform: linux-x64
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-x64
+            target: x86_64-pc-windows-gnu
+
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: cc-switch-ui/pnpm-lock.yaml
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Build frontend
+        run: |
+          cd cc-switch-ui
+          pnpm install
+          pnpm build
+
+      - name: Build backend
+        run: |
+          cargo build --release --bin cc-switch-web --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p release
+          BINARY_NAME="cc-switch-web${{ matrix.platform == 'windows-x64' && '.exe' || '' }}"
+          BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
+
+          tar -czf "release/cc-switch-web-${{ matrix.platform }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" "$BINARY_NAME" \
+            -C "../../cc-switch-ui" dist
+
+          if [ '${{ matrix.platform }}' = 'windows-x64' ]; then
+            cd target/${{ matrix.target }}/release
+            powershell -Command "Compress-Archive -Path '$BINARY_NAME','../../../cc-switch-ui/dist' -DestinationPath '../../../../release/cc-switch-web-windows-x64.zip'"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-switch-web-${{ matrix.platform }}
+          path: release/cc-switch-web-${{ matrix.platform }}.tar.gz
+          if: matrix.platform != 'windows-x64'
+
+      - name: Upload artifacts (Windows)
+        if: matrix.platform == 'windows-x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-switch-web-windows-x64
+          path: release/cc-switch-web-windows-x64.zip
+
+  create-release:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cc-switch-web-darwin-arm64/cc-switch-web-darwin-arm64.tar.gz
+            cc-switch-web-darwin-x64/cc-switch-web-darwin-x64.tar.gz
+            cc-switch-web-linux-x64/cc-switch-web-linux-x64.tar.gz
+            cc-switch-web-windows-x64/cc-switch-web-windows-x64.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
