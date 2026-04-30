@@ -195,8 +195,11 @@ fn provider_prompt_cache_key(provider: &Provider) -> String {
         .and_then(|value| value.as_str())
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or(&provider.id)
-        .to_string()
+        .map(str::to_string)
+        // Default to provider.name (truncated to 64 chars per API limit)
+        .unwrap_or_else(|| {
+            provider.name.chars().take(64).collect()
+        })
 }
 
 fn provider_model_mapping(provider: &Provider) -> ModelMapping {
