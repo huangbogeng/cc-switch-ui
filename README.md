@@ -1,6 +1,6 @@
 # CC Switch Web
 
-**Lightweight pure Web Claude Code provider manager**
+**管理 Claude Code 的 Provider 配置从未如此简单**
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
@@ -10,189 +10,180 @@
 
 ---
 
-## Overview
+## 它解决了什么问题
 
-CC Switch Web is a browser-based Claude Code provider manager. It keeps the original cc-switch provider switching idea, but removes the Tauri desktop shell and runs as a Web admin service with a Rust backend and React frontend.
+配置 Claude Code 的 API Provider 需要手动编辑 JSON 文件、记住各种 API 端点、处理 OAuth 授权。
 
-It is intended for local or self-hosted use:
+**CC Switch Web 让这一切在浏览器中完成：**
 
-- Manage Claude Code provider presets and custom providers.
-- Switch the active provider and apply it to Claude Code live config.
-- Authenticate GitHub Copilot / Codex OAuth flows.
-- Start a local proxy endpoint for Codex OAuth-backed requests.
-- Use a macOS-style Web UI without installing a desktop app.
-
----
-
-## Acknowledgments
-
-This project is based on the excellent open source project [cc-switch](https://github.com/farion1231/cc-switch) by [Jason Young (farion1231)](https://github.com/farion1231).
-
-Special thanks to the original author for:
-
-| Area | Contribution |
-| --- | --- |
-| Architecture | Original Tauri + React desktop application architecture |
-| Provider Management | Multi-provider configuration management and switching mechanism |
-| OAuth Authentication | Copilot/Codex OAuth authentication flow |
-| Preset System | MiniMax, SiliconFlow, DeepSeek preset implementations |
-
-This fork focuses on a pure Web deployment model and a browser-first admin experience.
+- 一键切换 Provider，无需手动编辑配置
+- 内置 6 种常用 Provider 预设（MiniMax、SiliconFlow、DeepSeek、OpenRouter、Gemini Native、Codex）
+- 支持 API Key 和 OAuth 两种认证方式
+- 实时写入 Claude Code 配置，切换后立即生效
 
 ---
 
-## Features
+## 支持的 Provider
 
-- **Pure Web admin**: Access from a browser at `/ui`; no desktop client required.
-- **Provider management**: Create, edit, delete, switch, and persist Claude providers.
-- **Provider presets**: Built-in presets for MiniMax, SiliconFlow, DeepSeek, Codex, and custom providers.
-- **Live config application**: Switching a provider writes to Claude Code live settings immediately.
-- **OAuth support**: Codex/OpenAI and GitHub Copilot OAuth flows are exposed through the Web UI.
-- **Proxy control**: Start/stop a local proxy endpoint from the Dashboard.
-- **Modern frontend**: React 19, TypeScript, Vite, Tailwind CSS v3, Radix UI primitives, and lucide icons.
+| Provider | 类型 | 认证方式 | 说明 |
+|----------|------|---------|------|
+| MiniMax | 国内官方 | API Key | MiniMax M2.7 模型 |
+| SiliconFlow | 聚合平台 | API Key | 支持多种模型 |
+| DeepSeek | 国内官方 | API Key | DeepSeek V4 模型 |
+| OpenRouter | 聚合平台 | API Key | 100+ 模型可选 |
+| Gemini Native | Google | API Key | Gemini 原生 API |
+| Codex | OpenAI | OAuth | 通过本地代理转发 |
 
 ---
 
-## Quick Start
+## 快速开始
 
-### Prerequisites
-
-- Rust 1.85+
-- Node.js 18+
-- npm
-
-### Build Frontend
+### 1. 启动服务
 
 ```bash
-cd cc-switch-ui
-npm install
-npm run build
-```
+# 编译
+cargo build --release
 
-The Rust Web server serves the built frontend from `cc-switch-ui/dist` under `/ui`.
-
-### Run Backend
-
-```bash
-# From the repository root
+# 运行
 cargo run --bin cc-switch-web
 ```
 
-Open:
+### 2. 访问 Web UI
 
-```text
-http://localhost:5007/ui
-```
+打开浏览器访问：**http://localhost:5007/ui**
 
-The admin token is printed in the server logs on startup unless `CC_SWITCH_ADMIN_TOKEN` is set.
+首次登录需要 admin token，可在启动日志中找到。
 
----
+### 3. 添加 Provider
 
-## Configuration
+1. 进入 **Providers** 页面
+2. 选择预设或自定义配置
+3. 填入 API Key
+4. 点击保存并切换
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `CC_SWITCH_ADMIN_TOKEN` | Generated on startup | Admin login token for the Web UI and API requests. |
-| `CC_SWITCH_PROXY_PORT` | `15721` | Port used by the local proxy server started from the Dashboard. |
-| `CC_SWITCH_TEST_HOME` | unset | Test-only home directory override used by the core library. |
-
-The Web server listens on `0.0.0.0:5007`.
+切换后 Claude Code 会立即使用新的 Provider。
 
 ---
 
-## Development
+## 功能特性
 
-Run the backend and frontend separately during UI development:
+### Provider 管理
+- 内置 6 种 Provider 预设
+- 支持自定义 Provider
+- 一键切换，实时生效
 
-```bash
-# Terminal 1: backend API on port 5007
-cargo run --bin cc-switch-web
+### OAuth 认证
+- **Codex**：通过本地代理转发 OAuth 请求
+- **GitHub Copilot**：OAuth 认证（开发中）
 
-# Terminal 2: Vite dev server
-cd cc-switch-ui
-npm install
-npm run dev
+### 本地代理
+- 启动本地代理服务处理 Codex 请求
+- 支持 HTTP/SOCKS5 代理配置
+- 流式响应格式转换
+
+### Live Config
+- 切换 Provider 时自动写入 Claude Code 配置
+- 无需手动编辑配置文件
+
+---
+
+## 技术架构
+
+```
+┌─────────────────────────────────────────────────┐
+│               Browser (React UI)                 │
+│         http://localhost:5007/ui                 │
+└─────────────────────┬───────────────────────────┘
+                      │ HTTP /api/*
+┌─────────────────────▼───────────────────────────┐
+│           cc-switch-web (Rust + Axum)            │
+│              localhost:5007                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌────────┐ │
+│  │ REST API    │  │ OAuth       │  │ Proxy  │ │
+│  │ /api/*      │  │ codex/copilot│  │ :15721 │ │
+│  └─────────────┘  └─────────────┘  └────────┘ │
+└─────────────────────┬───────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────┐
+│              cc-switch-lib (Rust)                │
+│  ┌─────────────┐  ┌─────────────┐  ┌────────┐ │
+│  │ SQLite DB   │  │ Live Config │  │ OAuth  │ │
+│  └─────────────┘  └─────────────┘  └────────┘ │
+└─────────────────────────────────────────────────┘
 ```
 
-The Vite dev server proxies `/api` requests to `http://localhost:5007`.
+---
 
-Recommended checks:
+## 配置说明
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `CC_SWITCH_ADMIN_TOKEN` | 自动生成 | Web UI 管理员密码 |
+| `CC_SWITCH_PROXY_PORT` | `15721` | 本地代理端口 |
+| `CC_SWITCH_TEST_HOME` | - | 测试用 home 目录 |
+
+---
+
+## 开发
+
+### 前端开发
 
 ```bash
 cd cc-switch-ui
-npm run lint
-npm run build
+pnpm install
+pnpm dev        # 开发服务器 http://localhost:5173
+pnpm build      # 生产构建
+pnpm lint       # 代码检查
+```
 
-cd ..
+### 后端开发
+
+```bash
+cargo run --bin cc-switch-web  # API 服务器
+cargo fmt && cargo clippy      # 格式和检查
+```
+
+### 测试
+
+```bash
 cargo test
-cargo build
 ```
 
 ---
 
-## Project Structure
+## 项目结构
 
-```text
-.
-├── cc-switch-lib/          # Rust core library
-│   └── src/
-│       ├── config.rs       # Claude config path and settings helpers
-│       ├── database/       # SQLite provider persistence
-│       ├── live.rs         # Live config application
-│       └── oauth/          # Codex and Copilot OAuth managers
-├── cc-switch-web/          # Axum Web server
-│   └── src/
-│       ├── handlers/       # REST API handlers
-│       ├── proxy/          # Local proxy server
-│       ├── state.rs        # Shared app state
-│       └── main.rs         # Routes, auth middleware, static UI serving
-└── cc-switch-ui/           # React frontend
-    └── src/
-        ├── api/            # Typed API client
-        ├── components/     # UI, dashboard, provider components
-        ├── config/         # Provider presets
-        ├── lib/            # Frontend utilities
-        └── pages/          # Top-level pages
+```
+cc-switch-ui/          # React 前端 (TypeScript + Vite)
+cc-switch-web/         # Axum HTTP 服务器 (Rust)
+cc-switch-lib/         # 共享核心库 (Rust)
+  └── src/
+      ├── database/    # SQLite 数据持久化
+      ├── oauth/       # OAuth 认证 (Codex + Copilot)
+      ├── config.rs    # 配置管理
+      └── live.rs      # Live Config 同步
 ```
 
 ---
 
-## Frontend Notes
+## 与原版 cc-switch 的区别
 
-The frontend intentionally uses Tailwind CSS v3 through PostCSS:
-
-- `tailwind.config.js`
-- `postcss.config.cjs`
-- `src/index.css` with `@tailwind base/components/utilities`
-
-Avoid reintroducing Tailwind v4 or `@tailwindcss/vite` unless the layout and design system are migrated deliberately.
-
-The UI code is split by responsibility:
-
-- `pages/`: stateful page orchestration.
-- `components/dashboard/`: dashboard panels and dashboard-specific display components.
-- `components/providers/`: provider cards, preset selector, provider form dialog, form data conversion.
-- `components/ui/`: shared low-level UI primitives.
-- `lib/`: small reusable formatting and calculation helpers.
+| 特性 | cc-switch (原版) | CC Switch Web (本项目) |
+|------|-----------------|----------------------|
+| 部署方式 | Tauri 桌面应用 | 纯 Web 服务 |
+| 系统托盘 | 支持 | 不支持 |
+| MCP 管理 | 支持 | 规划中 |
+| 云同步 | 支持 | 不支持 |
+| 核心功能 | 完整功能集 | 聚焦 Provider 管理 |
 
 ---
 
-## API Surface
+## 致谢
 
-Main API groups:
-
-| Area | Routes |
-| --- | --- |
-| Auth | `POST /api/auth/login` |
-| Providers | `GET/POST /api/providers`, `GET/PUT/DELETE /api/providers/:id`, `POST /api/providers/:id/switch` |
-| Codex OAuth | `/api/codex/oauth/*` |
-| Copilot OAuth | `/api/copilot/oauth/*`, `/api/copilot/usage` |
-| Proxy | `POST /api/proxy/start`, `POST /api/proxy/stop`, `GET /api/proxy/status` |
-
-All API routes except login and health require `Authorization: Bearer <admin-token>`.
+基于优秀开源项目 [cc-switch](https://github.com/farion1231/cc-switch) 开发。
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License
