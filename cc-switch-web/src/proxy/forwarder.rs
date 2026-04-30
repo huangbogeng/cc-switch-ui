@@ -58,6 +58,7 @@ impl Forwarder {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_status(&self) -> ProxyStatus {
         self.status.read().await.clone()
     }

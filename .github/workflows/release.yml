@@ -8,10 +8,9 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  release:
+  build-darwin:
     strategy:
       fail-fast: false
       matrix:
@@ -20,11 +19,6 @@ jobs:
             target: aarch64-apple-darwin
           - platform: darwin-x64
             target: x86_64-apple-darwin
-          - platform: linux-x64
-            target: x86_64-unknown-linux-gnu
-          - platform: windows-x64
-            target: x86_64-pc-windows-gnu
-
     runs-on: macos-latest
 
     steps:
@@ -32,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
@@ -57,50 +51,78 @@ jobs:
           cargo build --release --bin cc-switch-web --target ${{ matrix.target }}
 
       - name: Package
-        shell: bash
         run: |
           mkdir -p release
-          BINARY_NAME="cc-switch-web${{ matrix.platform == 'windows-x64' && '.exe' || '' }}"
-          BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
-
           tar -czf "release/cc-switch-web-${{ matrix.platform }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" "$BINARY_NAME" \
+            -C "target/${{ matrix.target }}/release" cc-switch-web \
             -C "../../cc-switch-ui" dist
 
-          if [ '${{ matrix.platform }}' = 'windows-x64' ]; then
-            cd target/${{ matrix.target }}/release
-            powershell -Command "Compress-Archive -Path '$BINARY_NAME','../../../cc-switch-ui/dist' -DestinationPath '../../../../release/cc-switch-web-windows-x64.zip'"
-          fi
-
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cc-switch-web-${{ matrix.platform }}
           path: release/cc-switch-web-${{ matrix.platform }}.tar.gz
-          if: matrix.platform != 'windows-x64'
 
-      - name: Upload artifacts (Windows)
-        if: matrix.platform == 'windows-x64'
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: cc-switch-ui/pnpm-lock.yaml
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Build frontend
+        run: |
+          cd cc-switch-ui
+          pnpm install
+          pnpm build
+
+      - name: Build backend
+        run: |
+          cargo build --release --bin cc-switch-web
+
+      - name: Package
+        run: |
+          mkdir -p release
+          tar -czf "release/cc-switch-web-linux-x64.tar.gz" \
+            -C "target/release" cc-switch-web \
+            -C "cc-switch-ui" dist
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cc-switch-web-windows-x64
-          path: release/cc-switch-web-windows-x64.zip
+          name: cc-switch-web-linux-x64
+          path: release/cc-switch-web-linux-x64.tar.gz
 
   create-release:
-    needs: release
+    needs: [build-darwin, build-linux]
     runs-on: ubuntu-latest
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            cc-switch-web-darwin-arm64/cc-switch-web-darwin-arm64.tar.gz
-            cc-switch-web-darwin-x64/cc-switch-web-darwin-x64.tar.gz
-            cc-switch-web-linux-x64/cc-switch-web-linux-x64.tar.gz
-            cc-switch-web-windows-x64/cc-switch-web-windows-x64.zip
+            artifacts/cc-switch-web-darwin-arm64/cc-switch-web-darwin-arm64.tar.gz
+            artifacts/cc-switch-web-darwin-x64/cc-switch-web-darwin-x64.tar.gz
+            artifacts/cc-switch-web-linux-x64/cc-switch-web-linux-x64.tar.gz
           draft: false
           prerelease: false
         env:

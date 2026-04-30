@@ -121,22 +121,24 @@ export default function DashboardPage() {
   const proxyTargetProviders = providerList.filter((p) => providerAuthMode(p) === 'oauth_proxy');
 
   return (
-    <div>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         title="Dashboard"
         description="Monitor active provider and proxy status."
       />
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <CurrentProviderCard loading={loadingProviders} provider={currentProvider} />
-          <ProxyCard
-            status={proxyStatus}
-            targetProviders={proxyTargetProviders}
-            error={proxyError}
-            onToggle={handleToggleProxy}
-            onTargetChange={handleProxyTargetChange}
-          />
-          {usage && <UsageCard usage={usage} />}
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-1 xl:gap-6">
+            <ProxyCard
+              status={proxyStatus}
+              targetProviders={proxyTargetProviders}
+              error={proxyError}
+              onToggle={handleToggleProxy}
+              onTargetChange={handleProxyTargetChange}
+            />
+            {usage && <UsageCard usage={usage} />}
+          </div>
         </div>
 
         <ProviderGrid

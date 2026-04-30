@@ -55,22 +55,22 @@ export default function SettingsPage() {
   };
 
   return (
-    <div>
+    <div className="max-w-[1000px] mx-auto">
       <PageHeader
         title="Settings"
         description="Adjust local interface preferences."
       />
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="border-b border-white/10">
-              <CardTitle>Language</CardTitle>
-              <p className="text-sm leading-5 text-muted-foreground">Choose the interface language.</p>
+      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+        <div className="space-y-6">
+          <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
+            <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+              <CardTitle className="text-[15px] font-bold tracking-tight">Language</CardTitle>
+              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Choose the interface language.</p>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.035] p-1">
+            <CardContent className="pt-6">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="inline-flex rounded-xl border border-white/5 bg-black/20 p-1 shadow-inner">
                   {[
                     ['en', 'English'],
                     ['zh', '中文'],
@@ -80,42 +80,45 @@ export default function SettingsPage() {
                       type="button"
                       onClick={() => setLanguage(value as Language)}
                       className={cn(
-                        "rounded-xl px-4 py-2 text-sm font-medium leading-5 transition",
+                        "rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200",
                         language === value
-                          ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                          : "text-muted-foreground hover:text-foreground"
+                          ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.3)]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                       )}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
-                <Button variant="outline" size="sm" onClick={handleLanguageReset}>
-                  <RotateCcw className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={handleLanguageReset} className="rounded-xl border-white/10 hover:bg-white/5">
+                  <RotateCcw className="h-3.5 w-3.5 mr-2" />
                   Reset
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="border-b border-white/10">
-              <CardTitle>Local Proxy Port</CardTitle>
-              <p className="text-sm leading-5 text-muted-foreground">Set the default local port used by the proxy server.</p>
+          <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
+            <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+              <CardTitle className="text-[15px] font-bold tracking-tight">Local Proxy Port</CardTitle>
+              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the default local port used by the proxy server.</p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5 pt-6">
               {portError && (
-                <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm font-medium text-destructive shadow-sm">
                   {portError}
                 </div>
               )}
 
               {portLoading ? (
-                <div className="text-sm text-muted-foreground">Loading...</div>
+                <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+                  <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                  Loading port config...
+                </div>
               ) : (
-                <div className="flex items-end gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="proxy-port-setting">Proxy Listen Port</Label>
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-2.5 flex-1 max-w-[240px]">
+                    <Label htmlFor="proxy-port-setting" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Proxy Listen Port</Label>
                     <Input
                       id="proxy-port-setting"
                       type="number"
@@ -123,37 +126,46 @@ export default function SettingsPage() {
                       onChange={(e) => setProxyPortState(parseInt(e.target.value) || 15721)}
                       min={1024}
                       max={65535}
-                      className="w-32"
+                      className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
-                  <Button onClick={handlePortSave} disabled={portLoading}>
-                    {portSaved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-                    {portSaved ? 'Saved' : 'Save'}
+                  <Button onClick={handlePortSave} disabled={portLoading} className="h-10 rounded-xl shadow-sm px-6">
+                    {portSaved ? <Check className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    {portSaved ? 'Saved' : 'Save Port'}
                   </Button>
                 </div>
               )}
-              <p className="text-xs leading-4 text-muted-foreground">Default: 15721</p>
+              <p className="text-[11px] font-medium text-muted-foreground/60 flex items-center gap-2">
+                <span className="inline-block w-1 h-1 rounded-full bg-muted-foreground/40"></span>
+                Default port is 15721
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
-          <CardHeader className="border-b border-white/10">
-            <CardTitle>About</CardTitle>
+        <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300 h-fit">
+          <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+            <CardTitle className="text-[15px] font-bold tracking-tight">About</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-muted-foreground">
-            <div>
-              <div className="text-base font-semibold leading-6 text-foreground">CC Switch Web</div>
-              <div className="mt-1 text-sm leading-5 text-primary">Version 0.1.0</div>
+          <CardContent className="space-y-5 pt-6 text-sm text-muted-foreground">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-inner">
+                <span className="font-bold text-primary text-lg tracking-tight">CC</span>
+              </div>
+              <div>
+                <div className="text-base font-bold tracking-tight text-foreground">CC Switch Web</div>
+                <div className="mt-0.5 text-xs font-semibold text-primary/80 bg-primary/10 w-fit px-2 py-0.5 rounded-md">Version 0.1.0</div>
+              </div>
             </div>
-            <p className="leading-6">
+            <div className="h-[1px] bg-gradient-to-r from-white/10 to-transparent" />
+            <p className="leading-relaxed font-medium">
               A lightweight pure Web architecture Claude Code provider manager.
               Forked from{' '}
               <a
                 href="https://github.com/farion1231/cc-switch"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-primary font-semibold hover:text-primary/80 transition-colors hover:underline underline-offset-4"
               >
                 cc-switch
               </a>

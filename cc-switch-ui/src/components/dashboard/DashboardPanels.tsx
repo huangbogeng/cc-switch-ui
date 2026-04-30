@@ -35,40 +35,48 @@ export function CurrentProviderCard({
   provider: Provider | null;
 }) {
   return (
-    <Card className="xl:col-span-2">
-      <CardHeader className="border-b border-white/10">
-        <CardTitle className="grid grid-cols-[16px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Globe className="h-4 w-4" />
+    <Card className="xl:col-span-2 overflow-hidden relative group border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
+      <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
+        <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
+          <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+            <Globe className="h-4 w-4 text-primary" />
+          </div>
           Current Provider
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6">
         {loading ? (
-          <div className="flex h-20 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="flex h-24 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
           </div>
         ) : provider ? (
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <div className="grid min-w-0 grid-cols-[48px_minmax(0,1fr)] items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/20">
-                <span className="text-lg font-bold text-primary">{providerInitial(provider)}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] relative overflow-hidden">
+                <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+                <span className="relative z-10 text-xl font-bold text-primary drop-shadow-sm">{providerInitial(provider)}</span>
               </div>
               <div className="min-w-0">
-                <div className="truncate text-lg font-semibold leading-7">{provider.name}</div>
-                <div className="truncate text-sm leading-5 text-muted-foreground">
+                <div className="truncate text-xl font-bold tracking-tight text-foreground">{provider.name}</div>
+                <div className="truncate text-sm font-medium text-muted-foreground mt-0.5">
                   {provider.websiteUrl || 'Custom Provider'}
                 </div>
               </div>
             </div>
-            <Badge variant="success" className="justify-self-start gap-1 sm:justify-self-end">
-              <CheckCircle2 className="h-3 w-3" />
+            <Badge variant="success" className="justify-self-start sm:justify-self-end gap-1.5 py-1 px-3 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
               Active
             </Badge>
           </div>
         ) : (
-          <div className="py-6 text-center text-muted-foreground">
-            <p>No provider selected</p>
-            <p className="mt-1 text-sm">Select one below to get started</p>
+          <div className="py-8 flex flex-col items-center justify-center text-center text-muted-foreground bg-white/[0.02] rounded-xl border border-dashed border-white/10">
+            <Globe className="h-8 w-8 text-muted-foreground/30 mb-3" />
+            <p className="font-medium text-foreground">No provider selected</p>
+            <p className="mt-1 text-sm text-muted-foreground/70">Select one below to get started</p>
           </div>
         )}
       </CardContent>
@@ -217,21 +225,23 @@ export function ProxyCard({
   const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/messages` : '';
 
   return (
-    <Card>
-      <CardHeader className="border-b border-white/10">
-        <CardTitle className="grid grid-cols-[16px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Server className="h-4 w-4" />
+    <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
+      <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+        <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
+          <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+            <Server className="h-4 w-4 text-emerald-500" />
+          </div>
           Proxy Server
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5 pt-5">
         {error && (
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive shadow-sm">
             {error}
           </div>
         )}
-        <div className="space-y-2">
-          <label htmlFor="proxy-target" className="text-xs font-medium leading-4 text-muted-foreground">
+        <div className="space-y-2.5">
+          <label htmlFor="proxy-target" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">
             Active Target
           </label>
           <select
@@ -239,7 +249,7 @@ export function ProxyCard({
             value={status?.active_target_provider_id || ''}
             onChange={(event) => onTargetChange(event.target.value)}
             disabled={status?.running || targetProviders.length === 0}
-            className="h-10 w-full rounded-xl border border-input bg-white/[0.04] px-3 text-sm leading-5 text-foreground shadow-inner shadow-black/10 outline-none transition focus:border-primary/70 focus:ring-4 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm font-medium text-foreground shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 outline-none"
           >
             <option value="">Select OAuth Proxy provider</option>
             {targetProviders.map((provider) => (
@@ -248,36 +258,38 @@ export function ProxyCard({
               </option>
             ))}
           </select>
-          <p className="truncate text-xs leading-4 text-muted-foreground">
-            {status?.active_target_provider_name || 'No proxy target selected'}
-          </p>
-          {status?.http_proxy_url && (
-            <p className="truncate font-mono text-xs leading-4 text-primary">
-              via {status.http_proxy_url}
+          <div className="flex flex-col gap-1">
+            <p className="truncate text-xs font-medium text-muted-foreground">
+              {status?.active_target_provider_name || 'No proxy target selected'}
             </p>
-          )}
+            {status?.http_proxy_url && (
+              <p className="truncate font-mono text-[11px] text-primary/80 bg-primary/10 w-fit px-1.5 py-0.5 rounded-md">
+                via {status.http_proxy_url}
+              </p>
+            )}
+          </div>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-          <div className="grid min-w-0 grid-cols-[12px_minmax(0,1fr)] items-center gap-3">
-            <div className={`h-3 w-3 rounded-full ${status?.running ? 'animate-pulse bg-emerald-500' : 'bg-muted'}`} />
-            <span className="truncate text-sm font-medium leading-5">
+        <div className="flex items-center justify-between rounded-xl bg-white/[0.02] border border-white/5 p-3">
+          <div className="flex items-center gap-3">
+            <div className={`h-2.5 w-2.5 rounded-full ${status?.running ? 'animate-pulse bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-muted-foreground/40'}`} />
+            <span className="text-sm font-semibold tracking-tight">
               {status?.running ? 'Running' : 'Stopped'}
             </span>
           </div>
-          <Button size="sm" variant={status?.running ? 'destructive' : 'default'} onClick={onToggle}>
+          <Button size="sm" variant={status?.running ? 'destructive' : 'default'} onClick={onToggle} className="rounded-lg shadow-sm">
             {status?.running ? 'Stop' : 'Start'}
           </Button>
         </div>
         {status?.running && proxyUrl && (
-          <div className="flex items-center gap-2 rounded-2xl bg-white/[0.04] p-3">
-            <code className="flex-1 truncate font-mono text-xs text-primary">{proxyUrl}</code>
+          <div className="flex items-center gap-2 rounded-xl bg-black/30 border border-white/5 p-2 pl-3 shadow-inner">
+            <code className="flex-1 truncate font-mono text-[11px] text-emerald-400">{proxyUrl}</code>
             <Button
               size="icon"
               variant="ghost"
-              className="h-7 w-7"
+              className="h-7 w-7 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground"
               onClick={() => navigator.clipboard.writeText(proxyUrl)}
             >
-              <Copy className="h-3 w-3" />
+              <Copy className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
@@ -288,20 +300,24 @@ export function ProxyCard({
 
 export function UsageCard({ usage }: { usage: CopilotUsageResponse }) {
   return (
-    <Card>
-      <CardHeader className="border-b border-white/10">
-        <CardTitle className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-          <span className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Zap className="h-4 w-4" />
-            <span className="truncate">Copilot Usage</span>
-          </span>
-          <Badge variant="outline" className="text-xs leading-4">{usage.copilot_plan}</Badge>
+    <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
+      <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+        <CardTitle className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
+            <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+              <Zap className="h-4 w-4 text-amber-500" />
+            </div>
+            <span>Copilot Usage</span>
+          </div>
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-white/5 border-white/10">{usage.copilot_plan}</Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5 pt-5">
         <UsageMeter label="Chat" quota={usage.quota_snapshots.chat} />
         <UsageMeter label="Completions" quota={usage.quota_snapshots.completions} />
-        <p className="text-center text-xs text-muted-foreground">Resets: {usage.quota_reset_date}</p>
+        <div className="pt-2 border-t border-white/5">
+          <p className="text-center text-[11px] font-medium text-muted-foreground/70">Resets: {usage.quota_reset_date}</p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -341,36 +357,46 @@ export function ProviderGrid({
   onSwitch: (id: string) => void;
 }) {
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold leading-7">All Providers</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-bold tracking-tight">All Providers</h2>
+        <div className="h-[1px] flex-1 bg-gradient-to-r from-white/10 to-transparent" />
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {providers.map((provider) => (
           <button
             key={provider.id}
             onClick={() => onSwitch(provider.id)}
             className={`
-              relative min-w-0 rounded-2xl border p-4 text-left transition-all duration-200
+              relative min-w-0 rounded-2xl border p-4 text-left transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-primary/50 group overflow-hidden
               ${provider.id === currentProviderId
-                ? 'border-primary bg-primary/10 shadow-inner shadow-primary/10'
-                : 'border-white/10 bg-card/80 hover:bg-white/[0.06]'
+                ? 'border-primary/50 bg-gradient-to-b from-primary/10 to-primary/5 shadow-[0_4px_20px_-4px_rgba(var(--primary),0.2)] hover:from-primary/15 hover:to-primary/10'
+                : 'border-white/5 bg-card/40 hover:bg-white/[0.08] hover:border-white/10 hover:shadow-lg'
               }
             `}
           >
             {provider.id === currentProviderId && (
-              <div className="absolute right-2 top-2">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
+              <div className="absolute right-3 top-3 animate-in zoom-in duration-300">
+                <CheckCircle2 className="h-5 w-5 text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
               </div>
             )}
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-secondary">
-              <span className="text-lg font-bold text-foreground">{providerInitial(provider)}</span>
+            <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-xl shadow-inner transition-colors duration-300
+              ${provider.id === currentProviderId ? 'bg-primary/20 border border-primary/20' : 'bg-white/5 border border-white/5 group-hover:bg-white/10'}
+            `}>
+              <span className={`text-xl font-bold ${provider.id === currentProviderId ? 'text-primary' : 'text-foreground/80 group-hover:text-foreground'}`}>
+                {providerInitial(provider)}
+              </span>
             </div>
-            <div className="truncate text-sm font-medium leading-5">{provider.name}</div>
-            <div className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
+            <div className="truncate text-[15px] font-bold tracking-tight leading-5">{provider.name}</div>
+            <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
               {providerAuthLabel(provider)}
             </div>
-            <div className={`mt-2 h-1.5 w-10 rounded-full ${
-              providerAuthMode(provider) === 'oauth_proxy' ? 'bg-emerald-500' : 'bg-primary'
-            }`} />
+            <div className="mt-3 flex items-center gap-1.5">
+              <div className={`h-1.5 w-1.5 rounded-full ${providerAuthMode(provider) === 'oauth_proxy' ? 'bg-emerald-500' : 'bg-primary'
+                } shadow-[0_0_8px_currentColor]`} />
+              <div className={`h-1.5 flex-1 rounded-full opacity-20 ${providerAuthMode(provider) === 'oauth_proxy' ? 'bg-emerald-500' : 'bg-primary'
+                }`} />
+            </div>
           </button>
         ))}
       </div>
