@@ -26,10 +26,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary_name: cc-switch-web
             asset_name: cc-switch-web-linux-x86_64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            binary_name: cc-switch-web
-            asset_name: cc-switch-web-linux-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: cc-switch-web
@@ -68,12 +64,8 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Cross-compilation tools (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Add Rust Target (Fallback)
+        run: rustup target add ${{ matrix.target }}
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
