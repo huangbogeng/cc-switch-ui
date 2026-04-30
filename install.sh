@@ -65,29 +65,45 @@ rm -f /tmp/$FILENAME
 chmod +x "$INSTALL_DIR/cc-switch-web"
 
 # 5. Add to PATH
-SHELL_RC=""
-if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
-  SHELL_RC="$HOME/.zshrc"
-elif [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ]; then
-  SHELL_RC="$HOME/.bashrc"
-else
-  SHELL_RC="$HOME/.profile"
+SHELL_FILES=()
+
+# 检测常用的 Shell 配置文件
+if [ -f "$HOME/.zshrc" ] || [ -n "$ZSH_VERSION" ]; then
+  SHELL_FILES+=("$HOME/.zshrc")
+fi
+if [ -f "$HOME/.bashrc" ] || [ -n "$BASH_VERSION" ]; then
+  SHELL_FILES+=("$HOME/.bashrc")
+fi
+if [ ${#SHELL_FILES[@]} -eq 0 ]; then
+  SHELL_FILES+=("$HOME/.profile")
 fi
 
-if ! grep -q "export PATH=.*$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
-  echo "" >> "$SHELL_RC"
-  echo "# Added by CC Switch Web Installer" >> "$SHELL_RC"
-  echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$SHELL_RC"
-  echo "-> ✅ Added $INSTALL_DIR to PATH in $SHELL_RC"
-else
-  echo "-> ℹ️  $INSTALL_DIR is already in your PATH."
-fi
+echo "-> Configuring PATH for your shells..."
+for RC_FILE in "${SHELL_FILES[@]}"; do
+  # 如果文件不存在，自动创建一个空文件
+  touch "$RC_FILE" 2>/dev/null || true
+  
+  if ! grep -q "export PATH=.*$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
+    echo "" >> "$RC_FILE"
+    echo "# Added by CC Switch Web Installer" >> "$RC_FILE"
+    echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$RC_FILE"
+    echo "  ✅ Added to $RC_FILE"
+  else
+    echo "  ℹ️  Already configured in $RC_FILE"
+  fi
+done
 
 echo ""
 echo "🎉 CC Switch Web has been successfully installed!"
 echo ""
 echo "To get started, simply run:"
-echo "    source $SHELL_RC"
+if [[ " ${SHELL_FILES[*]} " =~ ".zshrc" ]]; then
+  echo "    source ~/.zshrc"
+elif [[ " ${SHELL_FILES[*]} " =~ ".bashrc" ]]; then
+  echo "    source ~/.bashrc"
+else
+  echo "    source ${SHELL_FILES[0]}"
+fi
 echo "    cc-switch-web"
 echo ""
 echo "The admin UI will be available at: http://localhost:5007/ui"
