@@ -174,11 +174,29 @@ async fn main() {
         }
     }
 
-    let ui_dist_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("cc-switch-ui")
-        .join("dist");
+    // Find frontend dist directory
+    // 1. Check CC_SWITCH_UI_DIR environment variable (for packaged releases)
+    // 2. Fall back to exe path relative to dist (when packaged with frontend)
+    // 3. Fall back to CARGO_MANIFEST_DIR (for local development)
+    let ui_dist_dir = if let Ok(ui_dir) = std::env::var("CC_SWITCH_UI_DIR") {
+        std::path::PathBuf::from(ui_dir)
+    } else {
+        let exe_path = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-web"))
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-web"));
+        let release_dist = exe_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("dist");
+        if release_dist.exists() {
+            release_dist
+        } else {
+            // Local development fallback
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("cc-switch-ui")
+                .join("dist")
+        }
+    };
 
     let app_state = Arc::new(AppState {
         codex_oauth: Arc::new(codex_oauth),
