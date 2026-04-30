@@ -1,25 +1,27 @@
 //! Proxy handlers
 
+use super::super::state::AppState;
+use super::types::ModelMapping;
+use super::{ProxyConfig, ProxyServer};
+use axum::response::IntoResponse;
+use axum::{extract::State, Json};
+use cc_switch_lib::database::{Provider, ProxyType};
+use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use axum::{extract::State, Json};
-use axum::response::IntoResponse;
-use serde::Deserialize;
-use super::{ProxyConfig, ProxyServer};
-use super::super::state::AppState;
 
 const APP_TYPE: &str = "claude";
+const CODEX_RESPONSES_UPSTREAM: &str = "https://chatgpt.com/backend-api/codex/responses";
 
 #[derive(Deserialize)]
 pub struct SetProxyTargetRequest {
     provider_id: String,
 }
 
-pub async fn proxy_start(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     if state.proxy_server.read().await.is_some() {
-        return Json(serde_json::json!({"success": false, "error": "Proxy already running"})).into_response();
+        return Json(serde_json::json!({"success": false, "error": "Proxy already running"}))
+            .into_response();
     }
 
     let target_provider = match get_active_target_provider(&state) {
@@ -28,10 +30,12 @@ pub async fn proxy_start(
             return Json(serde_json::json!({
                 "success": false,
                 "error": "No proxy target selected. Choose a Codex OAuth provider first."
-            })).into_response();
+            }))
+            .into_response();
         }
         Err(e) => {
-            return Json(serde_json::json!({"success": false, "error": e.to_string()})).into_response();
+            return Json(serde_json::json!({"success": false, "error": e.to_string()}))
+                .into_response();
         }
     };
 
@@ -39,7 +43,8 @@ pub async fn proxy_start(
         return Json(serde_json::json!({
             "success": false,
             "error": "The active proxy target is not a Codex OAuth provider."
-        })).into_response();
+        }))
+        .into_response();
     }
 
     let status = state.codex_oauth.get_status().await;
@@ -48,12 +53,13 @@ pub async fn proxy_start(
     }
 
     let proxy_addr = SocketAddr::from(([0, 0, 0, 0], state.proxy_listen_port));
-    let upstream_url = provider_base_url(&target_provider)
-        .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex".to_string());
     let config = ProxyConfig {
         listen_addr: proxy_addr,
-        upstream_url,
-        http_proxy_url: provider_codex_http_proxy(&target_provider),
+        upstream_url: CODEX_RESPONSES_UPSTREAM.to_string(),
+        http_proxy_url: provider_codex_http_proxy(&target_provider)
+            .or_else(|| global_http_proxy_url(&state)),
+        prompt_cache_key: provider_prompt_cache_key(&target_provider),
+        model_mapping: provider_model_mapping(&target_provider),
     };
     let server = ProxyServer::new(config);
     let listen_port = state.proxy_listen_port;
@@ -64,51 +70,48 @@ pub async fn proxy_start(
             *state.proxy_server.write().await = Some(server);
             Json(serde_json::json!({"success": true, "listen_addr": format!("http://0.0.0.0:{}", listen_port), "message": "Proxy started"})).into_response()
         }
-        Err(e) => Json(serde_json::json!({"success": false, "error": e})).into_response()
+        Err(e) => Json(serde_json::json!({"success": false, "error": e})).into_response(),
     }
 }
 
-pub async fn proxy_stop(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let server = state.proxy_server.write().await.take();
     match server {
         Some(s) => {
             if let Err(e) = s.stop().await {
                 Json(serde_json::json!({"success": false, "error": e})).into_response()
             } else {
-                Json(serde_json::json!({"success": true, "message": "Proxy stopped"})).into_response()
+                Json(serde_json::json!({"success": true, "message": "Proxy stopped"}))
+                    .into_response()
             }
         }
-        None => Json(serde_json::json!({"success": false, "error": "Proxy not running"})).into_response()
+        None => Json(serde_json::json!({"success": false, "error": "Proxy not running"}))
+            .into_response(),
     }
 }
 
-pub async fn proxy_status(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let running = state.proxy_server.read().await.is_some();
     let active_target = get_active_target_provider(&state).ok().flatten();
     Json(serde_json::json!({
         "running": running,
         "listen_addr": if running { Some(format!("http://0.0.0.0:{}", state.proxy_listen_port)) } else { None },
-        "upstream_url": active_target.as_ref()
-            .and_then(provider_base_url)
-            .unwrap_or_else(|| "https://chatgpt.com/backend-api/codex".to_string()),
-        "http_proxy_url": active_target.as_ref().and_then(provider_codex_http_proxy),
+        "upstream_url": CODEX_RESPONSES_UPSTREAM,
+        "http_proxy_url": active_target.as_ref()
+            .and_then(provider_codex_http_proxy)
+            .or_else(|| global_http_proxy_url(&state)),
         "active_target_provider_id": active_target.as_ref().map(|provider| provider.id.clone()),
         "active_target_provider_name": active_target.as_ref().map(|provider| provider.name.clone()),
     })).into_response()
 }
 
-pub async fn proxy_target(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn proxy_target(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match get_active_target_provider(&state) {
         Ok(provider) => Json(serde_json::json!({
             "provider_id": provider.as_ref().map(|provider| provider.id.clone()),
             "provider": provider,
-        })).into_response(),
+        }))
+        .into_response(),
         Err(e) => Json(serde_json::json!({"error": e.to_string()})).into_response(),
     }
 }
@@ -119,26 +122,35 @@ pub async fn proxy_set_target(
 ) -> impl IntoResponse {
     let provider = match state.db.get_provider(&payload.provider_id, APP_TYPE) {
         Ok(Some(provider)) => provider,
-        Ok(None) => return Json(serde_json::json!({"success": false, "error": "Provider not found"})).into_response(),
-        Err(e) => return Json(serde_json::json!({"success": false, "error": e.to_string()})).into_response(),
+        Ok(None) => {
+            return Json(serde_json::json!({"success": false, "error": "Provider not found"}))
+                .into_response()
+        }
+        Err(e) => {
+            return Json(serde_json::json!({"success": false, "error": e.to_string()}))
+                .into_response()
+        }
     };
 
     if !is_codex_oauth_provider(&provider) {
         return Json(serde_json::json!({
             "success": false,
             "error": "Only Codex OAuth providers can be used as the current proxy target."
-        })).into_response();
+        }))
+        .into_response();
     }
 
     match state.db.set_proxy_target_provider_id(&payload.provider_id) {
         Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
-        Err(e) => Json(serde_json::json!({"success": false, "error": e.to_string()})).into_response(),
+        Err(e) => {
+            Json(serde_json::json!({"success": false, "error": e.to_string()})).into_response()
+        }
     }
 }
 
 fn get_active_target_provider(
     state: &AppState,
-) -> Result<Option<cc_switch_lib::database::Provider>, cc_switch_lib::error::AppError> {
+) -> Result<Option<Provider>, cc_switch_lib::error::AppError> {
     let target_id = state
         .db
         .get_proxy_target_provider_id()?
@@ -149,7 +161,7 @@ fn get_active_target_provider(
     }
 }
 
-fn is_codex_oauth_provider(provider: &cc_switch_lib::database::Provider) -> bool {
+fn is_codex_oauth_provider(provider: &Provider) -> bool {
     provider
         .meta
         .get("providerType")
@@ -157,16 +169,7 @@ fn is_codex_oauth_provider(provider: &cc_switch_lib::database::Provider) -> bool
         == Some("codex_oauth")
 }
 
-fn provider_base_url(provider: &cc_switch_lib::database::Provider) -> Option<String> {
-    provider
-        .settings_config
-        .get("env")
-        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string())
-}
-
-fn provider_codex_account_id(provider: &cc_switch_lib::database::Provider) -> Option<String> {
+fn provider_codex_account_id(provider: &Provider) -> Option<String> {
     provider
         .meta
         .get("authBinding")
@@ -175,7 +178,7 @@ fn provider_codex_account_id(provider: &cc_switch_lib::database::Provider) -> Op
         .map(|value| value.to_string())
 }
 
-fn provider_codex_http_proxy(provider: &cc_switch_lib::database::Provider) -> Option<String> {
+fn provider_codex_http_proxy(provider: &Provider) -> Option<String> {
     provider
         .meta
         .get("codexHttpProxy")
@@ -183,4 +186,54 @@ fn provider_codex_http_proxy(provider: &cc_switch_lib::database::Provider) -> Op
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string())
+}
+
+fn provider_prompt_cache_key(provider: &Provider) -> String {
+    provider
+        .meta
+        .get("promptCacheKey")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&provider.id)
+        .to_string()
+}
+
+fn provider_model_mapping(provider: &Provider) -> ModelMapping {
+    let env = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object());
+    let get = |key: &str| {
+        env.and_then(|env| env.get(key))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    };
+
+    ModelMapping {
+        default_model: get("ANTHROPIC_MODEL"),
+        haiku_model: get("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+        sonnet_model: get("ANTHROPIC_DEFAULT_SONNET_MODEL"),
+        opus_model: get("ANTHROPIC_DEFAULT_OPUS_MODEL"),
+    }
+}
+
+fn global_http_proxy_url(state: &AppState) -> Option<String> {
+    let config = state.db.get_proxy_config().ok().flatten()?;
+    if !config.enabled || config.host.trim().is_empty() {
+        return None;
+    }
+
+    let scheme = match config.proxy_type {
+        ProxyType::Http => "http",
+        ProxyType::Socks5 => "socks5",
+    };
+    Some(format!(
+        "{}://{}:{}",
+        scheme,
+        config.host.trim(),
+        config.port
+    ))
 }

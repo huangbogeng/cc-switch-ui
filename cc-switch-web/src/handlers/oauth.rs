@@ -1,11 +1,11 @@
 //! OAuth handlers for Codex
 
-use axum::{extract::State, http::StatusCode, Json};
+use super::super::state::AppState;
 use axum::response::IntoResponse;
+use axum::{extract::State, http::StatusCode, Json};
+use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use cc_switch_lib::oauth::codex_oauth_auth::CodexOAuthError;
-use super::super::state::AppState;
 
 #[derive(Serialize)]
 pub struct DeviceCodeResponse {
@@ -16,9 +16,7 @@ pub struct DeviceCodeResponse {
     interval: u64,
 }
 
-pub async fn codex_oauth_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+pub async fn codex_oauth_status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let status = state.codex_oauth.get_status().await;
     let default_id = status.default_account_id.as_deref();
     Json(serde_json::json!({
@@ -33,9 +31,7 @@ pub async fn codex_oauth_status(
     }))
 }
 
-pub async fn codex_oauth_start(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn codex_oauth_start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.codex_oauth.start_device_flow().await {
         Ok(resp) => Json(DeviceCodeResponse {
             device_code: resp.device_code,
@@ -43,10 +39,20 @@ pub async fn codex_oauth_start(
             verification_uri: resp.verification_uri,
             expires_in: resp.expires_in,
             interval: resp.interval,
-        }).into_response(),
+        })
+        .into_response(),
         Err(e) => {
             log::error!("Failed to start OAuth: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
+            let status = match &e {
+                CodexOAuthError::NetworkError(message)
+                    if message.contains("unsupported_country_region_territory")
+                        || message.contains("request_forbidden") =>
+                {
+                    StatusCode::FORBIDDEN
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
         }
     }
 }
@@ -77,13 +83,20 @@ pub async fn codex_oauth_poll(
                     "login": account.login,
                     "is_default": Some(account_id_str) == default_id
                 }
-            })).into_response()
+            }))
+            .into_response()
         }
         Ok(None) => Json(serde_json::json!({"pending": true})).into_response(),
-        Err(CodexOAuthError::AuthorizationPending) => Json(serde_json::json!({"pending": true})).into_response(),
+        Err(CodexOAuthError::AuthorizationPending) => {
+            Json(serde_json::json!({"pending": true})).into_response()
+        }
         Err(e) => {
             log::error!("OAuth poll error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("{}", e)})),
+            )
+                .into_response()
         }
     }
 }
@@ -96,7 +109,11 @@ pub async fn codex_oauth_remove(
         Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
         Err(e) => {
             log::error!("Codex OAuth remove error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("{}", e)})),
+            )
+                .into_response()
         }
     }
 }
@@ -105,11 +122,19 @@ pub async fn codex_oauth_set_default(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<AccountRequest>,
 ) -> impl IntoResponse {
-    match state.codex_oauth.set_default_account(&payload.account_id).await {
+    match state
+        .codex_oauth
+        .set_default_account(&payload.account_id)
+        .await
+    {
         Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
         Err(e) => {
             log::error!("Codex OAuth set default error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("{}", e)})),
+            )
+                .into_response()
         }
     }
 }

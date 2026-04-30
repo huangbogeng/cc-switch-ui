@@ -30,15 +30,12 @@ pub fn new_http_client() -> Result<Client, reqwest::Error> {
 
     if let Some(proxy_url) = proxy_url.as_deref().filter(|s| !s.trim().is_empty()) {
         log::info!("[HTTP Client] Using proxy from environment: {}", proxy_url);
-        // Try HTTP proxy first, then SOCKS5
-        if let Ok(proxy) = reqwest::Proxy::http(proxy_url) {
+        // Use Proxy::all so an HTTP proxy also handles HTTPS targets through CONNECT.
+        if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
             builder = builder.proxy(proxy);
-            log::info!("[HTTP Client] Configured as HTTP proxy");
-        } else if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-            builder = builder.proxy(proxy);
-            log::info!("[HTTP Client] Configured as SOCKS5 proxy");
+            log::info!("[HTTP Client] Configured as proxy for all schemes");
         } else {
-            log::warn!("[HTTP Client] Failed to parse proxy URL '{}' as HTTP or SOCKS5", proxy_url);
+            log::warn!("[HTTP Client] Failed to parse proxy URL '{}'", proxy_url);
         }
     }
 
@@ -57,14 +54,17 @@ pub fn new_http_client_with_proxy(proxy_config: &ProxyConfig) -> Result<Client, 
             ProxyType::Http => "http",
             ProxyType::Socks5 => "socks5",
         };
-        let proxy_url = format!("{}://{}:{}", proxy_type_str, proxy_config.host, proxy_config.port);
+        let proxy_url = format!(
+            "{}://{}:{}",
+            proxy_type_str, proxy_config.host, proxy_config.port
+        );
         log::info!("[HTTP Client] Using proxy from config: {}", proxy_url);
 
         match proxy_config.proxy_type {
             ProxyType::Http => {
-                if let Ok(proxy) = reqwest::Proxy::http(&proxy_url) {
+                if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
                     builder = builder.proxy(proxy);
-                    log::info!("[HTTP Client] Configured as HTTP proxy");
+                    log::info!("[HTTP Client] Configured as HTTP proxy for all schemes");
                 } else {
                     log::warn!("[HTTP Client] Failed to configure HTTP proxy");
                 }

@@ -262,7 +262,7 @@ export async function switchProvider(id: string) {
 // Proxy Settings
 export interface ProxyConfig {
   enabled: boolean;
-  proxyType: string;
+  proxy_type: string;
   host: string;
   port: number;
 }
@@ -281,5 +281,16 @@ export async function setProxyConfig(config: ProxyConfig) {
 export async function deleteProxyConfig() {
   return api<{ success: boolean }>('/settings/proxy', {
     method: 'DELETE',
+  });
+}
+
+export async function getProxyPort() {
+  return api<{ port: number }>('/settings/proxy-port');
+}
+
+export async function setProxyPort(port: number) {
+  return api<{ success: boolean }>('/settings/proxy-port', {
+    method: 'PUT',
+    body: JSON.stringify({ port }),
   });
 }

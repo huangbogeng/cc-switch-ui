@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, type LucideIcon } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProvidersPage from './pages/ProvidersPage';
 import SettingsPage from './pages/SettingsPage';
+import OAuthPage from './pages/OAuthPage';
 import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-type Page = 'dashboard' | 'providers' | 'settings';
+type Page = 'dashboard' | 'providers' | 'oauth' | 'settings';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', description: 'Live status', icon: LayoutDashboard },
     { id: 'providers', label: 'Providers', description: 'Model routes', icon: Users },
+    { id: 'oauth', label: 'OAuth', description: 'Auth & proxy', icon: Key },
     { id: 'settings', label: 'Settings', description: 'Preferences', icon: Settings },
   ];
 
@@ -92,6 +94,7 @@ export default function App() {
           <div className="mx-auto w-full max-w-6xl">
             {currentPage === 'dashboard' && <DashboardPage />}
             {currentPage === 'providers' && <ProvidersPage />}
+            {currentPage === 'oauth' && <OAuthPage />}
             {currentPage === 'settings' && <SettingsPage />}
           </div>
         </main>

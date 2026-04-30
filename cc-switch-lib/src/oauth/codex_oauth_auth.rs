@@ -25,9 +25,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::database::ProxyConfig;
 use crate::oauth::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
 use crate::oauth::{new_http_client, new_http_client_with_proxy};
-use crate::database::ProxyConfig;
 
 /// OpenAI OAuth 客户端 ID（OpenCode 使用，与官方 Codex CLI 相同）
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -517,6 +517,12 @@ impl CodexOAuthManager {
 
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let text = response.text().await.unwrap_or_default();
+            log::warn!(
+                "[CodexOAuth] Refresh token rejected by auth.openai.com: {} - {}",
+                status,
+                text.chars().take(500).collect::<String>()
+            );
             return Err(CodexOAuthError::RefreshTokenInvalid);
         }
 

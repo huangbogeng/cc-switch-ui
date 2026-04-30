@@ -15,8 +15,8 @@
 //! - Provider 通过 meta.authBinding 关联账号
 //! - 自动迁移 v1 单账号格式到 v3 多账号 + 默认账号格式
 
-use crate::oauth::{new_http_client, new_http_client_with_proxy};
 use crate::database::ProxyConfig;
+use crate::oauth::{new_http_client, new_http_client_with_proxy};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -447,7 +447,10 @@ impl CopilotAuthManager {
                 Arc::new(RwLock::new(client))
             }
             Err(e) => {
-                log::warn!("[CopilotAuth] 创建 HTTP client 失败: {}，使用默认 client", e);
+                log::warn!(
+                    "[CopilotAuth] 创建 HTTP client 失败: {}，使用默认 client",
+                    e
+                );
                 Arc::new(RwLock::new(Client::new()))
             }
         };
@@ -497,7 +500,7 @@ impl CopilotAuthManager {
         Self::sorted_accounts(&accounts, default_account_id.as_deref())
     }
 
-/// 获取指定账号信息
+    /// 获取指定账号信息
     pub async fn get_account(&self, account_id: &str) -> Option<GitHubAccount> {
         let accounts = self.accounts.read().await;
         accounts.get(account_id).map(GitHubAccount::from)

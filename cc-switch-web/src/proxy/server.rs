@@ -2,13 +2,7 @@
 
 use super::forwarder::{Forwarder, ProxyState};
 use super::types::ProxyConfig;
-use axum::{
-    body::Body,
-    extract::Request,
-    response::Response,
-    routing::get,
-    Router,
-};
+use axum::{body::Body, extract::Request, response::Response, routing::get, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -44,7 +38,7 @@ impl ProxyServer {
 
         let forwarder = Arc::new(Forwarder::new(self.config.clone())?);
         let proxy_state = Arc::new(ProxyState::new(codex_oauth.clone(), codex_account_id));
-        let shutdown_tx = tokio::sync::oneshot::channel().0;
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
         let app = Router::new()
             .route("/v1/*axum", get(handle_proxy).post(handle_proxy))
@@ -52,7 +46,9 @@ impl ProxyServer {
             .with_state((forwarder.clone(), proxy_state))
             .layer(TraceLayer::new_for_http());
 
-        let listener = TcpListener::bind(self.config.listen_addr).await.map_err(|e| e.to_string())?;
+        let listener = TcpListener::bind(self.config.listen_addr)
+            .await
+            .map_err(|e| e.to_string())?;
         let actual_addr = listener.local_addr().map_err(|e| e.to_string())?;
 
         // Set running status
@@ -62,7 +58,7 @@ impl ProxyServer {
         let task = tokio::spawn(async move {
             axum::serve(listener, app)
                 .with_graceful_shutdown(async {
-                    let _ = shutdown_tx;
+                    let _ = shutdown_rx.await;
                 })
                 .await
                 .ok();
@@ -93,13 +89,19 @@ impl ProxyServer {
 
 /// Handle proxy requests
 async fn handle_proxy(
-    axum::extract::State((forwarder, proxy_state)): axum::extract::State<(Arc<Forwarder>, Arc<ProxyState>)>,
+    axum::extract::State((forwarder, proxy_state)): axum::extract::State<(
+        Arc<Forwarder>,
+        Arc<ProxyState>,
+    )>,
     req: Request,
 ) -> Response {
-    forwarder.forward(proxy_state, req).await.unwrap_or_else(|status| {
-        Response::builder()
-            .status(status)
-            .body(Body::empty())
-            .unwrap()
-    })
+    forwarder
+        .forward(proxy_state, req)
+        .await
+        .unwrap_or_else(|status| {
+            Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap()
+        })
 }
