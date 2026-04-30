@@ -120,6 +120,7 @@ pub async fn delete_proxy_config(State(state): State<Arc<AppState>>) -> impl Int
 }
 
 /// Test proxy connectivity by attempting to reach auth.openai.com through the proxy
+#[allow(dead_code)]
 pub async fn test_proxy_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let proxy_config = match state.db.get_proxy_config() {
         Ok(Some(config)) => config,
