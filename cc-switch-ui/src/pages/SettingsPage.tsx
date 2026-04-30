@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Check, RotateCcw, Save } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -21,12 +21,7 @@ export default function SettingsPage() {
   const [portSaved, setPortSaved] = useState(false);
   const [portError, setPortError] = useState<string | null>(null);
 
-  // Load proxy port on mount
-  useEffect(() => {
-    loadProxyPort();
-  }, []);
-
-  const loadProxyPort = async () => {
+  const loadProxyPort = useCallback(async () => {
     try {
       const data = await getProxyPort();
       setProxyPortState(data.port);
@@ -35,7 +30,12 @@ export default function SettingsPage() {
     } finally {
       setPortLoading(false);
     }
-  };
+  }, []);
+
+  // Load proxy port on mount
+  useEffect(() => {
+    void Promise.resolve().then(loadProxyPort);
+  }, [loadProxyPort]);
 
   const handleLanguageReset = () => {
     setLanguage('en');

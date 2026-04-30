@@ -36,7 +36,7 @@ export default function DashboardPage() {
     try {
       const data = await getCopilotUsage();
       setUsage(data);
-    } catch (e) {
+    } catch {
       // Silently fail - user may not be authenticated
     }
   }, []);
