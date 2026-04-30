@@ -30,9 +30,3 @@ rand.workspace = true
 async-stream.workspace = true
 bytes.workspace = true
 futures.workspace = true
-
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-strip = true
