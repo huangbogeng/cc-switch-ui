@@ -21,6 +21,7 @@ export interface ProviderPreset {
   authMode?: 'api_key' | 'oauth_proxy';
   providerType?: 'codex_oauth';
   requiresOAuth?: boolean;
+  codexFastMode?: boolean;
   apiKeyField?: 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
   apiFormat?: 'anthropic' | 'openai_chat' | 'openai_responses' | 'gemini_native';
   isFullUrl?: boolean;

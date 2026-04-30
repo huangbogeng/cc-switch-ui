@@ -14,6 +14,6 @@ pub mod live;
 pub mod oauth;
 pub mod settings;
 
-pub use database::{Database, FailoverQueueItem};
+pub use database::{Database, FailoverQueueItem, ProxyConfig, ProxyType};
 pub use error::AppError;
 pub use oauth::{CodexOAuthManager, CopilotAuthManager};

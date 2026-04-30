@@ -214,7 +214,7 @@ export function ProxyCard({
   onToggle: () => void;
   onTargetChange: (providerId: string) => void;
 }) {
-  const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/chat/completions` : '';
+  const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/messages` : '';
 
   return (
     <Card>

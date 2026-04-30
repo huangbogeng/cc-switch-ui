@@ -1,9 +1,9 @@
 //! Auth handlers
 
+use super::super::state::AppState;
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use super::super::state::AppState;
 
 #[derive(Deserialize)]
 pub struct LoginRequest {

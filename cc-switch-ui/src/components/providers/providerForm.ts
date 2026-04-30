@@ -24,6 +24,7 @@ export interface ProviderFormData {
   promptCacheKey: string;
   codexAccountId: string;
   codexHttpProxy: string;
+  codexFastMode: boolean;
 }
 
 export const emptyProviderForm: ProviderFormData = {
@@ -46,6 +47,7 @@ export const emptyProviderForm: ProviderFormData = {
   promptCacheKey: '',
   codexAccountId: '',
   codexHttpProxy: '',
+  codexFastMode: false,
 };
 
 export function formFromPreset(preset: ProviderPreset): ProviderFormData {
@@ -73,6 +75,7 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
     promptCacheKey: '',
     codexAccountId: '',
     codexHttpProxy: '',
+    codexFastMode: preset.codexFastMode || false,
   };
 }
 
@@ -103,6 +106,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     promptCacheKey: meta.promptCacheKey || '',
     codexAccountId: meta.authBinding?.accountId || '',
     codexHttpProxy: meta.codexHttpProxy || '',
+    codexFastMode: meta.codexFastMode || false,
   };
 }
 
@@ -147,6 +151,7 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
   if (authMode === 'oauth_proxy') {
     meta.providerType = selectedPreset?.providerType || 'codex_oauth';
     if (codexHttpProxy) meta.codexHttpProxy = codexHttpProxy;
+    if (formData.codexFastMode) meta.codexFastMode = true;
     meta.authBinding = {
       source: 'managed_account',
       authProvider: 'codex_oauth',
@@ -189,6 +194,7 @@ function providerMeta(provider: Provider): {
   providerType?: string;
   authBinding?: { accountId?: string };
   codexHttpProxy?: string;
+  codexFastMode?: boolean;
 } {
   return (provider.meta || {}) as {
     apiFormat?: ApiFormat;
@@ -199,6 +205,7 @@ function providerMeta(provider: Provider): {
     providerType?: string;
     authBinding?: { accountId?: string };
     codexHttpProxy?: string;
+    codexFastMode?: boolean;
   };
 }
 

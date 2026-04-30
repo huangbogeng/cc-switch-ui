@@ -440,10 +440,13 @@ dependencies = [
 name = "cc-switch-web"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "axum",
+ "bytes",
  "cc-switch-lib",
  "dirs",
  "env_logger",
+ "futures",
  "http",
  "log",
  "rand 0.8.6",

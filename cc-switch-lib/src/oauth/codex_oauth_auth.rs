@@ -25,7 +25,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::database::ProxyConfig;
 use crate::oauth::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
+use crate::oauth::{new_http_client, new_http_client_with_proxy};
 
 /// OpenAI OAuth 客户端 ID（OpenCode 使用，与官方 Codex CLI 相同）
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -230,7 +232,7 @@ pub struct CodexOAuthManager {
     /// 进行中的 Device Code 流程：device_auth_id -> {user_code, expires_at_ms}
     /// 过期条目会在 start_device_flow 时被清理，防止放弃的登录流程导致无界增长
     pending_device_codes: Arc<RwLock<HashMap<String, PendingDeviceCode>>>,
-    http_client: Client,
+    http_client: Arc<RwLock<Client>>,
     storage_path: PathBuf,
 }
 
@@ -238,13 +240,24 @@ impl CodexOAuthManager {
     pub fn new(data_dir: PathBuf) -> Self {
         let storage_path = data_dir.join("codex_oauth_auth.json");
 
+        let http_client = match new_http_client() {
+            Ok(client) => {
+                log::info!("[CodexOAuth] HTTP client 初始化成功（带代理支持）");
+                Arc::new(RwLock::new(client))
+            }
+            Err(e) => {
+                log::warn!("[CodexOAuth] 创建 HTTP client 失败: {}，使用默认 client", e);
+                Arc::new(RwLock::new(Client::new()))
+            }
+        };
+
         let manager = Self {
             accounts: Arc::new(RwLock::new(HashMap::new())),
             default_account_id: Arc::new(RwLock::new(None)),
             access_tokens: Arc::new(RwLock::new(HashMap::new())),
             refresh_locks: Arc::new(RwLock::new(HashMap::new())),
             pending_device_codes: Arc::new(RwLock::new(HashMap::new())),
-            http_client: Client::new(),
+            http_client,
             storage_path,
         };
 
@@ -253,6 +266,25 @@ impl CodexOAuthManager {
         }
 
         manager
+    }
+
+    /// Set proxy configuration and rebuild HTTP client
+    pub async fn set_proxy_config(&self, proxy_config: &ProxyConfig) {
+        match new_http_client_with_proxy(proxy_config) {
+            Ok(client) => {
+                let mut http = self.http_client.write().await;
+                *http = client;
+                log::info!("[CodexOAuth] HTTP client 已更新代理配置");
+            }
+            Err(e) => {
+                log::error!("[CodexOAuth] 更新 HTTP client 失败: {}", e);
+            }
+        }
+    }
+
+    /// Get HTTP client for making requests
+    async fn get_http_client(&self) -> Arc<RwLock<Client>> {
+        Arc::clone(&self.http_client)
     }
 
     // ==================== 设备码流程 ====================
@@ -266,14 +298,18 @@ impl CodexOAuthManager {
     pub async fn start_device_flow(&self) -> Result<GitHubDeviceCodeResponse, CodexOAuthError> {
         log::info!("[CodexOAuth] 启动 Device Code 流程");
 
-        let response = self
-            .http_client
+        let http_client = self.http_client.read().await;
+        let response = http_client
             .post(DEVICE_AUTH_USERCODE_URL)
             .header("Content-Type", "application/json")
             .header("User-Agent", CODEX_USER_AGENT)
             .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID }))
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                log::error!("[CodexOAuth] 请求 auth.openai.com 失败: {}", e);
+                CodexOAuthError::NetworkError(format!("连接失败: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -349,8 +385,8 @@ impl CodexOAuthManager {
 
         log::debug!("[CodexOAuth] 轮询 Device Code");
 
-        let poll_response = self
-            .http_client
+        let http_client = self.http_client.read().await;
+        let poll_response = http_client
             .post(DEVICE_AUTH_TOKEN_URL)
             .header("Content-Type", "application/json")
             .header("User-Agent", CODEX_USER_AGENT)
@@ -431,8 +467,8 @@ impl CodexOAuthManager {
         code: &str,
         code_verifier: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
-        let response = self
-            .http_client
+        let http_client = self.http_client.read().await;
+        let response = http_client
             .post(OAUTH_TOKEN_URL)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("User-Agent", CODEX_USER_AGENT)
@@ -465,8 +501,8 @@ impl CodexOAuthManager {
         &self,
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
-        let response = self
-            .http_client
+        let http_client = self.http_client.read().await;
+        let response = http_client
             .post(OAUTH_TOKEN_URL)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("User-Agent", CODEX_USER_AGENT)
@@ -481,6 +517,12 @@ impl CodexOAuthManager {
 
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let text = response.text().await.unwrap_or_default();
+            log::warn!(
+                "[CodexOAuth] Refresh token rejected by auth.openai.com: {} - {}",
+                status,
+                text.chars().take(500).collect::<String>()
+            );
             return Err(CodexOAuthError::RefreshTokenInvalid);
         }
 

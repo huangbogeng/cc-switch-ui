@@ -1,15 +1,15 @@
 //! Copilot OAuth handlers
 
 use axum::{
-    extract::{State, Json},
-    response::IntoResponse,
+    extract::{Json, State},
     http::StatusCode,
+    response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::state::AppState;
-use cc_switch_lib::oauth::copilot_auth::CopilotUsageResponse;
+use cc_switch_lib::oauth::copilot_auth::{CopilotAuthError, CopilotUsageResponse};
 
 #[derive(Debug, Serialize)]
 pub struct OAuthStatusResponse {
@@ -62,20 +62,21 @@ pub struct PollOAuthResponse {
 }
 
 /// GET /api/copilot/oauth/status
-pub async fn copilot_oauth_status(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn copilot_oauth_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let accounts = state.copilot_oauth.list_accounts().await;
     let default_account_id = state.copilot_oauth.get_default_account_id().await;
 
     let response = OAuthStatusResponse {
         authenticated: !accounts.is_empty(),
-        accounts: accounts.into_iter().map(|a| GitHubAccountInfo {
-            id: a.id,
-            login: a.login,
-            avatar_url: a.avatar_url,
-            github_domain: a.github_domain,
-        }).collect(),
+        accounts: accounts
+            .into_iter()
+            .map(|a| GitHubAccountInfo {
+                id: a.id,
+                login: a.login,
+                avatar_url: a.avatar_url,
+                github_domain: a.github_domain,
+            })
+            .collect(),
         default_account_id,
     };
 
@@ -87,7 +88,11 @@ pub async fn copilot_oauth_start(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<StartOAuthRequest>,
 ) -> Result<Json<StartOAuthResponse>, (StatusCode, Json<serde_json::Value>)> {
-    match state.copilot_oauth.start_device_flow(payload.github_domain.as_deref()).await {
+    match state
+        .copilot_oauth
+        .start_device_flow(payload.github_domain.as_deref())
+        .await
+    {
         Ok(device_code) => Ok(Json(StartOAuthResponse {
             user_code: device_code.user_code,
             verification_uri: device_code.verification_uri,
@@ -105,7 +110,11 @@ pub async fn copilot_oauth_poll(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<PollOAuthRequest>,
 ) -> impl IntoResponse {
-    match state.copilot_oauth.poll_for_token(&payload.device_code, payload.github_domain.as_deref()).await {
+    match state
+        .copilot_oauth
+        .poll_for_token(&payload.device_code, payload.github_domain.as_deref())
+        .await
+    {
         Ok(account) => Json(PollOAuthResponse {
             success: account.is_some(),
             account: account.map(|a| GitHubAccountInfo {
@@ -129,7 +138,11 @@ pub async fn copilot_oauth_remove(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RemoveAccountRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    match state.copilot_oauth.remove_account(&payload.account_id).await {
+    match state
+        .copilot_oauth
+        .remove_account(&payload.account_id)
+        .await
+    {
         Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
         Err(e) => Err((
             StatusCode::BAD_REQUEST,
@@ -143,7 +156,11 @@ pub async fn copilot_oauth_set_default(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<SetDefaultRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    match state.copilot_oauth.set_default_account(&payload.account_id).await {
+    match state
+        .copilot_oauth
+        .set_default_account(&payload.account_id)
+        .await
+    {
         Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
         Err(e) => Err((
             StatusCode::BAD_REQUEST,
@@ -158,9 +175,32 @@ pub async fn copilot_usage(
 ) -> Result<Json<CopilotUsageResponse>, (StatusCode, Json<serde_json::Value>)> {
     match state.copilot_oauth.fetch_usage().await {
         Ok(usage) => Ok(Json(usage)),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )),
+        Err(e) => {
+            let status = copilot_usage_error_status(&e);
+            if status.is_server_error() {
+                log::error!("[CopilotAuth] 获取使用量失败: {}", e);
+            } else {
+                log::debug!("[CopilotAuth] 使用量暂不可用: {}", e);
+            }
+            Err((status, Json(serde_json::json!({ "error": e.to_string() }))))
+        }
+    }
+}
+
+fn copilot_usage_error_status(error: &CopilotAuthError) -> StatusCode {
+    match error {
+        CopilotAuthError::AccountNotFound(_) | CopilotAuthError::GitHubTokenInvalid => {
+            StatusCode::NOT_FOUND
+        }
+        CopilotAuthError::NoCopilotSubscription => StatusCode::FORBIDDEN,
+        CopilotAuthError::InvalidDomain(_) => StatusCode::BAD_REQUEST,
+        CopilotAuthError::NetworkError(_)
+        | CopilotAuthError::CopilotTokenFetchFailed(_)
+        | CopilotAuthError::ParseError(_) => StatusCode::BAD_GATEWAY,
+        CopilotAuthError::IoError(_)
+        | CopilotAuthError::DeviceFlowNotStarted
+        | CopilotAuthError::AuthorizationPending
+        | CopilotAuthError::AccessDenied
+        | CopilotAuthError::ExpiredToken => StatusCode::BAD_REQUEST,
     }
 }

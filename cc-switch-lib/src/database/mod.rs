@@ -36,6 +36,34 @@ pub struct Provider {
     pub in_failover_queue: bool,
 }
 
+/// Proxy configuration for OAuth authentication
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    pub enabled: bool,
+    pub proxy_type: ProxyType,
+    pub host: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyType {
+    Http,
+    Socks5,
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            proxy_type: ProxyType::Http,
+            host: String::new(),
+            port: 10809,
+        }
+    }
+}
+
 /// Database connection wrapper
 pub struct Database {
     pub(crate) conn: Mutex<Connection>,
@@ -62,7 +90,9 @@ impl Database {
 
     /// Create all tables
     pub(crate) fn create_tables(&self) -> Result<(), AppError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AppError::Database(format!("lock failed: {}", e)))?;
 
         conn.execute_batch(
@@ -95,13 +125,18 @@ impl Database {
             );
 
             CREATE TABLE IF NOT EXISTS proxy_config (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY CHECK (id = 1),
                 config_json TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS proxy_target_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 active_target_provider_id TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS proxy_port_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                port INTEGER NOT NULL DEFAULT 15721
             );
             "
         )?;
@@ -119,7 +154,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, name, settings_config, website_url, category, created_at,
                     sort_index, notes, icon, icon_color, meta, in_failover_queue
-             FROM providers WHERE app_type = ?1 ORDER BY sort_index ASC NULLS LAST"
+             FROM providers WHERE app_type = ?1 ORDER BY sort_index ASC NULLS LAST",
         )?;
 
         let rows = stmt.query_map(params![app_type], |row| {
@@ -137,7 +172,8 @@ impl Database {
                 notes: row.get(7)?,
                 icon: row.get(8)?,
                 icon_color: row.get(9)?,
-                meta: serde_json::from_str(&meta_str).unwrap_or(serde_json::Value::Object(Default::default())),
+                meta: serde_json::from_str(&meta_str)
+                    .unwrap_or(serde_json::Value::Object(Default::default())),
                 in_failover_queue: row.get::<_, i32>(11)? != 0,
             })
         })?;
@@ -156,7 +192,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, name, settings_config, website_url, category, created_at,
                     sort_index, notes, icon, icon_color, meta, in_failover_queue
-             FROM providers WHERE id = ?1 AND app_type = ?2"
+             FROM providers WHERE id = ?1 AND app_type = ?2",
         )?;
 
         let mut rows = stmt.query_map(params![id, app_type], |row| {
@@ -174,7 +210,8 @@ impl Database {
                 notes: row.get(7)?,
                 icon: row.get(8)?,
                 icon_color: row.get(9)?,
-                meta: serde_json::from_str(&meta_str).unwrap_or(serde_json::Value::Object(Default::default())),
+                meta: serde_json::from_str(&meta_str)
+                    .unwrap_or(serde_json::Value::Object(Default::default())),
                 in_failover_queue: row.get::<_, i32>(11)? != 0,
             })
         })?;
@@ -190,8 +227,7 @@ impl Database {
         let conn = self.conn();
         let settings_config_str = serde_json::to_string(&provider.settings_config)
             .map_err(|e| AppError::JsonSerialize { source: e })?;
-        let meta_str = serde_json::to_string(&provider.meta)
-            .unwrap_or_else(|_| "{}".to_string());
+        let meta_str = serde_json::to_string(&provider.meta).unwrap_or_else(|_| "{}".to_string());
 
         conn.execute(
             "INSERT INTO providers (id, app_type, name, settings_config, website_url, category,
@@ -223,7 +259,8 @@ impl Database {
                 meta_str,
                 provider.in_failover_queue as i32,
             ],
-        ).map_err(|e| AppError::Database(e.to_string()))?;
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
 
@@ -233,7 +270,8 @@ impl Database {
         conn.execute(
             "DELETE FROM providers WHERE id = ?1 AND app_type = ?2",
             params![id, app_type],
-        ).map_err(|e| AppError::Database(e.to_string()))?;
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
 
@@ -243,20 +281,21 @@ impl Database {
         conn.execute(
             "UPDATE providers SET is_current = 0 WHERE app_type = ?1",
             params![app_type],
-        ).map_err(|e| AppError::Database(e.to_string()))?;
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute(
             "UPDATE providers SET is_current = 1 WHERE id = ?1 AND app_type = ?2",
             params![id, app_type],
-        ).map_err(|e| AppError::Database(e.to_string()))?;
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
 
     /// Get current provider ID for an app
     pub fn get_current_provider_id(&self, app_type: &str) -> Result<Option<String>, AppError> {
         let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT id FROM providers WHERE app_type = ?1 AND is_current = 1"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id FROM providers WHERE app_type = ?1 AND is_current = 1")?;
         let mut rows = stmt.query(params![app_type])?;
         match rows.next()? {
             Some(row) => Ok(Some(row.get(0)?)),
@@ -287,6 +326,77 @@ impl Database {
             "INSERT INTO proxy_target_config (id, active_target_provider_id) VALUES (1, ?1)
              ON CONFLICT(id) DO UPDATE SET active_target_provider_id = excluded.active_target_provider_id",
             params![provider_id],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Get proxy configuration
+    pub fn get_proxy_config(&self) -> Result<Option<ProxyConfig>, AppError> {
+        let conn = self.conn();
+        let result: Result<String, rusqlite::Error> = conn.query_row(
+            "SELECT config_json FROM proxy_config WHERE id = 1",
+            [],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(json_str) => {
+                let config: ProxyConfig = serde_json::from_str(&json_str)
+                    .map_err(|e| AppError::Database(format!("Invalid proxy config JSON: {}", e)))?;
+                Ok(Some(config))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    /// Set proxy configuration
+    pub fn set_proxy_config(&self, config: &ProxyConfig) -> Result<(), AppError> {
+        let conn = self.conn();
+        let config_json =
+            serde_json::to_string(config).map_err(|e| AppError::JsonSerialize { source: e })?;
+
+        conn.execute(
+            "INSERT INTO proxy_config (id, config_json) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET config_json = excluded.config_json",
+            params![config_json],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Delete proxy configuration
+    pub fn delete_proxy_config(&self) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM proxy_config WHERE id = 1", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Get proxy listen port
+    pub fn get_proxy_port(&self) -> Result<u16, AppError> {
+        let conn = self.conn();
+        let result: Result<i64, rusqlite::Error> = conn.query_row(
+            "SELECT port FROM proxy_port_config WHERE id = 1",
+            [],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(port) => Ok(port as u16),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(15721),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    /// Set proxy listen port
+    pub fn set_proxy_port(&self, port: u16) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO proxy_port_config (id, port) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET port = excluded.port",
+            params![port as i64],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
