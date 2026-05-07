@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap } from 'lucide-react';
+import { CheckCircle2, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap, BarChart3 } from 'lucide-react';
 import type { CodexAccount, CopilotAccount, CopilotUsageResponse, Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -344,6 +344,57 @@ function UsageMeter({
         indicatorClassName={quota.unlimited ? 'bg-emerald-500' : undefined}
       />
     </div>
+  );
+}
+
+export function ProxyUsageCard({
+  totalInputTokens,
+  totalOutputTokens,
+  totalRequests,
+}: {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalRequests: number;
+}) {
+  const formatNum = (n: number) => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return n.toString();
+  };
+
+  return (
+    <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
+      <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+        <CardTitle className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
+            <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+              <BarChart3 className="h-4 w-4 text-violet-500" />
+            </div>
+            <span>Proxy Usage</span>
+          </div>
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-white/5 border-white/10">
+            {totalRequests > 0 ? `${totalRequests} reqs` : 'No data'}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-5">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">Input</div>
+            <div className="font-mono text-lg font-bold tabular-nums text-primary">{formatNum(totalInputTokens)}</div>
+            <div className="text-[10px] text-muted-foreground/70">tokens</div>
+          </div>
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">Output</div>
+            <div className="font-mono text-lg font-bold tabular-nums text-amber-500">{formatNum(totalOutputTokens)}</div>
+            <div className="text-[10px] text-muted-foreground/70">tokens</div>
+          </div>
+        </div>
+        {totalRequests === 0 && (
+          <p className="text-center text-[11px] text-muted-foreground/70 py-2">Start proxy to track usage</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

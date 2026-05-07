@@ -1,5 +1,6 @@
 //! Proxy handlers
 
+use super::adapters::create_registry;
 use super::super::state::AppState;
 use super::types::ModelMapping;
 use super::{ProxyConfig, ProxyServer};
@@ -39,10 +40,13 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         }
     };
 
-    if !is_codex_oauth_provider(&target_provider) {
+    // Check if provider is supported by any adapter
+    let registry = create_registry(state.codex_oauth.clone(), state.copilot_oauth.clone());
+    if registry.find_for_provider(&target_provider).is_none() {
         return Json(serde_json::json!({
             "success": false,
-            "error": "The active proxy target is not a Codex OAuth provider."
+            "error": format!("The provider type '{}' is not supported by the proxy.",
+                target_provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("unknown"))
         }))
         .into_response();
     }
@@ -67,7 +71,9 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let listen_port = state.proxy_listen_port;
 
     let account_id = provider_codex_account_id(&target_provider);
-    match server.start(state.codex_oauth.clone(), account_id).await {
+    let provider_id = target_provider.id.clone();
+    let db = state.db.clone();
+    match server.start(state.codex_oauth.clone(), state.copilot_oauth.clone(), account_id, db, provider_id, APP_TYPE).await {
         Ok(_actual_addr) => {
             *state.proxy_server.write().await = Some(server);
             Json(serde_json::json!({"success": true, "listen_addr": format!("http://0.0.0.0:{}", listen_port), "message": "Proxy started"})).into_response()
@@ -134,10 +140,13 @@ pub async fn proxy_set_target(
         }
     };
 
-    if !is_codex_oauth_provider(&provider) {
+    // Check if provider is supported by any adapter
+    let registry = create_registry(state.codex_oauth.clone(), state.copilot_oauth.clone());
+    if registry.find_for_provider(&provider).is_none() {
         return Json(serde_json::json!({
             "success": false,
-            "error": "Only Codex OAuth providers can be used as the current proxy target."
+            "error": format!("The provider type '{}' is not supported by the proxy.",
+                provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("unknown"))
         }))
         .into_response();
     }
@@ -161,14 +170,6 @@ fn get_active_target_provider(
         Some(id) => state.db.get_provider(&id, APP_TYPE),
         None => Ok(None),
     }
-}
-
-fn is_codex_oauth_provider(provider: &Provider) -> bool {
-    provider
-        .meta
-        .get("providerType")
-        .and_then(|value| value.as_str())
-        == Some("codex_oauth")
 }
 
 fn provider_codex_account_id(provider: &Provider) -> Option<String> {

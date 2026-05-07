@@ -1,5 +1,6 @@
 //! Proxy module for cc-switch-web
 
+pub mod adapters;
 pub mod forwarder;
 pub mod handlers;
 pub mod headers;

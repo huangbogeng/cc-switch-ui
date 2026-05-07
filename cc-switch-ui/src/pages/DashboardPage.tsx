@@ -3,6 +3,7 @@ import {
   getCopilotUsage,
   listProviders, switchProvider, getCurrentProviderId,
   getProxyStatus, startProxy, stopProxy, setProxyTarget,
+  getProxyUsageSummary,
   type Provider,
 } from '../api';
 import type { CopilotUsageResponse } from '../api';
@@ -12,6 +13,7 @@ import {
   ProviderGrid,
   ProxyCard,
   UsageCard,
+  ProxyUsageCard,
 } from '@/components/dashboard/DashboardPanels';
 import { providerAuthMode, sortProviders } from '@/lib/provider';
 
@@ -21,6 +23,12 @@ export default function DashboardPage() {
   const [loadingProviders, setLoadingProviders] = useState(true);
 
   const [usage, setUsage] = useState<CopilotUsageResponse | null>(null);
+
+  const [proxyUsage, setProxyUsage] = useState<{
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_requests: number;
+  } | null>(null);
 
   const [proxyStatus, setProxyStatus] = useState<{
     running: boolean;
@@ -63,13 +71,27 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const loadProxyUsage = useCallback(async () => {
+    try {
+      const data = await getProxyUsageSummary();
+      setProxyUsage({
+        total_input_tokens: data.total_input_tokens,
+        total_output_tokens: data.total_output_tokens,
+        total_requests: data.total_requests,
+      });
+    } catch (e) {
+      console.error('Proxy usage error:', e);
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
     await Promise.all([
       loadUsage(),
       loadProviders(),
       loadProxyStatus(),
+      loadProxyUsage(),
     ]);
-  }, [loadUsage, loadProviders, loadProxyStatus]);
+  }, [loadUsage, loadProviders, loadProxyStatus, loadProxyUsage]);
 
   useEffect(() => {
     Promise.resolve().then(loadAll);
@@ -138,6 +160,13 @@ export default function DashboardPage() {
               onTargetChange={handleProxyTargetChange}
             />
             {usage && <UsageCard usage={usage} />}
+            {proxyUsage && (
+              <ProxyUsageCard
+                totalInputTokens={proxyUsage.total_input_tokens}
+                totalOutputTokens={proxyUsage.total_output_tokens}
+                totalRequests={proxyUsage.total_requests}
+              />
+            )}
           </div>
         </div>
 
