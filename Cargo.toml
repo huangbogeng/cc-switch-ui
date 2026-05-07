@@ -66,6 +66,7 @@ tokio-rustls = "0.26"
 # Async
 futures = "0.3"
 async-stream = "0.3"
+async-trait = "0.1"
 bytes = "1.5"
 http = "1"
 http-body = "1"

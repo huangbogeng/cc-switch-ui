@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, type LucideIcon } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProvidersPage from './pages/ProvidersPage';
 import SettingsPage from './pages/SettingsPage';
 import OAuthPage from './pages/OAuthPage';
+import UsagePage from './pages/UsagePage';
 import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-type Page = 'dashboard' | 'providers' | 'oauth' | 'settings';
+type Page = 'dashboard' | 'providers' | 'oauth' | 'settings' | 'usage';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', description: 'Live status', icon: LayoutDashboard },
     { id: 'providers', label: 'Providers', description: 'Model routes', icon: Users },
     { id: 'oauth', label: 'OAuth', description: 'Auth & proxy', icon: Key },
+    { id: 'usage', label: 'Usage', description: 'Request stats', icon: BarChart3 },
     { id: 'settings', label: 'Settings', description: 'Preferences', icon: Settings },
   ];
 
@@ -103,6 +105,7 @@ export default function App() {
             {currentPage === 'dashboard' && <DashboardPage />}
             {currentPage === 'providers' && <ProvidersPage />}
             {currentPage === 'oauth' && <OAuthPage />}
+            {currentPage === 'usage' && <UsagePage />}
             {currentPage === 'settings' && <SettingsPage />}
           </div>
         </main>

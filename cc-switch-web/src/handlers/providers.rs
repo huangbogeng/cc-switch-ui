@@ -177,9 +177,6 @@ pub async fn switch_provider(
 
 fn settings_for_live(provider: &Provider, proxy_port: u16) -> Value {
     let mut settings = provider.settings_config.clone();
-    if !is_codex_oauth_provider(provider) {
-        return settings;
-    }
 
     if !settings.is_object() {
         settings = json!({});
@@ -194,17 +191,33 @@ fn settings_for_live(provider: &Provider, proxy_port: u16) -> Value {
     let env = env
         .as_object_mut()
         .expect("settings env should be normalized to object");
-    env.insert(
-        "ANTHROPIC_BASE_URL".to_string(),
-        json!(format!("http://127.0.0.1:{}", proxy_port)),
-    );
-    env.insert(
-        "ANTHROPIC_AUTH_TOKEN".to_string(),
-        json!(PROXY_TOKEN_PLACEHOLDER),
-    );
+
+    if is_codex_oauth_provider(provider) || is_copilot_oauth_provider(provider) {
+        // OAuth Provider: 写入代理地址，token 由代理注入
+        env.insert(
+            "ANTHROPIC_BASE_URL".to_string(),
+            json!(format!("http://127.0.0.1:{}", proxy_port)),
+        );
+        env.insert(
+            "ANTHROPIC_AUTH_TOKEN".to_string(),
+            json!(PROXY_TOKEN_PLACEHOLDER),
+        );
+    } else {
+        // Direct Provider: 也写入代理地址，原样转发 API Key
+        env.insert(
+            "ANTHROPIC_BASE_URL".to_string(),
+            json!(format!("http://127.0.0.1:{}", proxy_port)),
+        );
+        // 保留原有的 API Key，代理会原样转发
+    }
     settings
 }
 
 fn is_codex_oauth_provider(provider: &Provider) -> bool {
     provider.meta.get("providerType").and_then(Value::as_str) == Some("codex_oauth")
+}
+
+fn is_copilot_oauth_provider(provider: &Provider) -> bool {
+    provider.meta.get("providerType").and_then(Value::as_str).map(|t| t.contains("copilot")).unwrap_or(false)
+        || provider.id.contains("copilot")
 }

@@ -28,7 +28,7 @@ use cc_switch_lib::database::Database;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::oauth::copilot::CopilotAuthManager;
 
-use handlers::{auth, copilot_oauth, oauth, providers, settings};
+use handlers::{auth, copilot_oauth, oauth, providers, settings, usage};
 use state::AppState;
 
 fn generate_token() -> String {
@@ -276,6 +276,10 @@ async fn main() {
             "/api/providers/:id/switch",
             post(providers::switch_provider),
         )
+        // Usage
+        .route("/api/usage/summary", get(usage::get_usage_summary))
+        .route("/api/usage/trend", get(usage::get_usage_trend))
+        .route("/api/usage/providers", get(usage::get_usage_providers))
         // Static files
         .nest_service("/ui", ServeDir::new(ui_dist_dir.clone()))
         .layer(axum::middleware::from_fn_with_state(

@@ -1,8 +1,10 @@
 //! Proxy server implementation
 
+use super::adapters::create_registry;
 use super::forwarder::{Forwarder, ProxyState};
 use super::types::ProxyConfig;
 use axum::{body::Body, extract::Request, response::Response, routing::get, Router};
+use cc_switch_lib::database::Database;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -29,15 +31,37 @@ impl ProxyServer {
     pub async fn start(
         &self,
         codex_oauth: Arc<cc_switch_lib::oauth::codex::CodexOAuthManager>,
+        copilot_auth: Arc<cc_switch_lib::oauth::copilot::CopilotAuthManager>,
         codex_account_id: Option<String>,
+        db: Arc<Database>,
+        provider_id: String,
+        app_type: &str,
     ) -> Result<SocketAddr, String> {
         // Check if already running
         if self.server_task.read().await.is_some() {
             return Err("Proxy already running".to_string());
         }
 
+        // Get provider from database
+        let provider = db
+            .get_provider(&provider_id, app_type)
+            .map_err(|e| format!("Failed to get provider: {}", e))?
+            .ok_or_else(|| format!("Provider not found: {}", provider_id))?;
+
+        // Create registry and find adapter
+        let registry = create_registry(codex_oauth.clone(), copilot_auth);
+        let adapter = registry
+            .find_for_provider(&provider)
+            .ok_or_else(|| format!("No adapter found for provider type"))?;
+
         let forwarder = Arc::new(Forwarder::new(self.config.clone())?);
-        let proxy_state = Arc::new(ProxyState::new(codex_oauth.clone(), codex_account_id));
+        let proxy_state = Arc::new(ProxyState::new(
+            adapter,
+            codex_account_id,
+            provider,
+            db,
+            provider_id,
+        ));
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
         let app = Router::new()

@@ -6,17 +6,15 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use cc_switch_lib::oauth::codex::CodexOAuthManager;
+use cc_switch_lib::providers::{ProviderAdapter, TransformInput};
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::headers::{add_codex_session_headers, copy_forward_headers, copy_response_headers};
-use super::responses_aggregate::responses_sse_to_anthropic_message;
+use super::headers::{copy_forward_headers, copy_response_headers};
 use super::session::{build_prompt_cache_key, extract_session_id};
 use super::streaming_responses::responses_sse_to_anthropic;
-use super::transform_responses::anthropic_to_codex_responses;
 use super::types::{ProxyConfig, ProxyStatus};
 
 /// Forwarder handles proxying requests to OpenAI API with Codex OAuth auth
@@ -68,7 +66,7 @@ impl Forwarder {
         status.request_count += 1;
     }
 
-    /// Forward an incoming request to OpenAI API with Codex OAuth auth
+    /// Forward an incoming request to the upstream provider
     pub async fn forward(
         &self,
         state: Arc<ProxyState>,
@@ -77,31 +75,37 @@ impl Forwarder {
         // Increment request count
         self.increment_requests().await;
 
-        // Get Codex OAuth token
-        let codex_oauth = state.codex_oauth.clone();
-        let token_result = match state.codex_account_id.as_deref() {
-            Some(account_id) => codex_oauth.get_valid_token_for_account(account_id).await,
-            None => codex_oauth.get_valid_token().await,
-        };
-        let token = match token_result {
-            Ok(t) => t,
-            Err(e) => {
-                log::error!("[Proxy] Failed to get Codex OAuth token: {}", e);
-                return Err(StatusCode::UNAUTHORIZED);
-            }
-        };
+        // Get auth token from adapter
+        let auth_token = state
+            .adapter
+            .get_auth_token(&state.provider, state.account_id.as_deref())
+            .await
+            .map_err(|e| {
+                log::error!("[Proxy] Failed to get auth token: {}", e);
+                StatusCode::UNAUTHORIZED
+            })?;
 
-        // Get account ID for ChatGPT-Account-Id header
-        let account_id = match state.codex_account_id.clone() {
-            Some(account_id) => Some(account_id),
-            None => codex_oauth.get_status().await.default_account_id,
-        };
+        // Get account ID from adapter
+        let account_id = state
+            .adapter
+            .extract_account_id(&state.provider)
+            .or(state.account_id.clone());
 
-        // Build upstream URL. Codex OAuth is always routed to the ChatGPT Codex
-        // Responses endpoint; the incoming Claude endpoint is only used for logs.
+        // Get upstream URL from adapter or config
+        let upstream_url = state
+            .adapter
+            .extract_upstream_url(&state.provider)
+            .unwrap_or_else(|| self.config.upstream_url.clone());
+
+        // Get HTTP proxy from adapter
+        let http_proxy = state.adapter.extract_http_proxy(&state.provider);
+
+        // Get prompt cache key from adapter
+        let prompt_cache_key = state.adapter.extract_prompt_cache_key(&state.provider);
+
+        // Build path and query
         let path = req.uri().path().to_string();
         let query = req.uri().query().unwrap_or_default().to_string();
-        let upstream_url = self.config.upstream_url.clone();
 
         // Extract method and headers
         let method = req.method().clone();
@@ -119,28 +123,30 @@ impl Forwarder {
         apply_model_mapping(&mut body_json, &self.config.model_mapping);
         let requested_stream = body_json.get("stream").and_then(Value::as_bool) != Some(false);
         let session = extract_session_id(&headers, &body_json);
-        let prompt_cache_key = build_prompt_cache_key(
-            self.config.prompt_cache_key.as_deref(),
+        let cache_key = build_prompt_cache_key(
+            prompt_cache_key.as_deref(),
             session.as_ref().map(|result| result.session_id.as_str()),
             &self.config.prompt_cache_key_fallback,
         );
         log::info!(
             "[Proxy] session_source={:?}, prompt_cache_key_hash={} (len={})",
             session.as_ref().map(|session| session.source),
-            cache_key_log_id(&prompt_cache_key),
-            prompt_cache_key.chars().count()
+            cache_key_log_id(&cache_key),
+            cache_key.chars().count()
         );
-        let request_json = match anthropic_to_codex_responses(
-            body_json,
-            Some(&prompt_cache_key),
-            self.config.codex_fast_mode,
-        ) {
-            Ok(value) => value,
-            Err(e) => {
-                log::error!("[Proxy] Failed to convert request body for {}: {}", path, e);
-                return Err(StatusCode::BAD_REQUEST);
-            }
+
+        // Transform request using adapter
+        let transform_input = TransformInput {
+            body: body_json,
+            upstream_url: upstream_url.clone(),
+            http_proxy_url: http_proxy,
+            prompt_cache_key: Some(cache_key),
+            requested_stream,
         };
+        let transform_output = state.adapter.transform_request(transform_input).map_err(|e| {
+            log::error!("[Proxy] Failed to transform request for {}: {}", path, e);
+            StatusCode::BAD_REQUEST
+        })?;
 
         log::info!(
             "[Proxy] {} {}{} -> {}{}",
@@ -152,7 +158,7 @@ impl Forwarder {
                 format!("?{query}")
             },
             upstream_url,
-            if self.config.http_proxy_url.is_some() {
+            if transform_output.headers.iter().any(|(k, _)| k == "x-proxy-uri") {
                 " via configured proxy"
             } else {
                 ""
@@ -161,7 +167,7 @@ impl Forwarder {
 
         let reqwest_method =
             Method::from_bytes(method.as_str().as_bytes()).map_err(|_| StatusCode::BAD_REQUEST)?;
-        let request_body = serde_json::to_vec(&request_json).map_err(|e| {
+        let request_body = serde_json::to_vec(&transform_output.body).map_err(|e| {
             log::error!(
                 "[Proxy] Failed to serialize request body for {}: {}",
                 path,
@@ -171,20 +177,23 @@ impl Forwarder {
         })?;
         let mut upstream_req = self
             .http_client
-            .request(reqwest_method, &upstream_url)
+            .request(reqwest_method, &transform_output.upstream_url)
             .body(request_body);
 
-        // Set auth headers
-        upstream_req = upstream_req
-            .header(header::AUTHORIZATION, format!("Bearer {}", token))
-            .header("originator", "cc-switch")
-            .header(header::ACCEPT, "text/event-stream")
-            .header(header::ACCEPT_ENCODING, "identity");
-        if let Some(ref id) = account_id {
-            upstream_req = upstream_req.header("chatgpt-account-id", id);
-        }
-        if let Some(session) = session.as_ref() {
-            upstream_req = add_codex_session_headers(upstream_req, &session.session_id);
+        // Set auth headers from adapter
+        upstream_req = upstream_req.header(
+            header::AUTHORIZATION,
+            format!("{}", auth_token.token),
+        );
+
+        // Set headers from adapter
+        for (key, value) in &transform_output.headers {
+            upstream_req = upstream_req.header(
+                header::HeaderName::from_bytes(key.as_bytes()).unwrap_or_else(|_| {
+                    header::HeaderName::from_static("x-custom-header")
+                }),
+                value.as_str(),
+            );
         }
 
         // Copy other headers (excluding hop-by-hop)
@@ -230,13 +239,38 @@ impl Forwarder {
             log::error!("[Proxy] Failed to read upstream response body: {}", e);
             StatusCode::BAD_GATEWAY
         })?;
-        let message = responses_sse_to_anthropic_message(&body).map_err(|e| {
-            log::error!("[Proxy] Failed to aggregate Responses SSE: {}", e);
-            StatusCode::BAD_GATEWAY
-        })?;
+
+        // Transform response and extract usage using adapter
+        let transform_result = state
+            .adapter
+            .transform_response(body.clone(), false)
+            .map_err(|e| {
+                log::error!("[Proxy] Failed to transform response: {}", e);
+                StatusCode::BAD_GATEWAY
+            })?;
+
+        // Record usage if available
+        if let Some(mut record) = transform_result.record {
+            record.provider_id = state.provider_id.clone();
+            let db = state.db.clone();
+            tokio::spawn(async move {
+                if let Err(e) = db.save_usage_record(&record) {
+                    log::error!("[Proxy] Failed to save usage record: {}", e);
+                } else {
+                    log::info!(
+                        "[Proxy] Usage recorded: provider={}, model={}, input={}, output={}",
+                        record.provider_id,
+                        record.model,
+                        record.input_tokens,
+                        record.output_tokens
+                    );
+                }
+            });
+        }
+
         Ok(response
             .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(message.to_string()))
+            .body(Body::from(transform_result.body.to_vec()))
             .unwrap())
     }
 }
@@ -264,15 +298,27 @@ fn cache_key_log_id(value: &str) -> String {
 /// Shared state for proxy server
 #[derive(Clone)]
 pub struct ProxyState {
-    pub codex_oauth: Arc<CodexOAuthManager>,
-    pub codex_account_id: Option<String>,
+    pub adapter: Arc<dyn ProviderAdapter>,
+    pub account_id: Option<String>,
+    pub provider: cc_switch_lib::database::Provider,
+    pub db: Arc<cc_switch_lib::database::Database>,
+    pub provider_id: String,
 }
 
 impl ProxyState {
-    pub fn new(codex_oauth: Arc<CodexOAuthManager>, codex_account_id: Option<String>) -> Self {
+    pub fn new(
+        adapter: Arc<dyn ProviderAdapter>,
+        account_id: Option<String>,
+        provider: cc_switch_lib::database::Provider,
+        db: Arc<cc_switch_lib::database::Database>,
+        provider_id: String,
+    ) -> Self {
         Self {
-            codex_oauth,
-            codex_account_id,
+            adapter,
+            account_id,
+            provider,
+            db,
+            provider_id,
         }
     }
 }

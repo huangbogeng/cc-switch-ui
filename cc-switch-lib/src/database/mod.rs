@@ -138,6 +138,20 @@ impl Database {
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 port INTEGER NOT NULL DEFAULT 15721
             );
+
+            CREATE TABLE IF NOT EXISTS usage_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER,
+                request_timestamp INTEGER NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_records(provider_id);
+            CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(request_timestamp);
             "
         )?;
         Ok(())
@@ -401,6 +415,126 @@ impl Database {
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
+}
+
+/// Usage record for database storage
+#[derive(Debug, Clone)]
+pub struct UsageRecord {
+    pub provider_id: String,
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: Option<i64>,
+    pub request_timestamp: i64,
+}
+
+impl Database {
+/// Save a usage record
+    pub fn save_usage_record(&self, record: &UsageRecord) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO usage_records (provider_id, model, input_tokens, output_tokens, cache_read_tokens, request_timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                record.provider_id,
+                record.model,
+                record.input_tokens,
+                record.output_tokens,
+                record.cache_read_tokens,
+                record.request_timestamp,
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Get usage summary by provider
+    pub fn get_usage_summary_by_provider(
+        &self,
+        since_timestamp: Option<i64>,
+    ) -> Result<Vec<ProviderUsageSummary>, AppError> {
+        let conn = self.conn();
+        let where_clause = since_timestamp.map(|_| "WHERE request_timestamp >= ?1").unwrap_or("");
+
+        let sql = format!(
+            "SELECT provider_id, model, SUM(input_tokens) as total_input,
+                    SUM(output_tokens) as total_output, COUNT(*) as request_count
+             FROM usage_records
+             {}
+             GROUP BY provider_id, model
+             ORDER BY total_input + total_output DESC",
+            where_clause
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = if let Some(ts) = since_timestamp {
+            stmt.query(params![ts])?
+        } else {
+            stmt.query([])?
+        };
+
+        let mut results = Vec::new();
+        while let Some(row) = rows.next()? {
+            results.push(ProviderUsageSummary {
+                provider_id: row.get(0)?,
+                model: row.get(1)?,
+                total_input_tokens: row.get(2)?,
+                total_output_tokens: row.get(3)?,
+                request_count: row.get(4)?,
+            });
+        }
+        Ok(results)
+    }
+
+    /// Get usage trend (daily aggregates)
+    pub fn get_usage_daily_trend(
+        &self,
+        days: i32,
+    ) -> Result<Vec<DailyUsage>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT date(request_timestamp, 'unixepoch') as day,
+                    SUM(input_tokens) as total_input, SUM(output_tokens) as total_output,
+                    COUNT(*) as request_count
+             FROM usage_records
+             WHERE request_timestamp >= ?1
+             GROUP BY day
+             ORDER BY day DESC",
+        )?;
+
+        let cutoff = chrono::Utc::now().timestamp() - (days as i64 * 86400);
+        let mut rows = stmt.query(params![cutoff])?;
+
+        let mut results = Vec::new();
+        while let Some(row) = rows.next()? {
+            results.push(DailyUsage {
+                day: row.get(0)?,
+                total_input_tokens: row.get(1)?,
+                total_output_tokens: row.get(2)?,
+                request_count: row.get(3)?,
+            });
+        }
+        Ok(results)
+    }
+}
+
+/// Usage summary by provider
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderUsageSummary {
+    pub provider_id: String,
+    pub model: String,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub request_count: i64,
+}
+
+/// Daily usage aggregate
+#[derive(Debug, Clone, Serialize)]
+pub struct DailyUsage {
+    pub day: String,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub request_count: i64,
 }
 
 /// Failover queue item for external reference
