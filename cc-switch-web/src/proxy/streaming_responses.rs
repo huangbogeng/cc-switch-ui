@@ -27,7 +27,7 @@ where
             let bytes = match chunk {
                 Ok(bytes) => bytes,
                 Err(err) => {
-                    yield Err(std::io::Error::new(std::io::ErrorKind::Other, err.to_string()));
+                    yield Err(std::io::Error::other(err.to_string()));
                     continue;
                 }
             };

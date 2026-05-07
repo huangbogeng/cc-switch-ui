@@ -4,12 +4,12 @@
 
 mod response;
 
+use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::providers::{
-    AuthToken, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
+    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
     TransformOutput, UsageParseResult,
 };
-use bytes::Bytes;
 
 /// Adapter for Gemini API (x-goog-api-key auth, Gemini native format)
 pub struct GeminiAdapter;
@@ -42,33 +42,32 @@ impl ProviderAdapter for GeminiAdapter {
             || provider.id.contains("gemini")
     }
 
-    fn get_auth_token(
+    fn get_auth_info(
         &self,
         provider: &Provider,
         _account_id: Option<&str>,
-    ) -> BoxFuture<'_, Result<AuthToken, ProviderError>> {
+    ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
         let token_result = provider
             .settings_config
             .get("apiKey")
             .and_then(|v| v.as_str())
-            .or_else(|| provider.settings_config.get("api_key").and_then(|v| v.as_str()))
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("api_key")
+                    .and_then(|v| v.as_str())
+            })
             .map(str::to_string);
 
         Box::pin(async move {
             let token = token_result.ok_or_else(|| {
                 ProviderError::AuthFailed("No API key found in provider config".into())
             })?;
-            Ok(AuthToken {
-                token,
-                expires_at_ms: None,
-            })
+            Ok(AuthInfo::new(token, AuthStrategy::GoogleApiKey))
         })
     }
 
-    fn transform_request(
-        &self,
-        input: TransformInput,
-    ) -> Result<TransformOutput, ProviderError> {
+    fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
         // Passthrough for now - Gemini native format conversion would go here
         Ok(TransformOutput {
             body: input.body,

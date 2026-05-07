@@ -32,10 +32,10 @@ pub use types::{CodexOAuthError, CodexOAuthStatus};
 
 use types::{
     compute_expires_at_ms, extract_identity_from_tokens, parse_interval, parse_jwt_claims,
-    CachedAccessToken, CodexAccountData, DeviceCodeResponse, DevicePollSuccess,
-    OAuthTokenResponse, PendingDeviceCode, CODEX_CLIENT_ID, CODEX_USER_AGENT,
-    DEVICE_AUTH_TOKEN_URL, DEVICE_AUTH_USERCODE_URL, DEVICE_CODE_DEFAULT_EXPIRES_IN,
-    DEVICE_REDIRECT_URI, DEVICE_VERIFICATION_URL, OAUTH_TOKEN_URL,
+    CachedAccessToken, CodexAccountData, DeviceCodeResponse, DevicePollSuccess, OAuthTokenResponse,
+    PendingDeviceCode, CODEX_CLIENT_ID, CODEX_USER_AGENT, DEVICE_AUTH_TOKEN_URL,
+    DEVICE_AUTH_USERCODE_URL, DEVICE_CODE_DEFAULT_EXPIRES_IN, DEVICE_REDIRECT_URI,
+    DEVICE_VERIFICATION_URL, OAUTH_TOKEN_URL,
 };
 
 /// Codex OAuth 认证管理器（多账号）
@@ -644,7 +644,6 @@ impl CodexOAuthManager {
                 .or_insert_with(|| Arc::new(Mutex::new(()))),
         )
     }
-
 }
 
 #[cfg(test)]

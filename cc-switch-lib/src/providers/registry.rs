@@ -34,11 +34,7 @@ impl ProviderRegistry {
     /// then tries partial ID matching (for providers like "gemini-native" -> "gemini")
     pub fn find_for_provider(&self, provider: &Provider) -> Option<Arc<dyn ProviderAdapter>> {
         // Try meta.providerType first
-        if let Some(provider_type) = provider
-            .meta
-            .get("providerType")
-            .and_then(|v| v.as_str())
-        {
+        if let Some(provider_type) = provider.meta.get("providerType").and_then(|v| v.as_str()) {
             if let Some(adapter) = self.get(provider_type) {
                 return Some(adapter);
             }

@@ -34,8 +34,8 @@ pub use types::{
 };
 
 use types::{
-    composite_account_id, copilot_api_base, copilot_token_url, copilot_usage_url,
-    github_client_id, github_device_code_url, github_oauth_token_url, github_user_url, is_ghes,
+    composite_account_id, copilot_api_base, copilot_token_url, copilot_usage_url, github_client_id,
+    github_device_code_url, github_oauth_token_url, github_user_url, is_ghes,
     normalize_github_domain, CopilotAuthStore, CopilotModelsResponse, CopilotTokenResponse,
     GitHubAccountData, GitHubOAuthResponse, DEFAULT_GITHUB_DOMAIN,
 };
@@ -997,7 +997,6 @@ impl CopilotAuthManager {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]

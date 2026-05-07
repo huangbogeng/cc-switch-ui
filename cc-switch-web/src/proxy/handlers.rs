@@ -1,7 +1,7 @@
 //! Proxy handlers
 
-use super::adapters::create_registry;
 use super::super::state::AppState;
+use super::adapters::create_registry;
 use super::types::ModelMapping;
 use super::{ProxyConfig, ProxyServer};
 use axum::response::IntoResponse;
@@ -73,7 +73,17 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let account_id = provider_codex_account_id(&target_provider);
     let provider_id = target_provider.id.clone();
     let db = state.db.clone();
-    match server.start(state.codex_oauth.clone(), state.copilot_oauth.clone(), account_id, db, provider_id, APP_TYPE).await {
+    match server
+        .start(
+            state.codex_oauth.clone(),
+            state.copilot_oauth.clone(),
+            account_id,
+            db,
+            provider_id,
+            APP_TYPE,
+        )
+        .await
+    {
         Ok(_actual_addr) => {
             *state.proxy_server.write().await = Some(server);
             Json(serde_json::json!({"success": true, "listen_addr": format!("http://0.0.0.0:{}", listen_port), "message": "Proxy started"})).into_response()

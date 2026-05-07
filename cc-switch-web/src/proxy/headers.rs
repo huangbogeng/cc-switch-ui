@@ -1,22 +1,6 @@
-//! Header handling for Codex OAuth proxy forwarding.
+//! Header handling for proxy forwarding.
 
 use axum::http::{HeaderMap, HeaderName};
-
-pub fn add_codex_session_headers(
-    mut request: reqwest::RequestBuilder,
-    session_id: &str,
-) -> reqwest::RequestBuilder {
-    let session_id = session_id.trim();
-    if session_id.is_empty() {
-        return request;
-    }
-    let window_id = format!("{session_id}:0");
-    request = request
-        .header("session_id", session_id)
-        .header("x-client-request-id", session_id)
-        .header("x-codex-window-id", window_id);
-    request
-}
 
 pub fn copy_forward_headers(
     mut request: reqwest::RequestBuilder,
@@ -29,8 +13,12 @@ pub fn copy_forward_headers(
         "connection",
         "content-length",
         "content-type",
+        "copilot-integration-id",
+        "editor-plugin-version",
+        "editor-version",
         "host",
         "keep-alive",
+        "openai-intent",
         "proxy-authenticate",
         "proxy-authorization",
         "te",
@@ -48,7 +36,14 @@ pub fn copy_forward_headers(
         "session_id",
         "x-claude-code-session-id",
         "x-client-request-id",
+        "x-goog-api-client",
+        "x-goog-api-key",
+        "x-github-api-version",
+        "x-initiator",
+        "x-interaction-type",
+        "x-api-key",
         "x-codex-window-id",
+        "x-vscode-user-agent-library-version",
         "x-request-id",
         "x-correlation-id",
         "x-session-id",

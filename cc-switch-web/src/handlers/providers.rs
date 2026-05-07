@@ -218,6 +218,11 @@ fn is_codex_oauth_provider(provider: &Provider) -> bool {
 }
 
 fn is_copilot_oauth_provider(provider: &Provider) -> bool {
-    provider.meta.get("providerType").and_then(Value::as_str).map(|t| t.contains("copilot")).unwrap_or(false)
+    provider
+        .meta
+        .get("providerType")
+        .and_then(Value::as_str)
+        .map(|t| t.contains("copilot"))
+        .unwrap_or(false)
         || provider.id.contains("copilot")
 }

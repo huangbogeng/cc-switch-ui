@@ -6,11 +6,49 @@ use bytes::Bytes;
 /// Result type for provider operations
 pub type ProviderResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/// Auth token with optional metadata
+/// Authentication strategy used to build upstream request headers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthStrategy {
+    /// Anthropic-compatible API key: `x-api-key: <secret>`.
+    Anthropic,
+    /// Bearer token for Claude relay services.
+    ClaudeAuth,
+    /// Generic bearer token: `Authorization: Bearer <secret>`.
+    Bearer,
+    /// Google API key: `x-goog-api-key: <secret>`.
+    GoogleApiKey,
+    /// Google OAuth token plus Gemini CLI client marker.
+    GoogleOAuth,
+    /// GitHub Copilot token plus Copilot client fingerprint headers.
+    GitHubCopilot,
+    /// ChatGPT/Codex OAuth access token plus Codex-specific headers.
+    CodexOAuth,
+}
+
+/// Authentication data resolved from provider configuration or OAuth managers.
 #[derive(Debug, Clone)]
-pub struct AuthToken {
-    pub token: String,
-    pub expires_at_ms: Option<i64>,
+pub struct AuthInfo {
+    pub secret: String,
+    pub strategy: AuthStrategy,
+    pub access_token: Option<String>,
+}
+
+impl AuthInfo {
+    pub fn new(secret: String, strategy: AuthStrategy) -> Self {
+        Self {
+            secret,
+            strategy,
+            access_token: None,
+        }
+    }
+
+    pub fn with_access_token(secret: String, access_token: String) -> Self {
+        Self {
+            secret,
+            strategy: AuthStrategy::GoogleOAuth,
+            access_token: Some(access_token),
+        }
+    }
 }
 
 /// Request transform input
@@ -21,6 +59,7 @@ pub struct TransformInput {
     pub http_proxy_url: Option<String>,
     pub prompt_cache_key: Option<String>,
     pub requested_stream: bool,
+    pub codex_fast_mode: bool,
 }
 
 /// Request transform output

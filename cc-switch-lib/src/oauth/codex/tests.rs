@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-use super::*;
 use super::types::POLLING_SAFETY_MARGIN_SECS;
+use super::*;
 
 #[test]
 fn test_parse_interval_number() {

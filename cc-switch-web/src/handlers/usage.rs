@@ -24,9 +24,7 @@ pub struct UsageProvidersResponse {
     pub providers: Vec<ProviderUsageSummary>,
 }
 
-pub async fn get_usage_summary(
-    State(state): State<Arc<AppState>>,
-) -> Json<UsageSummaryResponse> {
+pub async fn get_usage_summary(State(state): State<Arc<AppState>>) -> Json<UsageSummaryResponse> {
     match state.db.get_usage_summary_by_provider(None) {
         Ok(summary) => {
             let total_input_tokens: i64 = summary.iter().map(|s| s.total_input_tokens).sum();
@@ -51,9 +49,7 @@ pub async fn get_usage_summary(
     }
 }
 
-pub async fn get_usage_trend(
-    State(state): State<Arc<AppState>>,
-) -> Json<UsageTrendResponse> {
+pub async fn get_usage_trend(State(state): State<Arc<AppState>>) -> Json<UsageTrendResponse> {
     match state.db.get_usage_daily_trend(30) {
         Ok(trend) => Json(UsageTrendResponse { trend }),
         Err(e) => {
