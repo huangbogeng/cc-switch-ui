@@ -185,7 +185,10 @@ async fn main() {
             .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-web"))
             .canonicalize()
             .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-web"));
-        let release_dist = exe_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("dist");
+        let release_dist = exe_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("dist");
         if release_dist.exists() {
             release_dist
         } else {

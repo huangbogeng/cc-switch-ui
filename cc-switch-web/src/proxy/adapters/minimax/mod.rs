@@ -4,12 +4,12 @@
 
 mod response;
 
+use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::providers::{
-    AuthToken, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
+    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
     TransformOutput, UsageParseResult,
 };
-use bytes::Bytes;
 
 /// Adapter for MiniMax API (Bearer token auth, OpenAI format)
 pub struct MiniMaxAdapter;
@@ -31,35 +31,49 @@ impl ProviderAdapter for MiniMaxAdapter {
         "minimax"
     }
 
-    fn get_auth_token(
+    fn get_auth_info(
         &self,
         provider: &Provider,
         _account_id: Option<&str>,
-    ) -> BoxFuture<'_, Result<AuthToken, ProviderError>> {
+    ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
+        // Look for token in: env.ANTHROPIC_AUTH_TOKEN, settingsConfig.apiKey, authToken, token
         let token_result = provider
             .settings_config
-            .get("apiKey")
+            .get("env")
+            .and_then(|v| v.get("ANTHROPIC_AUTH_TOKEN"))
             .and_then(|v| v.as_str())
-            .or_else(|| provider.settings_config.get("api_key").and_then(|v| v.as_str()))
-            .or_else(|| provider.settings_config.get("token").and_then(|v| v.as_str()))
-            .map(str::to_string);
+            .map(str::to_string)
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("apiKey")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("authToken")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("token")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            });
 
         Box::pin(async move {
             let token = token_result.ok_or_else(|| {
                 ProviderError::AuthFailed("No API key found in provider config".into())
             })?;
-            Ok(AuthToken {
-                token,
-                expires_at_ms: None,
-            })
+            Ok(AuthInfo::new(token, AuthStrategy::Anthropic))
         })
     }
 
-    fn transform_request(
-        &self,
-        input: TransformInput,
-    ) -> Result<TransformOutput, ProviderError> {
-        // Passthrough - no transformation needed
+    fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
         Ok(TransformOutput {
             body: input.body,
             upstream_url: input.upstream_url,
@@ -77,11 +91,21 @@ impl ProviderAdapter for MiniMaxAdapter {
     }
 
     fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {
+        // Look for base URL in: env.ANTHROPIC_BASE_URL, baseUrl
         provider
             .settings_config
-            .get("baseUrl")
+            .get("env")
+            .and_then(|v| v.get("ANTHROPIC_BASE_URL"))
             .and_then(|v| v.as_str())
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string)
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("baseUrl")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                    .map(str::to_string)
+            })
     }
 }

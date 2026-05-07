@@ -10,8 +10,8 @@ use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::providers::{
-    AuthToken, BoxFuture, ProviderAdapter, ProviderError, TransformInput, TransformOutput,
-    UsageParseResult,
+    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
+    TransformOutput, UsageParseResult,
 };
 use std::sync::Arc;
 
@@ -31,11 +31,11 @@ impl ProviderAdapter for CodexAdapter {
         "codex_oauth"
     }
 
-    fn get_auth_token(
+    fn get_auth_info(
         &self,
         provider: &Provider,
         account_id: Option<&str>,
-    ) -> BoxFuture<'_, Result<AuthToken, ProviderError>> {
+    ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
         let codex_oauth = self.codex_oauth.clone();
         let resolved_account_id = provider
             .meta
@@ -51,10 +51,7 @@ impl ProviderAdapter for CodexAdapter {
             }
             .map_err(|e| ProviderError::TokenFailed(e.to_string()))?;
 
-            Ok(AuthToken {
-                token,
-                expires_at_ms: None,
-            })
+            Ok(AuthInfo::new(token, AuthStrategy::CodexOAuth))
         })
     }
 

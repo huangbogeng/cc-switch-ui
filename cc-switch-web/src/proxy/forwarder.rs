@@ -6,7 +6,7 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use cc_switch_lib::providers::{ProviderAdapter, TransformInput};
+use cc_switch_lib::providers::{AuthStrategy, ProviderAdapter, TransformInput};
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -75,13 +75,14 @@ impl Forwarder {
         // Increment request count
         self.increment_requests().await;
 
-        // Get auth token from adapter
-        let auth_token = state
+        // Resolve auth through the adapter; it decides the provider strategy,
+        // while the forwarder only injects the resulting headers.
+        let auth_info = state
             .adapter
-            .get_auth_token(&state.provider, state.account_id.as_deref())
+            .get_auth_info(&state.provider, state.account_id.as_deref())
             .await
             .map_err(|e| {
-                log::error!("[Proxy] Failed to get auth token: {}", e);
+                log::error!("[Proxy] Failed to resolve auth: {}", e);
                 StatusCode::UNAUTHORIZED
             })?;
 
@@ -101,7 +102,10 @@ impl Forwarder {
         let http_proxy = state.adapter.extract_http_proxy(&state.provider);
 
         // Get prompt cache key from adapter
-        let prompt_cache_key = state.adapter.extract_prompt_cache_key(&state.provider);
+        let prompt_cache_key = state
+            .adapter
+            .extract_prompt_cache_key(&state.provider)
+            .or_else(|| self.config.prompt_cache_key.clone());
 
         // Build path and query
         let path = req.uri().path().to_string();
@@ -142,11 +146,15 @@ impl Forwarder {
             http_proxy_url: http_proxy,
             prompt_cache_key: Some(cache_key),
             requested_stream,
+            codex_fast_mode: self.config.codex_fast_mode,
         };
-        let transform_output = state.adapter.transform_request(transform_input).map_err(|e| {
-            log::error!("[Proxy] Failed to transform request for {}: {}", path, e);
-            StatusCode::BAD_REQUEST
-        })?;
+        let transform_output = state
+            .adapter
+            .transform_request(transform_input)
+            .map_err(|e| {
+                log::error!("[Proxy] Failed to transform request for {}: {}", path, e);
+                StatusCode::BAD_REQUEST
+            })?;
 
         log::info!(
             "[Proxy] {} {}{} -> {}{}",
@@ -158,7 +166,11 @@ impl Forwarder {
                 format!("?{query}")
             },
             upstream_url,
-            if transform_output.headers.iter().any(|(k, _)| k == "x-proxy-uri") {
+            if transform_output
+                .headers
+                .iter()
+                .any(|(k, _)| k == "x-proxy-uri")
+            {
                 " via configured proxy"
             } else {
                 ""
@@ -175,23 +187,38 @@ impl Forwarder {
             );
             StatusCode::BAD_REQUEST
         })?;
+
         let mut upstream_req = self
             .http_client
-            .request(reqwest_method, &transform_output.upstream_url)
+            .request(reqwest_method.clone(), &transform_output.upstream_url)
             .body(request_body);
 
-        // Set auth headers from adapter
-        upstream_req = upstream_req.header(
-            header::AUTHORIZATION,
-            format!("{}", auth_token.token),
-        );
+        let mut auth_headers = state.adapter.get_auth_headers(&auth_info).map_err(|e| {
+            log::error!(
+                "[Proxy] Failed to build auth headers for {}: {}",
+                state.adapter.provider_type(),
+                e
+            );
+            StatusCode::BAD_GATEWAY
+        })?;
+        if auth_info.strategy == AuthStrategy::CodexOAuth {
+            if let Some(account_id) = account_id.as_deref() {
+                let value = header::HeaderValue::from_str(account_id).map_err(|e| {
+                    log::error!("[Proxy] Invalid Codex account header value: {}", e);
+                    StatusCode::BAD_GATEWAY
+                })?;
+                auth_headers.push((header::HeaderName::from_static("chatgpt-account-id"), value));
+            }
+        }
+        for (name, value) in auth_headers {
+            upstream_req = upstream_req.header(name, value);
+        }
 
         // Set headers from adapter
         for (key, value) in &transform_output.headers {
             upstream_req = upstream_req.header(
-                header::HeaderName::from_bytes(key.as_bytes()).unwrap_or_else(|_| {
-                    header::HeaderName::from_static("x-custom-header")
-                }),
+                header::HeaderName::from_bytes(key.as_bytes())
+                    .unwrap_or_else(|_| header::HeaderName::from_static("x-custom-header")),
                 value.as_str(),
             );
         }
@@ -224,7 +251,9 @@ impl Forwarder {
                 path,
                 excerpt.chars().take(1000).collect::<String>()
             );
-            return Ok(response.body(Body::from(body)).unwrap());
+            return Ok(response
+                .body(Body::from(body))
+                .expect("failed to build error response"));
         }
 
         if requested_stream {

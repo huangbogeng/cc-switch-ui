@@ -6,7 +6,7 @@
 //!
 //! Architecture:
 //! - `adapter.rs` - ProviderAdapter trait definition
-//! - `types.rs` - Shared types (AuthToken, TransformInput, TransformOutput)
+//! - `types.rs` - Shared types (AuthInfo, AuthStrategy, TransformInput, TransformOutput)
 //! - `error.rs` - Error types
 //! - `registry.rs` - ProviderRegistry for adapter lookup
 //!
@@ -20,4 +20,4 @@ mod types;
 pub use adapter::{BoxFuture, ProviderAdapter};
 pub use error::ProviderError;
 pub use registry::ProviderRegistry;
-pub use types::{AuthToken, TransformInput, TransformOutput, UsageParseResult};
+pub use types::{AuthInfo, AuthStrategy, TransformInput, TransformOutput, UsageParseResult};

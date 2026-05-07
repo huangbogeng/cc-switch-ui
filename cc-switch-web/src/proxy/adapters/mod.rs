@@ -14,7 +14,7 @@
 //! - siliconflow/  - SiliconFlow API adapter
 //!
 //! Each adapter handles:
-//! - Authentication (get_auth_token)
+//! - Authentication (get_auth_info + get_auth_headers)
 //! - Request transformation (transform_request)
 //! - Response transformation + usage extraction (transform_response)
 

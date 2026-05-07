@@ -50,11 +50,7 @@ pub fn responses_sse_to_anthropic_message(bytes: &[u8]) -> Result<Value, String>
                         .and_then(Value::as_str)
                         .unwrap_or_default();
                     let key = canonical_tool_key(&tool_aliases, &id);
-                    tool_calls
-                        .entry(key)
-                        .or_insert_with(ToolCallAccumulator::default)
-                        .arguments
-                        .push_str(delta);
+                    tool_calls.entry(key).or_default().arguments.push_str(delta);
                 }
             }
             Some("response.output_item.done") => {

@@ -52,7 +52,7 @@ impl ProxyServer {
         let registry = create_registry(codex_oauth.clone(), copilot_auth);
         let adapter = registry
             .find_for_provider(&provider)
-            .ok_or_else(|| format!("No adapter found for provider type"))?;
+            .ok_or_else(|| "No adapter found for provider type".to_string())?;
 
         let forwarder = Arc::new(Forwarder::new(self.config.clone())?);
         let proxy_state = Arc::new(ProxyState::new(

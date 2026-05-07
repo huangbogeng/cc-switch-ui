@@ -43,7 +43,7 @@ pub fn apply_provider_to_live(settings_config: &serde_json::Value) -> Result<(),
     let provider_env = settings_config
         .get("env")
         .and_then(|v| v.as_object())
-        .map(|m| m.clone())
+        .cloned()
         .unwrap_or_default();
 
     // Ensure settings is an object
