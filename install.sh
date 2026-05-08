@@ -64,7 +64,8 @@ rm -f /tmp/$FILENAME
 
 # Ensure it's executable
 chmod +x "$INSTALL_DIR/cc-switch-server"
-# Backward-compatible command alias
+# Preferred project-name command + backward-compatible aliases
+ln -sf "$INSTALL_DIR/cc-switch-server" "$INSTALL_DIR/cc-switch-ui"
 ln -sf "$INSTALL_DIR/cc-switch-server" "$INSTALL_DIR/cc-switch-web"
 
 # 5. Add to PATH
@@ -109,7 +110,7 @@ elif [[ " ${SHELL_FILES[*]} " =~ ".bashrc" ]]; then
 else
   echo "    source ${SHELL_FILES[0]}"
 fi
-echo "    cc-switch-server"
-echo "    # legacy alias: cc-switch-web"
+echo "    cc-switch-ui"
+echo "    # aliases: cc-switch-server, cc-switch-web"
 echo ""
 echo "The admin UI will be available at: http://localhost:5007/ui"
