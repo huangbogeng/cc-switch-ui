@@ -1,10 +1,13 @@
 //! Proxy server implementation
 
 use super::adapters::create_registry;
-use super::forwarder::{Forwarder, ProxyState};
+use super::failover_switch::FailoverSwitchManager;
+use super::forwarder::{ForwardResult, Forwarder, ProxyState};
+use super::provider_router::ProviderRouter;
 use super::types::ProxyConfig;
 use axum::{body::Body, extract::Request, response::Response, routing::get, Router};
 use cc_switch_lib::database::Database;
+use cc_switch_lib::providers::ProviderRegistry;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -16,6 +19,17 @@ pub struct ProxyServer {
     config: ProxyConfig,
     shutdown_tx: RwLock<Option<tokio::sync::oneshot::Sender<()>>>,
     server_task: RwLock<Option<tokio::task::JoinHandle<()>>>,
+}
+
+#[derive(Clone)]
+struct ProxyRuntimeState {
+    db: Arc<Database>,
+    provider_hint_id: String,
+    app_type: String,
+    codex_account_id: Option<String>,
+    registry: Arc<ProviderRegistry>,
+    provider_router: Arc<RwLock<ProviderRouter>>,
+    failover_switch: Arc<FailoverSwitchManager>,
 }
 
 impl ProxyServer {
@@ -42,32 +56,23 @@ impl ProxyServer {
             return Err("Proxy already running".to_string());
         }
 
-        // Get provider from database
-        let provider = db
-            .get_provider(&provider_id, app_type)
-            .map_err(|e| format!("Failed to get provider: {}", e))?
-            .ok_or_else(|| format!("Provider not found: {}", provider_id))?;
-
-        // Create registry and find adapter
-        let registry = create_registry(codex_oauth.clone(), copilot_auth);
-        let adapter = registry
-            .find_for_provider(&provider)
-            .ok_or_else(|| "No adapter found for provider type".to_string())?;
-
         let forwarder = Arc::new(Forwarder::new(self.config.clone())?);
-        let proxy_state = Arc::new(ProxyState::new(
-            adapter,
+        let registry = Arc::new(create_registry(codex_oauth.clone(), copilot_auth));
+        let runtime_state = Arc::new(ProxyRuntimeState {
+            db: db.clone(),
+            provider_hint_id: provider_id,
+            app_type: app_type.to_string(),
             codex_account_id,
-            provider,
-            db,
-            provider_id,
-        ));
+            registry,
+            provider_router: Arc::new(RwLock::new(ProviderRouter::new(false))),
+            failover_switch: Arc::new(FailoverSwitchManager::new(db.clone())),
+        });
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
         let app = Router::new()
             .route("/v1/*axum", get(handle_proxy).post(handle_proxy))
             .route("/health", get(|| async { "ok" }))
-            .with_state((forwarder.clone(), proxy_state))
+            .with_state((forwarder.clone(), runtime_state))
             .layer(TraceLayer::new_for_http());
 
         let listener = TcpListener::bind(self.config.listen_addr)
@@ -113,19 +118,118 @@ impl ProxyServer {
 
 /// Handle proxy requests
 async fn handle_proxy(
-    axum::extract::State((forwarder, proxy_state)): axum::extract::State<(
+    axum::extract::State((forwarder, runtime_state)): axum::extract::State<(
         Arc<Forwarder>,
-        Arc<ProxyState>,
+        Arc<ProxyRuntimeState>,
     )>,
     req: Request,
 ) -> Response {
+    let current_provider = match resolve_current_provider(&runtime_state) {
+        Ok(provider) => provider,
+        Err(status) => {
+            return Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap();
+        }
+    };
+
+    let all_providers = match runtime_state.db.list_providers(&runtime_state.app_type) {
+        Ok(providers) => providers,
+        Err(e) => {
+            log::error!("[Proxy] Failed to list providers: {}", e);
+            return Response::builder()
+                .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::empty())
+                .unwrap();
+        }
+    };
+
+    let auto_failover_enabled = current_provider
+        .meta
+        .get("auto_failover_enabled")
+        .or_else(|| current_provider.meta.get("autoFailoverEnabled"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let provider_candidates = {
+        let mut router = runtime_state.provider_router.write().await;
+        router.set_auto_failover_enabled(auto_failover_enabled);
+        router.select_providers(&runtime_state.app_type, &current_provider, &all_providers)
+    };
+
+    let proxy_states = provider_candidates
+        .into_iter()
+        .filter_map(|provider| {
+            let adapter = runtime_state.registry.find_for_provider(&provider)?;
+            let provider_id = provider.id.clone();
+            Some(Arc::new(ProxyState::new(
+                adapter,
+                provider_codex_account_id(&provider)
+                    .or_else(|| runtime_state.codex_account_id.clone()),
+                provider,
+                runtime_state.db.clone(),
+                provider_id,
+            )))
+        })
+        .collect::<Vec<_>>();
+
     forwarder
-        .forward(proxy_state, req)
+        .forward_with_retry(
+            &runtime_state.app_type,
+            runtime_state.provider_router.clone(),
+            runtime_state.failover_switch.clone(),
+            current_provider.id.clone(),
+            proxy_states,
+            req,
+        )
         .await
+        .map(
+            |ForwardResult {
+                 response,
+                 provider_id,
+             }| {
+                log::info!("[Proxy] Request succeeded via provider={provider_id}");
+                response
+            },
+        )
         .unwrap_or_else(|status| {
             Response::builder()
                 .status(status)
                 .body(Body::empty())
                 .unwrap()
         })
+}
+
+fn resolve_current_provider(
+    runtime_state: &ProxyRuntimeState,
+) -> Result<cc_switch_lib::database::Provider, axum::http::StatusCode> {
+    let target_id = runtime_state
+        .db
+        .get_proxy_target_provider_id()
+        .ok()
+        .flatten()
+        .or_else(|| {
+            runtime_state
+                .db
+                .get_current_provider_id(&runtime_state.app_type)
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_else(|| runtime_state.provider_hint_id.clone());
+
+    runtime_state
+        .db
+        .get_provider(&target_id, &runtime_state.app_type)
+        .ok()
+        .flatten()
+        .ok_or(axum::http::StatusCode::BAD_GATEWAY)
+}
+
+fn provider_codex_account_id(provider: &cc_switch_lib::database::Provider) -> Option<String> {
+    provider
+        .meta
+        .get("authBinding")
+        .and_then(|value| value.get("accountId"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
 }

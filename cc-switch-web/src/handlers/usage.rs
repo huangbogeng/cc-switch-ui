@@ -1,8 +1,11 @@
 //! Usage handlers
 
 use super::super::state::AppState;
-use axum::{extract::State, Json};
-use cc_switch_lib::database::{DailyUsage, ProviderUsageSummary};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
+use cc_switch_lib::database::{DailyUsage, ProviderUsageSummary, ProxyRequestLogEntry};
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -22,6 +25,16 @@ pub struct UsageTrendResponse {
 #[derive(Serialize)]
 pub struct UsageProvidersResponse {
     pub providers: Vec<ProviderUsageSummary>,
+}
+
+#[derive(Serialize)]
+pub struct ProxyRequestLogsResponse {
+    pub logs: Vec<ProxyRequestLogEntry>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ProxyRequestLogsQuery {
+    pub limit: Option<usize>,
 }
 
 pub async fn get_usage_summary(State(state): State<Arc<AppState>>) -> Json<UsageSummaryResponse> {
@@ -87,6 +100,20 @@ pub async fn get_usage_providers(
         Err(e) => {
             log::error!("Failed to get usage providers: {}", e);
             Json(UsageProvidersResponse { providers: vec![] })
+        }
+    }
+}
+
+pub async fn get_proxy_request_logs(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ProxyRequestLogsQuery>,
+) -> Json<ProxyRequestLogsResponse> {
+    let limit = query.limit.unwrap_or(200).clamp(1, 1000);
+    match state.db.get_proxy_request_logs(limit) {
+        Ok(logs) => Json(ProxyRequestLogsResponse { logs }),
+        Err(e) => {
+            log::error!("Failed to get proxy request logs: {}", e);
+            Json(ProxyRequestLogsResponse { logs: vec![] })
         }
     }
 }

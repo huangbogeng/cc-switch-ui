@@ -150,8 +150,22 @@ impl Database {
                 created_at INTEGER NOT NULL DEFAULT (unixepoch())
             );
 
+            CREATE TABLE IF NOT EXISTS proxy_request_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_type TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                request_path TEXT NOT NULL,
+                request_model TEXT,
+                status_code INTEGER,
+                success INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_records(provider_id);
             CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(request_timestamp);
+            CREATE INDEX IF NOT EXISTS idx_proxy_request_logs_app_type_created_at
+              ON proxy_request_logs(app_type, created_at DESC);
             "
         )?;
         migrate_proxy_config_schema(&conn)?;
@@ -429,6 +443,29 @@ pub struct UsageRecord {
     pub request_timestamp: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProxyRequestLogRecord {
+    pub app_type: String,
+    pub provider_id: String,
+    pub request_path: String,
+    pub request_model: Option<String>,
+    pub status_code: Option<i32>,
+    pub success: bool,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProxyRequestLogEntry {
+    pub app_type: String,
+    pub provider_id: String,
+    pub request_path: String,
+    pub request_model: Option<String>,
+    pub status_code: Option<i32>,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub created_at: i64,
+}
+
 impl Database {
     /// Save a usage record
     pub fn save_usage_record(&self, record: &UsageRecord) -> Result<(), AppError> {
@@ -447,6 +484,56 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
+    }
+
+    pub fn save_proxy_request_log(&self, record: &ProxyRequestLogRecord) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO proxy_request_logs (
+                app_type, provider_id, request_path, request_model,
+                status_code, success, error_message
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                record.app_type,
+                record.provider_id,
+                record.request_path,
+                record.request_model,
+                record.status_code,
+                if record.success { 1 } else { 0 },
+                record.error_message,
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_proxy_request_logs(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ProxyRequestLogEntry>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT app_type, provider_id, request_path, request_model,
+                    status_code, success, error_message, created_at
+             FROM proxy_request_logs
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?1",
+        )?;
+        let mut rows = stmt.query(params![limit as i64])?;
+        let mut entries = Vec::new();
+        while let Some(row) = rows.next()? {
+            entries.push(ProxyRequestLogEntry {
+                app_type: row.get(0)?,
+                provider_id: row.get(1)?,
+                request_path: row.get(2)?,
+                request_model: row.get(3)?,
+                status_code: row.get(4)?,
+                success: row.get::<_, i64>(5)? != 0,
+                error_message: row.get(6)?,
+                created_at: row.get(7)?,
+            });
+        }
+        Ok(entries)
     }
 
     /// Get usage summary by provider

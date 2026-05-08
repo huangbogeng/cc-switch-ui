@@ -283,6 +283,10 @@ async fn main() {
         .route("/api/usage/summary", get(usage::get_usage_summary))
         .route("/api/usage/trend", get(usage::get_usage_trend))
         .route("/api/usage/providers", get(usage::get_usage_providers))
+        .route(
+            "/api/usage/request-logs",
+            get(usage::get_proxy_request_logs),
+        )
         // Static files
         .nest_service("/ui", ServeDir::new(ui_dist_dir.clone()))
         .layer(axum::middleware::from_fn_with_state(
