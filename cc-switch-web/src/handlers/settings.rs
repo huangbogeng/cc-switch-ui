@@ -45,6 +45,7 @@ pub struct ProxyConfigRequest {
 }
 
 pub async fn get_proxy_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    log::info!("[Settings] get_proxy_config requested");
     match state.db.get_proxy_config() {
         Ok(Some(config)) => Json(ProxyConfigResponse::from(&config)).into_response(),
         Ok(None) => Json(serde_json::json!({
@@ -70,6 +71,14 @@ pub async fn set_proxy_config(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ProxyConfigRequest>,
 ) -> impl IntoResponse {
+    log::info!(
+        "[Settings] set_proxy_config requested enabled={} proxy_type={} host={} port={} auto_failover_enabled={}",
+        payload.enabled,
+        payload.proxy_type,
+        payload.host,
+        payload.port,
+        payload.auto_failover_enabled
+    );
     let proxy_type = match payload.proxy_type.to_lowercase().as_str() {
         "socks5" | "socks" => ProxyType::Socks5,
         _ => ProxyType::Http,
@@ -107,6 +116,7 @@ pub async fn set_proxy_config(
 }
 
 pub async fn delete_proxy_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    log::info!("[Settings] delete_proxy_config requested");
     if let Err(e) = state.db.delete_proxy_config() {
         log::error!("Failed to delete proxy config: {}", e);
         return (
@@ -197,6 +207,7 @@ pub struct ProxyPortRequest {
 }
 
 pub async fn get_proxy_port(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    log::info!("[Settings] get_proxy_port requested");
     match state.db.get_proxy_port() {
         Ok(port) => Json(serde_json::json!({ "port": port })).into_response(),
         Err(e) => {
@@ -214,6 +225,7 @@ pub async fn set_proxy_port(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ProxyPortRequest>,
 ) -> impl IntoResponse {
+    log::info!("[Settings] set_proxy_port requested port={}", payload.port);
     if let Err(e) = state.db.set_proxy_port(payload.port) {
         log::error!("Failed to save proxy port: {}", e);
         return (

@@ -13,6 +13,7 @@ use futures::StreamExt;
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
 
 use super::failover_switch::FailoverSwitchManager;
@@ -88,7 +89,13 @@ impl Forwarder {
         candidate_states: Vec<Arc<ProxyState>>,
         req: Request,
     ) -> Result<ForwardResult, StatusCode> {
+        let started_at = Instant::now();
         if candidate_states.is_empty() {
+            log::error!(
+                "[Proxy] app_type={} current_provider={} no candidate providers available",
+                app_type,
+                current_provider_id
+            );
             return Err(StatusCode::BAD_GATEWAY);
         }
 
@@ -108,8 +115,35 @@ impl Forwarder {
 
         let mut last_response: Option<(String, Response)> = None;
         let mut last_status: Option<StatusCode> = None;
+        log::info!(
+            "[Proxy] app_type={} path={} method={} current_provider={} candidate_count={}",
+            app_type,
+            path,
+            method,
+            current_provider_id,
+            candidate_states.len()
+        );
 
         for state in candidate_states {
+            let allowed = router
+                .write()
+                .await
+                .allow_provider_request(app_type, &state.provider_id);
+            if !allowed {
+                log::warn!(
+                    "[Proxy] app_type={} provider={} skipped: circuit breaker open",
+                    app_type,
+                    state.provider_id
+                );
+                continue;
+            }
+            log::info!(
+                "[Proxy] app_type={} provider={} attempting request path={}",
+                app_type,
+                state.provider_id,
+                path
+            );
+
             let mut body_json: Value = serde_json::from_slice(&body).map_err(|e| {
                 log::error!("[Proxy] Failed to parse request body for {}: {}", path, e);
                 StatusCode::BAD_REQUEST
@@ -132,18 +166,21 @@ impl Forwarder {
                 Ok(response) => {
                     let status_code = i32::from(response.status().as_u16());
                     if response.status().is_success() {
-                        let request_log = cc_switch_lib::database::ProxyRequestLogRecord {
-                            app_type: app_type.to_string(),
-                            provider_id: state.provider_id.clone(),
-                            request_path: path.clone(),
-                            request_model: request_model.clone(),
-                            status_code: Some(status_code),
-                            success: true,
-                            error_message: None,
-                        };
-                        if let Err(e) = state.db.save_proxy_request_log(&request_log) {
-                            log::error!("[Proxy] Failed to save request log: {}", e);
-                        }
+                        log::info!(
+                            "[Proxy] app_type={} provider={} success status={} elapsed_ms={}",
+                            app_type,
+                            state.provider_id,
+                            status_code,
+                            started_at.elapsed().as_millis()
+                        );
+                        log::info!(
+                            "[Proxy] request_result app_type={} provider={} path={} model={:?} status={} success=true",
+                            app_type,
+                            state.provider_id,
+                            path,
+                            request_model,
+                            status_code
+                        );
                         router
                             .write()
                             .await
@@ -165,18 +202,20 @@ impl Forwarder {
                         .write()
                         .await
                         .record_failure(app_type, &state.provider_id);
-                    let request_log = cc_switch_lib::database::ProxyRequestLogRecord {
-                        app_type: app_type.to_string(),
-                        provider_id: state.provider_id.clone(),
-                        request_path: path.clone(),
-                        request_model: request_model.clone(),
-                        status_code: Some(status_code),
-                        success: false,
-                        error_message: Some(format!("upstream status {}", status_code)),
-                    };
-                    if let Err(e) = state.db.save_proxy_request_log(&request_log) {
-                        log::error!("[Proxy] Failed to save request log: {}", e);
-                    }
+                    log::warn!(
+                        "[Proxy] app_type={} provider={} upstream returned non-success status={} (will try next candidate if any)",
+                        app_type,
+                        state.provider_id,
+                        status_code
+                    );
+                    log::warn!(
+                        "[Proxy] request_result app_type={} provider={} path={} model={:?} status={} success=false reason=upstream_status",
+                        app_type,
+                        state.provider_id,
+                        path,
+                        request_model,
+                        status_code
+                    );
                     last_response = Some((state.provider_id.clone(), response));
                 }
                 Err(status) => {
@@ -184,31 +223,47 @@ impl Forwarder {
                         .write()
                         .await
                         .record_failure(app_type, &state.provider_id);
-                    let request_log = cc_switch_lib::database::ProxyRequestLogRecord {
-                        app_type: app_type.to_string(),
-                        provider_id: state.provider_id.clone(),
-                        request_path: path.clone(),
+                    log::error!(
+                        "[Proxy] app_type={} provider={} forward failed status={} (will try next candidate if any)",
+                        app_type,
+                        state.provider_id,
+                        status
+                    );
+                    log::error!(
+                        "[Proxy] request_result app_type={} provider={} path={} model={:?} status={} success=false reason=forward_error",
+                        app_type,
+                        state.provider_id,
+                        path,
                         request_model,
-                        status_code: Some(i32::from(status.as_u16())),
-                        success: false,
-                        error_message: Some(format!("forward error {}", status)),
-                    };
-                    if let Err(e) = state.db.save_proxy_request_log(&request_log) {
-                        log::error!("[Proxy] Failed to save request log: {}", e);
-                    }
+                        status
+                    );
                     last_status = Some(status);
                 }
             }
         }
 
         if let Some((provider_id, response)) = last_response {
+            log::warn!(
+                "[Proxy] app_type={} returning last non-success upstream response from provider={} status={} elapsed_ms={}",
+                app_type,
+                provider_id,
+                response.status(),
+                started_at.elapsed().as_millis()
+            );
             return Ok(ForwardResult {
                 response,
                 provider_id,
             });
         }
 
-        Err(last_status.unwrap_or(StatusCode::BAD_GATEWAY))
+        let final_status = last_status.unwrap_or(StatusCode::BAD_GATEWAY);
+        log::error!(
+            "[Proxy] app_type={} all provider attempts failed final_status={} elapsed_ms={}",
+            app_type,
+            final_status,
+            started_at.elapsed().as_millis()
+        );
+        Err(final_status)
     }
 
     async fn forward_once(
@@ -264,6 +319,7 @@ impl Forwarder {
         );
 
         // Transform request using adapter
+        let original_body_json = body_json.clone();
         let transform_input = TransformInput {
             body: body_json,
             upstream_url: upstream_url.clone(),
@@ -374,6 +430,30 @@ impl Forwarder {
                 path,
                 excerpt.chars().take(1000).collect::<String>()
             );
+
+            if should_retry_deepseek_with_rectified_request(
+                state.adapter.provider_type(),
+                status,
+                &excerpt,
+            ) {
+                log::warn!(
+                    "[Proxy] Retrying DeepSeek request with strict rectification for {}",
+                    path
+                );
+                let retry_body = deepseek_strict_rectify_request(original_body_json);
+                let retry_response = self
+                    .forward_once_with_body(
+                        state.clone(),
+                        reqwest_method,
+                        headers,
+                        retry_body,
+                        path.clone(),
+                        query.clone(),
+                    )
+                    .await?;
+                return Ok(retry_response);
+            }
+
             return Ok(response
                 .body(Body::from(body))
                 .expect("failed to build error response"));
@@ -467,6 +547,98 @@ impl Forwarder {
             .body(Body::from(transform_result.body.to_vec()))
             .unwrap())
     }
+
+    async fn forward_once_with_body(
+        &self,
+        state: Arc<ProxyState>,
+        reqwest_method: Method,
+        headers: axum::http::HeaderMap,
+        body_json: Value,
+        _path: String,
+        _query: String,
+    ) -> Result<Response, StatusCode> {
+        let auth_info = state
+            .adapter
+            .get_auth_info(&state.provider, state.account_id.as_deref())
+            .await
+            .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        let upstream_url = state
+            .adapter
+            .extract_upstream_url(&state.provider)
+            .unwrap_or_else(|| self.config.upstream_url.clone());
+        let transform_output = state
+            .adapter
+            .transform_request(TransformInput {
+                body: body_json,
+                upstream_url,
+                prompt_cache_key: None,
+                requested_stream: false,
+                codex_fast_mode: self.config.codex_fast_mode,
+            })
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+        let request_body = serde_json::to_vec(&transform_output.body).map_err(|_| StatusCode::BAD_REQUEST)?;
+        let mut upstream_req = self
+            .http_client
+            .request(reqwest_method, &transform_output.upstream_url)
+            .body(request_body);
+        let auth_headers = state
+            .adapter
+            .get_auth_headers(&auth_info)
+            .map_err(|_| StatusCode::BAD_GATEWAY)?;
+        for (name, value) in auth_headers {
+            upstream_req = upstream_req.header(name, value);
+        }
+        upstream_req = copy_forward_headers(upstream_req, &headers);
+        upstream_req = upstream_req.header(header::CONTENT_TYPE, "application/json");
+        let upstream_res = upstream_req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        let status = StatusCode::from_u16(upstream_res.status().as_u16()).unwrap_or(StatusCode::OK);
+        let mut response = Response::builder().status(status);
+        response = copy_response_headers(response, upstream_res.headers());
+        let body = upstream_res.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        Ok(response.body(Body::from(body)).expect("failed to build retry response"))
+    }
+}
+
+fn should_retry_deepseek_with_rectified_request(
+    provider_type: &str,
+    status: StatusCode,
+    error_body: &str,
+) -> bool {
+    if provider_type != "deepseek" || status != StatusCode::BAD_REQUEST {
+        return false;
+    }
+    let msg = error_body.to_lowercase();
+    (msg.contains("thinking") && msg.contains("signature"))
+        || (msg.contains("thinking") && msg.contains("budget_tokens"))
+}
+
+fn deepseek_strict_rectify_request(mut value: Value) -> Value {
+    fn walk(v: &mut Value) {
+        match v {
+            Value::Object(map) => {
+                map.remove("thinking");
+                map.remove("signature");
+                for child in map.values_mut() {
+                    walk(child);
+                }
+            }
+            Value::Array(arr) => {
+                arr.retain(|item| {
+                    !matches!(
+                        item.get("type").and_then(Value::as_str),
+                        Some("thinking" | "redacted_thinking")
+                    )
+                });
+                for item in arr.iter_mut() {
+                    walk(item);
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(&mut value);
+    value
 }
 
 fn apply_model_mapping(body: &mut Value, mapping: &super::types::ModelMapping) {

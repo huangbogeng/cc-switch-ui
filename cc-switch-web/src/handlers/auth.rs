@@ -20,12 +20,15 @@ pub async fn login(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<LoginRequest>,
 ) -> Json<LoginResponse> {
+    log::info!("[Auth] login requested");
     if payload.token == state.token {
+        log::info!("[Auth] login success");
         Json(LoginResponse {
             success: true,
             message: "Login successful".to_string(),
         })
     } else {
+        log::warn!("[Auth] login failed: invalid token");
         Json(LoginResponse {
             success: false,
             message: "Invalid token".to_string(),

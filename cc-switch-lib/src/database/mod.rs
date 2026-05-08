@@ -172,6 +172,7 @@ impl Database {
             "
         )?;
         migrate_proxy_config_schema(&conn)?;
+        migrate_proxy_request_logs_schema(&conn)?;
         Ok(())
     }
 
@@ -633,6 +634,58 @@ fn migrate_proxy_config_schema(conn: &Connection) -> Result<(), AppError> {
         conn.execute(
             "INSERT INTO proxy_config (id, config_json) VALUES (1, ?1)",
             params![config_json],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    Ok(())
+}
+
+fn migrate_proxy_request_logs_schema(conn: &Connection) -> Result<(), AppError> {
+    let columns = table_columns(conn, "proxy_request_logs")?;
+    if columns.is_empty() {
+        // Table does not exist yet (fresh DB path); CREATE TABLE handles it.
+        return Ok(());
+    }
+
+    let has_column = |name: &str| columns.iter().any(|column| column == name);
+
+    if !has_column("request_path") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN request_path TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("request_model") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN request_model TEXT",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("status_code") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN status_code INTEGER",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("success") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN success INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("error_message") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN error_message TEXT",
+            [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
     }

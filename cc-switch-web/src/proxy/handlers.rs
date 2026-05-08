@@ -8,6 +8,7 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 use cc_switch_lib::database::{Provider, ProxyType};
 use serde::Deserialize;
+use serde_json::Value;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -20,6 +21,7 @@ pub struct SetProxyTargetRequest {
 }
 
 pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    log::info!("[ProxyAPI] proxy_start requested");
     if state.proxy_server.read().await.is_some() {
         return Json(serde_json::json!({"success": false, "error": "Proxy already running"}))
             .into_response();
@@ -39,6 +41,11 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
                 .into_response();
         }
     };
+    log::info!(
+        "[ProxyAPI] proxy_start target provider_id={} provider_name={}",
+        target_provider.id,
+        target_provider.name
+    );
 
     // Check if provider is supported by any adapter
     let registry = create_registry(state.codex_oauth.clone(), state.copilot_oauth.clone());
@@ -67,6 +74,33 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let account_id = provider_codex_account_id(&target_provider);
     let provider_id = target_provider.id.clone();
     let db = state.db.clone();
+
+    let live_settings = super::super::handlers::providers::settings_for_live(
+        &target_provider,
+        state.proxy_listen_port,
+        true,
+    );
+    if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+        log::error!(
+            "[ProxyAPI] proxy_start failed to apply proxied live settings provider_id={}: {}",
+            target_provider.id,
+            e
+        );
+        return Json(serde_json::json!({
+            "success": false,
+            "error": format!("Failed to apply proxied provider config: {}", e)
+        }))
+        .into_response();
+    }
+    if let Err(msg) = ensure_live_base_url_is_proxy(state.proxy_listen_port) {
+        log::error!("[ProxyAPI] proxy_start live settings verification failed: {}", msg);
+        return Json(serde_json::json!({
+            "success": false,
+            "error": format!("Live settings mismatch after proxy start: {}", msg)
+        }))
+        .into_response();
+    }
+
     match server
         .start(
             state.codex_oauth.clone(),
@@ -80,31 +114,81 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     {
         Ok(_actual_addr) => {
             *state.proxy_server.write().await = Some(server);
+            log::info!(
+                "[ProxyAPI] proxy_start success listen_port={} provider_id={}",
+                listen_port,
+                target_provider.id
+            );
             Json(serde_json::json!({"success": true, "listen_addr": format!("http://0.0.0.0:{}", listen_port), "message": "Proxy started"})).into_response()
         }
-        Err(e) => Json(serde_json::json!({"success": false, "error": e})).into_response(),
+        Err(e) => {
+            log::error!("[ProxyAPI] proxy_start failed: {}", e);
+            Json(serde_json::json!({"success": false, "error": e})).into_response()
+        }
     }
 }
 
 pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    log::info!("[ProxyAPI] proxy_stop requested");
+    let target_provider = match get_active_target_provider(&state) {
+        Ok(Some(provider)) => provider,
+        Ok(None) => {
+            return Json(serde_json::json!({
+                "success": false,
+                "error": "No route target selected. Choose a provider route first."
+            }))
+            .into_response();
+        }
+        Err(e) => {
+            return Json(serde_json::json!({"success": false, "error": e.to_string()}))
+                .into_response();
+        }
+    };
+
+    let live_settings = super::super::handlers::providers::settings_for_live(
+        &target_provider,
+        state.proxy_listen_port,
+        false,
+    );
+    log::info!(
+        "[ProxyAPI] proxy_stop restoring live settings for provider_id={}",
+        target_provider.id
+    );
+    if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+        return Json(serde_json::json!({
+            "success": false,
+            "error": format!("Failed to restore provider config: {}", e)
+        }))
+        .into_response();
+    }
+
     let server = state.proxy_server.write().await.take();
     match server {
         Some(s) => {
             if let Err(e) = s.stop().await {
+                log::error!("[ProxyAPI] proxy_stop failed: {}", e);
                 Json(serde_json::json!({"success": false, "error": e})).into_response()
             } else {
+                log::info!("[ProxyAPI] proxy_stop success");
                 Json(serde_json::json!({"success": true, "message": "Proxy stopped"}))
                     .into_response()
             }
         }
-        None => Json(serde_json::json!({"success": false, "error": "Proxy not running"}))
-            .into_response(),
+        None => {
+            log::info!("[ProxyAPI] proxy_stop noop: proxy not running");
+            Json(serde_json::json!({"success": true, "message": "Proxy stopped"})).into_response()
+        }
     }
 }
 
 pub async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let running = state.proxy_server.read().await.is_some();
     let active_target = get_active_target_provider(&state).ok().flatten();
+    log::debug!(
+        "[ProxyAPI] proxy_status requested running={} active_target_provider_id={:?}",
+        running,
+        active_target.as_ref().map(|provider| &provider.id)
+    );
     Json(serde_json::json!({
         "running": running,
         "listen_addr": if running { Some(format!("http://0.0.0.0:{}", state.proxy_listen_port)) } else { None },
@@ -112,10 +196,12 @@ pub async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoRespon
         "http_proxy_url": global_http_proxy_url(&state),
         "active_target_provider_id": active_target.as_ref().map(|provider| provider.id.clone()),
         "active_target_provider_name": active_target.as_ref().map(|provider| provider.name.clone()),
+        "live_base_url": current_live_base_url(),
     })).into_response()
 }
 
 pub async fn proxy_target(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    log::debug!("[ProxyAPI] proxy_target requested");
     match get_active_target_provider(&state) {
         Ok(provider) => Json(serde_json::json!({
             "provider_id": provider.as_ref().map(|provider| provider.id.clone()),
@@ -130,6 +216,10 @@ pub async fn proxy_set_target(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<SetProxyTargetRequest>,
 ) -> impl IntoResponse {
+    log::info!(
+        "[ProxyAPI] proxy_set_target requested provider_id={}",
+        payload.provider_id
+    );
     let provider = match state.db.get_provider(&payload.provider_id, APP_TYPE) {
         Ok(Some(provider)) => provider,
         Ok(None) => {
@@ -154,8 +244,19 @@ pub async fn proxy_set_target(
     }
 
     match state.db.set_proxy_target_provider_id(&payload.provider_id) {
-        Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
+        Ok(()) => {
+            log::info!(
+                "[ProxyAPI] proxy_set_target success provider_id={}",
+                payload.provider_id
+            );
+            Json(serde_json::json!({"success": true})).into_response()
+        }
         Err(e) => {
+            log::error!(
+                "[ProxyAPI] proxy_set_target failed provider_id={} error={}",
+                payload.provider_id,
+                e
+            );
             Json(serde_json::json!({"success": false, "error": e.to_string()})).into_response()
         }
     }
@@ -238,4 +339,26 @@ fn global_http_proxy_url(state: &AppState) -> Option<String> {
         config.host.trim(),
         config.port
     ))
+}
+
+fn ensure_live_base_url_is_proxy(proxy_port: u16) -> Result<(), String> {
+    let expected = format!("http://127.0.0.1:{proxy_port}");
+    let actual = current_live_base_url().unwrap_or_default();
+    if actual == expected {
+        return Ok(());
+    }
+    Err(format!(
+        "expected base_url={}, got base_url={}",
+        expected, actual
+    ))
+}
+
+fn current_live_base_url() -> Option<String> {
+    let path = cc_switch_lib::live::get_live_settings_path();
+    let raw = std::fs::read_to_string(path).ok()?;
+    let value: Value = serde_json::from_str(&raw).ok()?;
+    value
+        .get("base_url")
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }

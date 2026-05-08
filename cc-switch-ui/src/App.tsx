@@ -54,7 +54,7 @@ export default function App() {
               <Sparkles className="h-3.5 w-3.5" />
               Web Admin
             </div>
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-9 w-9 lg:hidden hover:bg-white/10 text-muted-foreground hover:text-foreground">
+            <Button aria-label="Logout" variant="ghost" size="icon" onClick={handleLogout} className="h-9 w-9 lg:hidden hover:bg-white/10 text-muted-foreground hover:text-foreground">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>

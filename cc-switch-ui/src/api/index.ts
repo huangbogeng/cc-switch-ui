@@ -296,21 +296,6 @@ export async function setProxyPort(port: number) {
 }
 
 // Usage
-export interface ProxyUsageSummary {
-  provider_id: string;
-  model: string;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  request_count: number;
-}
-
-export interface ProxyUsageSummaryResponse {
-  summary: ProxyUsageSummary[];
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_requests: number;
-}
-
 export interface ProxyUsageTrend {
   day: string;
   total_input_tokens: number;
@@ -318,22 +303,27 @@ export interface ProxyUsageTrend {
   request_count: number;
 }
 
-export interface ProxyUsageTrendResponse {
+export interface ProxyUsageSummaryResponse {
+  totals: {
+    input_tokens: number;
+    output_tokens: number;
+    request_count: number;
+  };
+  providers: {
+    provider_id: string;
+    input_tokens: number;
+    output_tokens: number;
+    request_count: number;
+  }[];
+  models: {
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    request_count: number;
+  }[];
   trend: ProxyUsageTrend[];
-}
-
-export interface ProxyUsageProvidersResponse {
-  providers: ProxyUsageSummary[];
 }
 
 export async function getProxyUsageSummary() {
   return api<ProxyUsageSummaryResponse>('/usage/summary');
-}
-
-export async function getProxyUsageTrend() {
-  return api<ProxyUsageTrendResponse>('/usage/trend');
-}
-
-export async function getProxyUsageProviders() {
-  return api<ProxyUsageProvidersResponse>('/usage/providers');
 }

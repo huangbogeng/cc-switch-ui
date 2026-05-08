@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
 import {
   listProviders,
@@ -65,6 +65,15 @@ export default function ProvidersPage() {
     }
   };
 
+  const loadProxyStatus = useCallback(async () => {
+    try {
+      const status = await getProxyStatus();
+      setProxyStatus(status);
+    } catch {
+      setProxyStatus(null);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -98,10 +107,8 @@ export default function ProvidersPage() {
   }, []);
 
   useEffect(() => {
-    getProxyStatus()
-      .then(setProxyStatus)
-      .catch(() => setProxyStatus(null));
-  }, []);
+    Promise.resolve().then(loadProxyStatus);
+  }, [loadProxyStatus]);
 
   const handleStartProxy = async (providerId: string) => {
     try {
@@ -109,9 +116,7 @@ export default function ProvidersPage() {
       await setProxyTarget(providerId);
       const result = await startProxy();
       if (!result.success) throw new Error(result.error);
-      getProxyStatus().then(setProxyStatus).catch(() => {
-        setProxyStatus({ running: true, listen_addr: null, active_target_provider_id: providerId });
-      });
+      await loadProxyStatus();
     } catch (e) {
       setProxyError(e instanceof Error ? e.message : 'Failed to start local route');
     }
@@ -122,7 +127,7 @@ export default function ProvidersPage() {
       setProxyError('');
       const result = await stopProxy();
       if (!result.success) throw new Error(result.error);
-      setProxyStatus(null);
+      await loadProxyStatus();
     } catch (e) {
       setProxyError(e instanceof Error ? e.message : 'Failed to stop local route');
     }
@@ -136,7 +141,7 @@ export default function ProvidersPage() {
       if (proxyStatus?.running) {
         await stopProxy();
         await startProxy();
-        getProxyStatus().then(setProxyStatus).catch(() => {});
+        await loadProxyStatus();
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Switch failed');
@@ -216,13 +221,13 @@ export default function ProvidersPage() {
       />
 
       {error && (
-        <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {proxyError && (
-        <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-sm">
+        <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-sm">
           {proxyError}
         </div>
       )}

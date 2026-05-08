@@ -74,6 +74,12 @@ impl ProviderRouter {
         breaker.record_failure();
         // TODO: integrate provider health persistence update when provider health schema is available.
     }
+
+    pub fn allow_provider_request(&mut self, app_type: &str, provider_id: &str) -> bool {
+        let key = breaker_key(app_type, provider_id);
+        let breaker = self.breakers.entry(key).or_insert_with(default_breaker);
+        breaker.allow_request()
+    }
 }
 
 fn default_breaker() -> CircuitBreaker {
