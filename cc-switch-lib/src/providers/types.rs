@@ -25,6 +25,17 @@ pub enum AuthStrategy {
     CodexOAuth,
 }
 
+/// Streaming upstream response format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamingResponseFormat {
+    /// Anthropic Messages SSE, already suitable for Claude-compatible clients.
+    Anthropic,
+    /// OpenAI Chat Completions SSE.
+    OpenAIChat,
+    /// OpenAI Responses SSE.
+    OpenAIResponses,
+}
+
 /// Authentication data resolved from provider configuration or OAuth managers.
 #[derive(Debug, Clone)]
 pub struct AuthInfo {
@@ -56,7 +67,6 @@ impl AuthInfo {
 pub struct TransformInput {
     pub body: serde_json::Value,
     pub upstream_url: String,
-    pub http_proxy_url: Option<String>,
     pub prompt_cache_key: Option<String>,
     pub requested_stream: bool,
     pub codex_fast_mode: bool,

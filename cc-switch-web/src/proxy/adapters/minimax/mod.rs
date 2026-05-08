@@ -2,13 +2,14 @@
 //!
 //! For MiniMax API with Bearer token auth and OpenAI-compatible format.
 
+mod request;
 mod response;
 
 use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
-    TransformOutput, UsageParseResult,
+    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, StreamingResponseFormat,
+    TransformInput, TransformOutput, UsageParseResult,
 };
 
 /// Adapter for MiniMax API (Bearer token auth, OpenAI format)
@@ -69,17 +70,13 @@ impl ProviderAdapter for MiniMaxAdapter {
             let token = token_result.ok_or_else(|| {
                 ProviderError::AuthFailed("No API key found in provider config".into())
             })?;
-            Ok(AuthInfo::new(token, AuthStrategy::Anthropic))
+            // MiniMax uses Bearer token in Authorization header, not x-api-key
+            Ok(AuthInfo::new(token, AuthStrategy::Bearer))
         })
     }
 
     fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
-        Ok(TransformOutput {
-            body: input.body,
-            upstream_url: input.upstream_url,
-            headers: vec![],
-            method: "POST".to_string(),
-        })
+        request::transform(input)
     }
 
     fn transform_response(
@@ -88,6 +85,10 @@ impl ProviderAdapter for MiniMaxAdapter {
         is_streaming: bool,
     ) -> Result<UsageParseResult, ProviderError> {
         response::transform(body, is_streaming)
+    }
+
+    fn streaming_response_format(&self) -> StreamingResponseFormat {
+        StreamingResponseFormat::OpenAIChat
     }
 
     fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {

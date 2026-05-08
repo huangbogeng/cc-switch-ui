@@ -30,7 +30,7 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         Ok(None) => {
             return Json(serde_json::json!({
                 "success": false,
-                "error": "No proxy target selected. Choose a Codex OAuth provider first."
+                "error": "No route target selected. Choose a provider route first."
             }))
             .into_response();
         }
@@ -45,23 +45,30 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     if registry.find_for_provider(&target_provider).is_none() {
         return Json(serde_json::json!({
             "success": false,
-            "error": format!("The provider type '{}' is not supported by the proxy.",
+            "error": format!("The provider type '{}' is not supported by the local route.",
                 target_provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("unknown"))
         }))
         .into_response();
     }
 
-    let status = state.codex_oauth.get_status().await;
-    if !status.authenticated {
-        return Json(serde_json::json!({"success": false, "error": "Not authenticated. Please complete OAuth first."})).into_response();
+    // Only check OAuth status for providers that require it (Codex, Copilot)
+    let provider_type = target_provider
+        .meta
+        .get("providerType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if matches!(provider_type, "codex_oauth" | "copilot") {
+        let status = state.codex_oauth.get_status().await;
+        if !status.authenticated {
+            return Json(serde_json::json!({"success": false, "error": "Not authenticated. Please complete OAuth first."})).into_response();
+        }
     }
 
     let proxy_addr = SocketAddr::from(([0, 0, 0, 0], state.proxy_listen_port));
     let config = ProxyConfig {
         listen_addr: proxy_addr,
         upstream_url: CODEX_RESPONSES_UPSTREAM.to_string(),
-        http_proxy_url: provider_codex_http_proxy(&target_provider)
-            .or_else(|| global_http_proxy_url(&state)),
+        http_proxy_url: global_http_proxy_url(&state),
         prompt_cache_key: provider_prompt_cache_key(&target_provider),
         prompt_cache_key_fallback: target_provider.id.clone(),
         codex_fast_mode: provider_codex_fast_mode(&target_provider),
@@ -115,9 +122,7 @@ pub async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoRespon
         "running": running,
         "listen_addr": if running { Some(format!("http://0.0.0.0:{}", state.proxy_listen_port)) } else { None },
         "upstream_url": CODEX_RESPONSES_UPSTREAM,
-        "http_proxy_url": active_target.as_ref()
-            .and_then(provider_codex_http_proxy)
-            .or_else(|| global_http_proxy_url(&state)),
+        "http_proxy_url": global_http_proxy_url(&state),
         "active_target_provider_id": active_target.as_ref().map(|provider| provider.id.clone()),
         "active_target_provider_name": active_target.as_ref().map(|provider| provider.name.clone()),
     })).into_response()
@@ -155,7 +160,7 @@ pub async fn proxy_set_target(
     if registry.find_for_provider(&provider).is_none() {
         return Json(serde_json::json!({
             "success": false,
-            "error": format!("The provider type '{}' is not supported by the proxy.",
+            "error": format!("The provider type '{}' is not supported by the local route.",
                 provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("unknown"))
         }))
         .into_response();
@@ -188,16 +193,6 @@ fn provider_codex_account_id(provider: &Provider) -> Option<String> {
         .get("authBinding")
         .and_then(|value| value.get("accountId"))
         .and_then(|value| value.as_str())
-        .map(|value| value.to_string())
-}
-
-fn provider_codex_http_proxy(provider: &Provider) -> Option<String> {
-    provider
-        .meta
-        .get("codexHttpProxy")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
         .map(|value| value.to_string())
 }
 

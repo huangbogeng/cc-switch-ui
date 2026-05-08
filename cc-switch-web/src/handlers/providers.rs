@@ -161,18 +161,26 @@ pub async fn switch_provider(
             .into_response();
     }
 
-    // Update current provider in database
+    // Update current provider and local route target in database.
     match state.db.set_current_provider(&id, APP_TYPE) {
-        Ok(()) => Json(serde_json::json!({ "success": true })).into_response(),
+        Ok(()) => {}
         Err(e) => {
             log::error!("Failed to switch provider: {}", e);
-            (
+            return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": e.to_string()})),
             )
-                .into_response()
+                .into_response();
         }
     }
+
+    // Also update route target so the local route follows the current provider.
+    if let Err(e) = state.db.set_proxy_target_provider_id(&id) {
+        log::warn!("Failed to update route target: {}", e);
+        // Non-fatal - continue with provider switch
+    }
+
+    Json(serde_json::json!({ "success": true })).into_response()
 }
 
 fn settings_for_live(provider: &Provider, proxy_port: u16) -> Value {

@@ -1,0 +1,170 @@
+//! Anthropic Messages to MiniMax OpenAI Chat Completions request conversion.
+
+use cc_switch_lib::providers::{ProviderError, TransformInput, TransformOutput};
+use serde_json::{json, Value};
+
+pub fn transform(input: TransformInput) -> Result<TransformOutput, ProviderError> {
+    let body = anthropic_to_openai_chat(input.body, input.requested_stream)
+        .map_err(ProviderError::TransformFailed)?;
+
+    Ok(TransformOutput {
+        body,
+        upstream_url: minimax_chat_completions_url(&input.upstream_url),
+        headers: vec![],
+        method: "POST".to_string(),
+    })
+}
+
+fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value, String> {
+    let mut result = json!({});
+
+    if let Some(model) = body.get("model").and_then(Value::as_str) {
+        result["model"] = json!(model);
+    }
+
+    let mut messages = Vec::new();
+    if let Some(system) = body.get("system") {
+        let text = text_from_content(system);
+        if !text.is_empty() {
+            messages.push(json!({ "role": "system", "content": text }));
+        }
+    }
+
+    if let Some(input_messages) = body.get("messages").and_then(Value::as_array) {
+        for message in input_messages {
+            let role = message
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("user");
+            let content = text_from_content(message.get("content").unwrap_or(&Value::Null));
+            if !content.is_empty() {
+                messages.push(json!({ "role": map_role(role), "content": content }));
+            }
+        }
+    }
+    result["messages"] = json!(messages);
+
+    copy_number(&body, &mut result, "max_tokens");
+    copy_number(&body, &mut result, "temperature");
+    copy_number(&body, &mut result, "top_p");
+    if let Some(stop) = body.get("stop_sequences") {
+        result["stop"] = stop.clone();
+    }
+    if let Some(tools) = body.get("tools").and_then(Value::as_array) {
+        let converted: Vec<Value> = tools
+            .iter()
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": tool.get("name").and_then(Value::as_str).unwrap_or(""),
+                        "description": tool.get("description").cloned().unwrap_or(Value::Null),
+                        "parameters": tool.get("input_schema").cloned().unwrap_or_else(|| json!({})),
+                    }
+                })
+            })
+            .collect();
+        if !converted.is_empty() {
+            result["tools"] = json!(converted);
+        }
+    }
+
+    result["stream"] = json!(requested_stream);
+    if requested_stream {
+        result["stream_options"] = json!({ "include_usage": true });
+    }
+    Ok(result)
+}
+
+fn minimax_chat_completions_url(base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.ends_with("/v1/chat/completions") {
+        return trimmed.to_string();
+    }
+    if let Some(prefix) = trimmed.strip_suffix("/anthropic") {
+        return format!("{prefix}/v1/chat/completions");
+    }
+    if trimmed.ends_with("/v1") {
+        return format!("{trimmed}/chat/completions");
+    }
+    format!("{trimmed}/v1/chat/completions")
+}
+
+fn text_from_content(content: &Value) -> String {
+    if let Some(text) = content.as_str() {
+        return text.to_string();
+    }
+
+    content
+        .as_array()
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter_map(|block| match block.get("type").and_then(Value::as_str) {
+                    Some("text") => block
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    Some("tool_result") => block
+                        .get("content")
+                        .map(text_from_content)
+                        .filter(|text| !text.is_empty()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+        .unwrap_or_default()
+}
+
+fn map_role(role: &str) -> &str {
+    match role {
+        "assistant" => "assistant",
+        "system" => "system",
+        _ => "user",
+    }
+}
+
+fn copy_number(source: &Value, target: &mut Value, key: &str) {
+    if let Some(value) = source.get(key) {
+        if value.is_number() {
+            target[key] = value.clone();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_legacy_anthropic_url_to_chat_completions() {
+        assert_eq!(
+            minimax_chat_completions_url("https://api.minimaxi.com/anthropic"),
+            "https://api.minimaxi.com/v1/chat/completions"
+        );
+        assert_eq!(
+            minimax_chat_completions_url("https://api.minimaxi.com/v1"),
+            "https://api.minimaxi.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn converts_anthropic_messages_to_openai_chat() {
+        let input = json!({
+            "model": "MiniMax-M2.7",
+            "system": "You are terse.",
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hi" }] }],
+            "max_tokens": 128
+        });
+
+        let output = anthropic_to_openai_chat(input, true).unwrap();
+
+        assert_eq!(output["model"], "MiniMax-M2.7");
+        assert_eq!(output["messages"][0]["role"], "system");
+        assert_eq!(output["messages"][1]["content"], "hi");
+        assert_eq!(output["max_tokens"], 128);
+        assert_eq!(output["stream"], true);
+        assert_eq!(output["stream_options"]["include_usage"], true);
+    }
+}
