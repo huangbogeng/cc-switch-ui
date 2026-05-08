@@ -95,3 +95,32 @@ impl ProviderAdapter for CopilotAdapter {
             .map(str::to_string)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn transform_request_passthrough_for_copilot() {
+        let temp = std::env::temp_dir().join("cc-switch-copilot-test");
+        let manager = Arc::new(CopilotAuthManager::new(temp));
+        let adapter = CopilotAdapter::new(manager);
+        let output = adapter
+            .transform_request(TransformInput {
+                body: json!({"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}),
+                upstream_url: "https://api.githubcopilot.com/chat/completions".to_string(),
+                prompt_cache_key: None,
+                requested_stream: true,
+                codex_fast_mode: false,
+            })
+            .expect("transform should succeed");
+
+        assert_eq!(output.method, "POST");
+        assert_eq!(
+            output.upstream_url,
+            "https://api.githubcopilot.com/chat/completions"
+        );
+        assert_eq!(output.body["model"], "gpt-4o-mini");
+    }
+}

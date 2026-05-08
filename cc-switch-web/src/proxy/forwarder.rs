@@ -15,7 +15,9 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use super::failover_switch::FailoverSwitchManager;
 use super::headers::{copy_forward_headers, copy_response_headers};
+use super::provider_router::ProviderRouter;
 use super::session::{build_prompt_cache_key, extract_session_id};
 use super::streaming_responses::{
     openai_chat_sse_to_anthropic_with_usage, responses_sse_to_anthropic,
@@ -27,6 +29,11 @@ pub struct Forwarder {
     pub config: ProxyConfig,
     pub status: RwLock<ProxyStatus>,
     http_client: reqwest::Client,
+}
+
+pub struct ForwardResult {
+    pub response: Response,
+    pub provider_id: String,
 }
 
 impl Forwarder {
@@ -71,15 +78,148 @@ impl Forwarder {
         status.request_count += 1;
     }
 
-    /// Forward an incoming request to the upstream provider
-    pub async fn forward(
+    /// Forward an incoming request using provider candidates with retry/failover.
+    pub async fn forward_with_retry(
         &self,
-        state: Arc<ProxyState>,
+        app_type: &str,
+        router: Arc<RwLock<ProviderRouter>>,
+        failover_switch: Arc<FailoverSwitchManager>,
+        current_provider_id: String,
+        candidate_states: Vec<Arc<ProxyState>>,
         req: Request,
-    ) -> Result<Response, StatusCode> {
+    ) -> Result<ForwardResult, StatusCode> {
+        if candidate_states.is_empty() {
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+
         // Increment request count
         self.increment_requests().await;
 
+        let path = req.uri().path().to_string();
+        let query = req.uri().query().unwrap_or_default().to_string();
+        let method = req.method().clone();
+        let headers = req.headers().clone();
+        let body = to_bytes(req.into_body(), 50 * 1024 * 1024)
+            .await
+            .map_err(|e| {
+                log::error!("[Proxy] Failed to read request body for {}: {}", path, e);
+                StatusCode::BAD_REQUEST
+            })?;
+
+        let mut last_response: Option<(String, Response)> = None;
+        let mut last_status: Option<StatusCode> = None;
+
+        for state in candidate_states {
+            let mut body_json: Value = serde_json::from_slice(&body).map_err(|e| {
+                log::error!("[Proxy] Failed to parse request body for {}: {}", path, e);
+                StatusCode::BAD_REQUEST
+            })?;
+            apply_model_mapping(&mut body_json, &self.config.model_mapping);
+            let request_model = extract_request_model(&body_json);
+
+            let attempt_result = self
+                .forward_once(
+                    state.clone(),
+                    method.clone(),
+                    headers.clone(),
+                    body_json,
+                    path.clone(),
+                    query.clone(),
+                )
+                .await;
+
+            match attempt_result {
+                Ok(response) => {
+                    let status_code = i32::from(response.status().as_u16());
+                    if response.status().is_success() {
+                        let request_log = cc_switch_lib::database::ProxyRequestLogRecord {
+                            app_type: app_type.to_string(),
+                            provider_id: state.provider_id.clone(),
+                            request_path: path.clone(),
+                            request_model: request_model.clone(),
+                            status_code: Some(status_code),
+                            success: true,
+                            error_message: None,
+                        };
+                        if let Err(e) = state.db.save_proxy_request_log(&request_log) {
+                            log::error!("[Proxy] Failed to save request log: {}", e);
+                        }
+                        router
+                            .write()
+                            .await
+                            .record_success(app_type, &state.provider_id);
+                        if state.provider_id != current_provider_id {
+                            if let Err(e) = failover_switch
+                                .try_switch(app_type, &state.provider_id)
+                                .await
+                            {
+                                log::error!("[Proxy] Failed to apply failover switch: {}", e);
+                            }
+                        }
+                        return Ok(ForwardResult {
+                            response,
+                            provider_id: state.provider_id.clone(),
+                        });
+                    }
+                    router
+                        .write()
+                        .await
+                        .record_failure(app_type, &state.provider_id);
+                    let request_log = cc_switch_lib::database::ProxyRequestLogRecord {
+                        app_type: app_type.to_string(),
+                        provider_id: state.provider_id.clone(),
+                        request_path: path.clone(),
+                        request_model: request_model.clone(),
+                        status_code: Some(status_code),
+                        success: false,
+                        error_message: Some(format!("upstream status {}", status_code)),
+                    };
+                    if let Err(e) = state.db.save_proxy_request_log(&request_log) {
+                        log::error!("[Proxy] Failed to save request log: {}", e);
+                    }
+                    last_response = Some((state.provider_id.clone(), response));
+                }
+                Err(status) => {
+                    router
+                        .write()
+                        .await
+                        .record_failure(app_type, &state.provider_id);
+                    let request_log = cc_switch_lib::database::ProxyRequestLogRecord {
+                        app_type: app_type.to_string(),
+                        provider_id: state.provider_id.clone(),
+                        request_path: path.clone(),
+                        request_model,
+                        status_code: Some(i32::from(status.as_u16())),
+                        success: false,
+                        error_message: Some(format!("forward error {}", status)),
+                    };
+                    if let Err(e) = state.db.save_proxy_request_log(&request_log) {
+                        log::error!("[Proxy] Failed to save request log: {}", e);
+                    }
+                    last_status = Some(status);
+                }
+            }
+        }
+
+        if let Some((provider_id, response)) = last_response {
+            return Ok(ForwardResult {
+                response,
+                provider_id,
+            });
+        }
+
+        Err(last_status.unwrap_or(StatusCode::BAD_GATEWAY))
+    }
+
+    async fn forward_once(
+        &self,
+        state: Arc<ProxyState>,
+        method: axum::http::Method,
+        headers: axum::http::HeaderMap,
+        body_json: Value,
+        path: String,
+        query: String,
+    ) -> Result<Response, StatusCode> {
         // Resolve auth through the adapter; it decides the provider strategy,
         // while the forwarder only injects the resulting headers.
         let auth_info = state
@@ -109,24 +249,6 @@ impl Forwarder {
             .extract_prompt_cache_key(&state.provider)
             .or_else(|| self.config.prompt_cache_key.clone());
 
-        // Build path and query
-        let path = req.uri().path().to_string();
-        let query = req.uri().query().unwrap_or_default().to_string();
-
-        // Extract method and headers
-        let method = req.method().clone();
-        let headers = req.headers().clone();
-        let body = to_bytes(req.into_body(), 50 * 1024 * 1024)
-            .await
-            .map_err(|e| {
-                log::error!("[Proxy] Failed to read request body for {}: {}", path, e);
-                StatusCode::BAD_REQUEST
-            })?;
-        let mut body_json: Value = serde_json::from_slice(&body).map_err(|e| {
-            log::error!("[Proxy] Failed to parse request body for {}: {}", path, e);
-            StatusCode::BAD_REQUEST
-        })?;
-        apply_model_mapping(&mut body_json, &self.config.model_mapping);
         let requested_stream = body_json.get("stream").and_then(Value::as_bool) != Some(false);
         let session = extract_session_id(&headers, &body_json);
         let cache_key = build_prompt_cache_key(
@@ -356,6 +478,12 @@ fn apply_model_mapping(body: &mut Value, mapping: &super::types::ModelMapping) {
         log::debug!("[Proxy] Model mapping: {} -> {}", original, mapped);
         body["model"] = json!(mapped);
     }
+}
+
+fn extract_request_model(body: &Value) -> Option<String> {
+    body.get("model")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
 }
 
 fn cache_key_log_id(value: &str) -> String {

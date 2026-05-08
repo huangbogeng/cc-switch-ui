@@ -13,3 +13,21 @@ pub fn transform(body: Bytes, _is_streaming: bool) -> Result<UsageParseResult, P
 
     Ok(UsageParseResult { record, body })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_openai_compatible_usage_for_gemini_proxy() {
+        let body = Bytes::from_static(
+            br#"{"model":"gemini-2.5-pro","usage":{"prompt_tokens":8,"completion_tokens":13}}"#,
+        );
+        let result = transform(body.clone(), false).expect("transform should succeed");
+        let record = result.record.expect("usage record should exist");
+        assert_eq!(record.model, "gemini-2.5-pro");
+        assert_eq!(record.input_tokens, 8);
+        assert_eq!(record.output_tokens, 13);
+        assert_eq!(result.body, body);
+    }
+}

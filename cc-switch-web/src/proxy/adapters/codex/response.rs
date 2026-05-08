@@ -26,3 +26,29 @@ pub fn transform(body: Bytes, is_streaming: bool) -> Result<UsageParseResult, Pr
         body: transformed,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn streaming_mode_keeps_body_without_usage_record() {
+        let body =
+            Bytes::from_static(b"event: response.output_text.delta\ndata: {\"delta\":\"hi\"}\n\n");
+        let result = transform(body.clone(), true).expect("transform should succeed");
+        assert!(result.record.is_none());
+        assert_eq!(result.body, body);
+    }
+
+    #[test]
+    fn non_streaming_extracts_usage() {
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-5","usage":{"prompt_tokens":7,"completion_tokens":11}}"#,
+        );
+        let result = transform(body, false).expect("transform should succeed");
+        let record = result.record.expect("usage record should exist");
+        assert_eq!(record.model, "gpt-5");
+        assert_eq!(record.input_tokens, 7);
+        assert_eq!(record.output_tokens, 11);
+    }
+}

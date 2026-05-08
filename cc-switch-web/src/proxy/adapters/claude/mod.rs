@@ -84,3 +84,27 @@ impl ProviderAdapter for ClaudeAdapter {
             .map(str::to_string)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn transform_request_passthrough_for_claude() {
+        let adapter = ClaudeAdapter::new();
+        let output = adapter
+            .transform_request(TransformInput {
+                body: json!({"model":"claude-3","messages":[{"role":"user","content":"hi"}]}),
+                upstream_url: "https://api.anthropic.com/v1/messages".to_string(),
+                prompt_cache_key: None,
+                requested_stream: true,
+                codex_fast_mode: false,
+            })
+            .expect("transform should succeed");
+
+        assert_eq!(output.method, "POST");
+        assert_eq!(output.upstream_url, "https://api.anthropic.com/v1/messages");
+        assert_eq!(output.body["model"], "claude-3");
+    }
+}

@@ -36,10 +36,10 @@ fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value
                 .get("role")
                 .and_then(Value::as_str)
                 .unwrap_or("user");
-            let content = text_from_content(message.get("content").unwrap_or(&Value::Null));
-            if !content.is_empty() {
-                messages.push(json!({ "role": map_role(role), "content": content }));
-            }
+            messages.extend(convert_message(
+                role,
+                message.get("content").unwrap_or(&Value::Null),
+            ));
         }
     }
     result["messages"] = json!(messages);
@@ -117,6 +117,76 @@ fn text_from_content(content: &Value) -> String {
         .unwrap_or_default()
 }
 
+fn convert_message(role: &str, content: &Value) -> Vec<Value> {
+    if let Some(text) = content.as_str() {
+        if text.is_empty() {
+            return vec![];
+        }
+        return vec![json!({ "role": map_role(role), "content": text })];
+    }
+
+    let Some(blocks) = content.as_array() else {
+        return vec![];
+    };
+
+    let mut content_parts: Vec<String> = Vec::new();
+    let mut tool_calls: Vec<Value> = Vec::new();
+    let mut tool_results: Vec<Value> = Vec::new();
+
+    for block in blocks {
+        match block.get("type").and_then(Value::as_str) {
+            Some("text") => {
+                if let Some(text) = block.get("text").and_then(Value::as_str) {
+                    if !text.is_empty() {
+                        content_parts.push(text.to_string());
+                    }
+                }
+            }
+            Some("tool_use") => {
+                let id = block.get("id").and_then(Value::as_str).unwrap_or("");
+                let name = block.get("name").and_then(Value::as_str).unwrap_or("");
+                let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
+                tool_calls.push(json!({
+                    "id": id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string()),
+                    }
+                }));
+            }
+            Some("tool_result") => {
+                let tool_use_id = block
+                    .get("tool_use_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let content_text = text_from_content(block.get("content").unwrap_or(&Value::Null));
+                tool_results.push(json!({
+                    "role": "tool",
+                    "tool_call_id": tool_use_id,
+                    "content": content_text,
+                }));
+            }
+            _ => {}
+        }
+    }
+
+    let mut output = Vec::new();
+    let merged_content = content_parts.join("\n\n");
+    if !merged_content.is_empty() || !tool_calls.is_empty() {
+        let mut msg = json!({
+            "role": map_role(role),
+            "content": if merged_content.is_empty() { Value::Null } else { json!(merged_content) },
+        });
+        if !tool_calls.is_empty() {
+            msg["tool_calls"] = json!(tool_calls);
+        }
+        output.push(msg);
+    }
+    output.extend(tool_results);
+    output
+}
+
 fn map_role(role: &str) -> &str {
     match role {
         "assistant" => "assistant",
@@ -166,5 +236,36 @@ mod tests {
         assert_eq!(output["max_tokens"], 128);
         assert_eq!(output["stream"], true);
         assert_eq!(output["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn converts_tool_use_and_tool_result_roundtrip_shape() {
+        let input = json!({
+            "model": "MiniMax-M2.7",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        { "type": "text", "text": "Let me call a tool" },
+                        { "type": "tool_use", "id": "call_1", "name": "lookup", "input": { "q": "BTC" } }
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "tool_result", "tool_use_id": "call_1", "content": "price ok" }
+                    ]
+                }
+            ]
+        });
+
+        let output = anthropic_to_openai_chat(input, true).unwrap();
+        let messages = output["messages"].as_array().unwrap();
+
+        assert_eq!(messages[0]["role"], "assistant");
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "call_1");
+        assert_eq!(messages[0]["tool_calls"][0]["function"]["name"], "lookup");
+        assert_eq!(messages[1]["role"], "tool");
+        assert_eq!(messages[1]["tool_call_id"], "call_1");
     }
 }

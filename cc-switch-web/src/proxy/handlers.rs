@@ -51,19 +51,6 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .into_response();
     }
 
-    // Only check OAuth status for providers that require it (Codex, Copilot)
-    let provider_type = target_provider
-        .meta
-        .get("providerType")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if matches!(provider_type, "codex_oauth" | "copilot") {
-        let status = state.codex_oauth.get_status().await;
-        if !status.authenticated {
-            return Json(serde_json::json!({"success": false, "error": "Not authenticated. Please complete OAuth first."})).into_response();
-        }
-    }
-
     let proxy_addr = SocketAddr::from(([0, 0, 0, 0], state.proxy_listen_port));
     let config = ProxyConfig {
         listen_addr: proxy_addr,

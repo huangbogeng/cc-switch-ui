@@ -1,0 +1,56 @@
+   Compiling cc-switch-lib v0.1.0 (/home/huangbogeng/github.com/huangbogeng/cc-switch-ui/cc-switch-lib)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.71s
+     Running unittests src/lib.rs (target/debug/deps/cc_switch_lib-de73d7696e015bff)
+
+running 42 tests
+test config::tests::derive_mcp_path_from_override_preserves_folder_name ... ok
+test oauth::codex::tests::test_compute_expires_at_ms ... ok
+test oauth::codex::tests::test_compute_expires_at_ms_default ... ok
+test oauth::codex::tests::test_cached_token_expiring_soon ... ok
+test config::tests::derive_mcp_path_from_override_supports_relative_rootless_dir ... ok
+test config::tests::derive_mcp_path_from_root_like_dir_returns_none ... ok
+test config::tests::derive_mcp_path_from_override_handles_non_hidden_folder ... ok
+test oauth::codex::tests::test_parse_interval_default ... ok
+test oauth::codex::tests::test_parse_interval_string ... ok
+test oauth::codex::tests::test_parse_interval_min ... ok
+test oauth::codex::tests::test_parse_interval_number ... ok
+test oauth::codex::tests::test_parse_jwt_claims_invalid ... ok
+test oauth::copilot::tests::test_composite_account_id ... ok
+test oauth::codex::tests::test_parse_jwt_claims_organizations_fallback ... ok
+test oauth::codex::tests::test_parse_jwt_claims_valid ... ok
+test oauth::copilot::tests::test_auth_status_serialization ... ok
+test oauth::copilot::tests::test_fallback_default_account_prefers_latest_authenticated ... ok
+test database::tests::migrates_legacy_proxy_config_table_to_json_schema ... ok
+test oauth::copilot::tests::test_copilot_token_expiry ... ok
+test oauth::codex::tests::test_manager_initial_state ... ok
+test oauth::copilot::tests::test_clear_auth_clears_all_api_endpoint_cache ... ok
+test oauth::copilot::tests::test_fetch_and_cache_endpoint_requires_account ... ok
+test oauth::copilot::tests::test_clear_auth_cleans_memory_even_when_file_removal_fails ... ok
+test oauth::copilot::tests::test_github_account_from_data_ghes_uses_composite_id ... ok
+test oauth::copilot::tests::test_github_account_from_data ... ok
+test oauth::codex::tests::test_manager_save_and_load ... ok
+test oauth::copilot::tests::test_legacy_format_detection ... ok
+test oauth::copilot::tests::test_multi_account_store_serialization ... ok
+test oauth::copilot::tests::test_normalize_github_domain ... ok
+test providers::adapter::tests::anthropic_auth_uses_x_api_key ... ok
+test oauth::copilot::tests::test_get_api_endpoint_cache_hit_skips_fetch ... ok
+test providers::adapter::tests::bearer_auth_uses_authorization_header ... ok
+test oauth::codex::tests::test_remove_account ... ok
+test oauth::copilot::tests::test_get_api_endpoint_returns_default_when_not_cached ... ok
+test oauth::copilot::tests::test_get_api_endpoint_returns_default_for_unknown_account ... ok
+test oauth::copilot::tests::test_get_default_api_endpoint_uses_default_account ... ok
+test providers::adapter::tests::codex_oauth_adds_originator ... ok
+test providers::adapter::tests::copilot_auth_adds_fingerprint_headers ... ok
+test providers::adapter::tests::google_api_key_uses_x_goog_api_key ... ok
+test oauth::copilot::tests::test_get_api_endpoint_returns_cached_value ... ok
+test oauth::copilot::tests::test_get_model_vendor_from_cache ... ok
+test oauth::copilot::tests::test_remove_account_clears_api_endpoint_cache ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests cc_switch_lib
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
