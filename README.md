@@ -23,6 +23,20 @@ Configuring API Providers for Claude Code traditionally requires manually editin
 
 ---
 
+## 📌 Project Status (2026-05-08)
+
+- Backend crate rename completed: `cc-switch-web` -> `cc-switch-server`.
+- Backend modularization Phase 0 and Phase 1 completed.
+- Proxy streaming pipeline is now modularized under `cc-switch-server/src/proxy/streaming/`:
+  - `openai_chat.rs`
+  - `responses.rs`
+  - `common.rs`
+  - `tool_blocks.rs`
+  - `finalization.rs`
+- Current focus: Phase 2 (`forwarder.rs` decomposition) while avoiding over-fragmented files.
+
+---
+
 ## 🚀 Supported Providers
 
 | Provider | Type | Auth Method | Description |
