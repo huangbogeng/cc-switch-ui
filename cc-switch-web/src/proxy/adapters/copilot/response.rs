@@ -13,3 +13,21 @@ pub fn transform(body: Bytes, _is_streaming: bool) -> Result<UsageParseResult, P
 
     Ok(UsageParseResult { record, body })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_openai_compatible_usage_for_copilot() {
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-4o-mini","usage":{"prompt_tokens":5,"completion_tokens":9}}"#,
+        );
+        let result = transform(body.clone(), false).expect("transform should succeed");
+        let record = result.record.expect("usage record should exist");
+        assert_eq!(record.model, "gpt-4o-mini");
+        assert_eq!(record.input_tokens, 5);
+        assert_eq!(record.output_tokens, 9);
+        assert_eq!(result.body, body);
+    }
+}

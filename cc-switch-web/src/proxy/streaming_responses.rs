@@ -278,6 +278,10 @@ where
         let mut sent_message_stop = false;
         let mut sent_usage = false;
         let mut latest_usage: Option<OpenAIChatStreamUsage> = None;
+        let mut next_content_index: u32 = 1;
+        let mut tool_blocks_by_index: HashMap<u32, ToolBlockState> = HashMap::new();
+        let mut open_tool_block_indices: Vec<u32> = Vec::new();
+        let mut valid_closed_tool_blocks: u32 = 0;
 
         tokio::pin!(stream);
 
@@ -302,6 +306,14 @@ where
                             sent_usage = true;
                         }
                     }
+                    let closed_tool_block_indices = close_open_tool_blocks(
+                        &mut open_tool_block_indices,
+                        &mut tool_blocks_by_index,
+                        &mut valid_closed_tool_blocks,
+                        &model,
+                        &message_id,
+                        "invalid_tool_block_on_done",
+                    );
                     if sent_message_stop {
                         continue;
                     }
@@ -310,6 +322,12 @@ where
                         yield Ok(sse_event("content_block_stop", json!({
                             "type": "content_block_stop",
                             "index": 0
+                        })));
+                    }
+                    for index in closed_tool_block_indices {
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": index
                         })));
                     }
                     if !sent_message_start {
@@ -357,6 +375,9 @@ where
                     .and_then(|choices| choices.first()) else {
                     continue;
                 };
+                if sent_message_stop {
+                    continue;
+                }
 
                 if let Some(content) = choice
                     .get("delta")
@@ -379,7 +400,95 @@ where
                     })));
                 }
 
-                if choice.get("finish_reason").and_then(Value::as_str).is_some() {
+                if let Some(tool_calls) = choice
+                    .get("delta")
+                    .and_then(|delta| delta.get("tool_calls"))
+                    .and_then(Value::as_array)
+                {
+                    if sent_text_start && !sent_text_stop {
+                        sent_text_stop = true;
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": 0
+                        })));
+                    }
+                    for tool_call in tool_calls {
+                        let tool_index = tool_call
+                            .get("index")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0) as u32;
+
+                        let state = tool_blocks_by_index
+                            .entry(tool_index)
+                            .or_insert_with(|| {
+                                let idx = next_content_index;
+                                next_content_index += 1;
+                                ToolBlockState {
+                                    anthropic_index: idx,
+                                    id: String::new(),
+                                    name: String::new(),
+                                    started: false,
+                                    pending_args: String::new(),
+                                    all_arguments: String::new(),
+                                }
+                            });
+
+                        if let Some(id) = tool_call.get("id").and_then(Value::as_str) {
+                            state.id = id.to_string();
+                        }
+                        if let Some(name) = tool_call
+                            .get("function")
+                            .and_then(|f| f.get("name"))
+                            .and_then(Value::as_str)
+                        {
+                            state.name = name.to_string();
+                        }
+
+                        let should_start = !state.started && !state.id.is_empty() && !state.name.is_empty();
+                        if should_start {
+                            state.started = true;
+                            let index = state.anthropic_index;
+                            yield Ok(sse_event("content_block_start", json!({
+                                "type": "content_block_start",
+                                "index": index,
+                                "content_block": {
+                                    "type": "tool_use",
+                                    "id": state.id,
+                                    "name": state.name
+                                }
+                            })));
+                            open_tool_block_indices.push(tool_index);
+                            if !state.pending_args.is_empty() {
+                                let args = std::mem::take(&mut state.pending_args);
+                                yield Ok(sse_event("content_block_delta", json!({
+                                    "type": "content_block_delta",
+                                    "index": index,
+                                    "delta": { "type": "input_json_delta", "partial_json": args }
+                                })));
+                            }
+                        }
+
+                        if let Some(arguments) = tool_call
+                            .get("function")
+                            .and_then(|f| f.get("arguments"))
+                            .and_then(Value::as_str)
+                        {
+                            state.all_arguments.push_str(arguments);
+                            if state.started {
+                                yield Ok(sse_event("content_block_delta", json!({
+                                    "type": "content_block_delta",
+                                    "index": state.anthropic_index,
+                                    "delta": { "type": "input_json_delta", "partial_json": arguments }
+                                })));
+                            } else {
+                                state.pending_args.push_str(arguments);
+                            }
+                        }
+                    }
+                }
+
+                let finish_reason = choice.get("finish_reason").and_then(Value::as_str);
+                if finish_reason.is_some() {
                     if sent_message_stop {
                         continue;
                     }
@@ -390,10 +499,30 @@ where
                             "index": 0
                         })));
                     }
+                    let closed_tool_block_indices = close_open_tool_blocks(
+                        &mut open_tool_block_indices,
+                        &mut tool_blocks_by_index,
+                        &mut valid_closed_tool_blocks,
+                        &model,
+                        &message_id,
+                        "invalid_tool_block_on_finish",
+                    );
+                    for index in closed_tool_block_indices {
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": index
+                        })));
+                    }
+                    let stop_reason = guarded_openai_finish_reason(
+                        finish_reason,
+                        valid_closed_tool_blocks > 0,
+                        &model,
+                        &message_id,
+                    );
                     yield Ok(sse_event("message_delta", json!({
                         "type": "message_delta",
                         "delta": {
-                            "stop_reason": openai_finish_reason(choice.get("finish_reason").and_then(Value::as_str)),
+                            "stop_reason": stop_reason,
                             "stop_sequence": Value::Null
                         },
                         "usage": openai_usage(data.get("usage"))
@@ -410,6 +539,45 @@ where
             }
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct ToolBlockState {
+    anthropic_index: u32,
+    id: String,
+    name: String,
+    started: bool,
+    pending_args: String,
+    all_arguments: String,
+}
+
+fn close_open_tool_blocks(
+    open_tool_block_indices: &mut Vec<u32>,
+    tool_blocks_by_index: &mut HashMap<u32, ToolBlockState>,
+    valid_closed_tool_blocks: &mut u32,
+    model: &str,
+    message_id: &str,
+    warn_reason: &str,
+) -> Vec<u32> {
+    let mut closed_indices = Vec::with_capacity(open_tool_block_indices.len());
+    for tool_index in open_tool_block_indices.drain(..) {
+        let Some(state) = tool_blocks_by_index.remove(&tool_index) else {
+            continue;
+        };
+        if is_valid_tool_block(&state) {
+            *valid_closed_tool_blocks += 1;
+        } else {
+            log::warn!(
+                "tool_use_downgrade reason={} model={} message_id={} tool_index={}",
+                warn_reason,
+                model,
+                message_id,
+                tool_index
+            );
+        }
+        closed_indices.push(state.anthropic_index);
+    }
+    closed_indices
 }
 
 fn take_sse_block(buffer: &mut String) -> Option<String> {
@@ -489,6 +657,33 @@ fn openai_finish_reason(reason: Option<&str>) -> &'static str {
         Some("tool_calls") | Some("function_call") => "tool_use",
         _ => "end_turn",
     }
+}
+
+fn guarded_openai_finish_reason(
+    reason: Option<&str>,
+    has_valid_closed_tool_block: bool,
+    model: &str,
+    message_id: &str,
+) -> &'static str {
+    if matches!(reason, Some("tool_calls") | Some("function_call")) && !has_valid_closed_tool_block
+    {
+        log::warn!(
+            "tool_use_downgrade reason=missing_valid_closed_tool_block finish_reason={} model={} message_id={}",
+            reason.unwrap_or_default(),
+            model,
+            message_id
+        );
+        return "end_turn";
+    }
+    openai_finish_reason(reason)
+}
+
+fn is_valid_tool_block(state: &ToolBlockState) -> bool {
+    if !state.started || state.id.is_empty() || state.name.is_empty() {
+        return false;
+    }
+    let args = state.all_arguments.trim();
+    args.is_empty() || serde_json::from_str::<Value>(args).is_ok()
 }
 
 fn usage_from_responses(usage: Option<&Value>) -> Value {
@@ -608,5 +803,122 @@ mod tests {
 
         assert_eq!(usage.input_tokens, 7);
         assert_eq!(usage.output_tokens, 11);
+    }
+
+    #[tokio::test]
+    async fn converts_openai_chat_stream_tool_calls() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\"}}]}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"q\\\":\\\"hi\\\"}\"}}]}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":5}}\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(text.contains("\"type\":\"tool_use\""));
+        assert!(text.contains("\"name\":\"lookup\""));
+        assert!(text.contains("\"partial_json\":\"{\\\"q\\\":\\\"hi\\\"}\""));
+        assert!(text.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[tokio::test]
+    async fn downgrades_tool_stop_reason_without_valid_tool_block() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"arguments\":\"{\\\"q\\\":\\\"hi\\\"\"}}]}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":5}}\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(!text.contains("\"type\":\"tool_use\""));
+        assert!(text.contains("\"stop_reason\":\"end_turn\""));
+    }
+
+    #[tokio::test]
+    async fn keeps_tool_stop_reason_with_valid_closed_tool_block() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\"}}]}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"q\\\":\\\"hi\\\"}\"}}]}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":5}}\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(text.contains("\"type\":\"tool_use\""));
+        assert!(text.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[tokio::test]
+    async fn closes_open_tool_blocks_on_done_without_duplicate_message_stop() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\"}}]}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"q\\\":\\\"hi\\\"}\"}}]}}]}\n\n\
+             data: [DONE]\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(text.contains("\"index\":1"));
+        assert_eq!(text.matches("event: content_block_stop").count(), 1);
+        assert_eq!(text.matches("event: message_stop").count(), 1);
+    }
+
+    #[tokio::test]
+    async fn ignores_second_finish_reason_chunk() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert_eq!(text.matches("event: message_delta").count(), 1);
+        assert_eq!(text.matches("event: message_stop").count(), 1);
+    }
+
+    #[tokio::test]
+    async fn ignores_tool_calls_after_message_stop_before_done() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":\\\"late\\\"}\"}}]}}]}\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert_eq!(text.matches("event: message_stop").count(), 1);
+        assert!(!text.contains("\"type\":\"tool_use\""));
+        assert!(!text.contains("\"partial_json\":\"{\\\"q\\\":\\\"late\\\"}\""));
     }
 }

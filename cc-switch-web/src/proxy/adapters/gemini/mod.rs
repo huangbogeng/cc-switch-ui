@@ -94,3 +94,30 @@ impl ProviderAdapter for GeminiAdapter {
             .map(str::to_string)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn transform_request_passthrough_for_gemini() {
+        let adapter = GeminiAdapter::new();
+        let output = adapter
+            .transform_request(TransformInput {
+                body: json!({"model":"gemini-2.5-pro","messages":[{"role":"user","content":"hi"}]}),
+                upstream_url: "https://generativelanguage.googleapis.com/v1beta/models".to_string(),
+                prompt_cache_key: None,
+                requested_stream: false,
+                codex_fast_mode: false,
+            })
+            .expect("transform should succeed");
+
+        assert_eq!(output.method, "POST");
+        assert_eq!(
+            output.upstream_url,
+            "https://generativelanguage.googleapis.com/v1beta/models"
+        );
+        assert_eq!(output.body["model"], "gemini-2.5-pro");
+    }
+}

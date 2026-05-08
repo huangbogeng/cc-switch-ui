@@ -28,15 +28,41 @@ fn openai_chat_to_anthropic_message(body: &[u8]) -> Result<Value, String> {
         .and_then(|choices| choices.first())
         .ok_or_else(|| "OpenAI chat response is missing choices".to_string())?;
     let message = choice.get("message").unwrap_or(choice);
-    let content_text = message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-
     let mut content = Vec::new();
-    if !content_text.is_empty() {
-        content.push(json!({ "type": "text", "text": content_text }));
+    if let Some(msg_content) = message.get("content") {
+        if let Some(text) = msg_content.as_str() {
+            if !text.is_empty() {
+                content.push(json!({ "type": "text", "text": text }));
+            }
+        } else if let Some(parts) = msg_content.as_array() {
+            for part in parts {
+                let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+                match part_type {
+                    "text" | "output_text" => {
+                        if let Some(text) = part.get("text").and_then(Value::as_str) {
+                            if !text.is_empty() {
+                                content.push(json!({ "type": "text", "text": text }));
+                            }
+                        }
+                    }
+                    "refusal" => {
+                        if let Some(refusal) = part.get("refusal").and_then(Value::as_str) {
+                            if !refusal.is_empty() {
+                                content.push(json!({ "type": "text", "text": refusal }));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
+    if let Some(refusal) = message.get("refusal").and_then(Value::as_str) {
+        if !refusal.is_empty() {
+            content.push(json!({ "type": "text", "text": refusal }));
+        }
+    }
+
     if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {
         for tool_call in tool_calls {
             let function = tool_call.get("function").unwrap_or(&Value::Null);
@@ -51,6 +77,36 @@ fn openai_chat_to_anthropic_message(body: &[u8]) -> Result<Value, String> {
                 "name": function.get("name").and_then(Value::as_str).unwrap_or(""),
                 "input": input,
             }));
+        }
+    }
+    if content.is_empty() {
+        if let Some(function_call) = message.get("function_call") {
+            let id = function_call
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let name = function_call
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let input = match function_call.get("arguments") {
+                Some(Value::String(args)) => {
+                    serde_json::from_str::<Value>(args).unwrap_or_else(|_| json!({}))
+                }
+                Some(Value::Object(_)) | Some(Value::Array(_)) => function_call
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({})),
+                _ => json!({}),
+            };
+            if !name.is_empty() || function_call.get("arguments").is_some() {
+                content.push(json!({
+                    "type": "tool_use",
+                    "id": id,
+                    "name": name,
+                    "input": input
+                }));
+            }
         }
     }
 
@@ -103,5 +159,23 @@ mod tests {
         assert_eq!(output["content"][0]["text"], "hello");
         assert_eq!(output["usage"]["input_tokens"], 3);
         assert_eq!(output["usage"]["output_tokens"], 4);
+    }
+
+    #[test]
+    fn converts_legacy_function_call_response() {
+        let input = br#"{
+            "id":"chatcmpl_2",
+            "model":"MiniMax-M2.7",
+            "choices":[{"finish_reason":"function_call","message":{"role":"assistant","function_call":{"id":"call_1","name":"lookup","arguments":"{\"q\":\"hi\"}"}}}],
+            "usage":{"prompt_tokens":3,"completion_tokens":4}
+        }"#;
+
+        let output = openai_chat_to_anthropic_message(input).unwrap();
+
+        assert_eq!(output["stop_reason"], "tool_use");
+        assert_eq!(output["content"][0]["type"], "tool_use");
+        assert_eq!(output["content"][0]["id"], "call_1");
+        assert_eq!(output["content"][0]["name"], "lookup");
+        assert_eq!(output["content"][0]["input"]["q"], "hi");
     }
 }
