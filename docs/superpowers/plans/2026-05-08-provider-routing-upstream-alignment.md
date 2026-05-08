@@ -169,3 +169,25 @@
 - MiniMax tool 调用在代理流式链路可稳定执行
 - request-log/usage 具备请求级可观测性
 - 关键测试套件通过且无新增高优先级回归
+
+---
+
+## Execution Status (2026-05-08)
+
+- `Phase 1` completed:
+  - `ProviderRouter` + `CircuitBreaker` introduced
+  - request-time `forward_with_retry` wired
+  - handlers/server path unified to runtime routing
+- `Phase 2` completed:
+  - `FailoverSwitchManager` introduced and wired
+  - request-level log persistence added (`proxy_request_logs`)
+  - request-log query API added (`/api/usage/request-logs`)
+- `Phase 3` completed:
+  - MiniMax streaming/tool-call guard semantics hardened
+  - duplicate finish/[DONE] stability checks covered
+  - adapter contract tests expanded (Claude/Gemini/Copilot/Codex)
+
+Latest validation snapshot:
+- `cargo check -p cc-switch-web` PASS
+- `cargo test -p cc-switch-web` PASS (`50 passed`)
+- `cargo test -p cc-switch-lib` PASS (`42 passed`)
