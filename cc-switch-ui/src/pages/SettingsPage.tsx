@@ -6,7 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { getProxyPort, setProxyPort } from '@/api';
+import {
+  deleteProxyConfig,
+  getProxyConfig,
+  getProxyPort,
+  setProxyConfig,
+  setProxyPort,
+  type ProxyConfig,
+} from '@/api';
 
 type Language = 'en' | 'zh';
 
@@ -20,6 +27,15 @@ export default function SettingsPage() {
   const [portLoading, setPortLoading] = useState(true);
   const [portSaved, setPortSaved] = useState(false);
   const [portError, setPortError] = useState<string | null>(null);
+  const [outboundProxy, setOutboundProxy] = useState<ProxyConfig>({
+    enabled: false,
+    proxy_type: 'http',
+    host: '127.0.0.1',
+    port: 10809,
+  });
+  const [outboundLoading, setOutboundLoading] = useState(true);
+  const [outboundSaved, setOutboundSaved] = useState(false);
+  const [outboundError, setOutboundError] = useState<string | null>(null);
 
   const loadProxyPort = useCallback(async () => {
     try {
@@ -32,10 +48,20 @@ export default function SettingsPage() {
     }
   }, []);
 
-  // Load proxy port on mount
+  const loadOutboundProxy = useCallback(async () => {
+    try {
+      const config = await getProxyConfig();
+      setOutboundProxy(config);
+    } catch (e) {
+      console.error('Failed to load outbound proxy config:', e);
+    } finally {
+      setOutboundLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void Promise.resolve().then(loadProxyPort);
-  }, [loadProxyPort]);
+    void Promise.resolve().then(() => Promise.all([loadProxyPort(), loadOutboundProxy()]));
+  }, [loadProxyPort, loadOutboundProxy]);
 
   const handleLanguageReset = () => {
     setLanguage('en');
@@ -54,11 +80,39 @@ export default function SettingsPage() {
     }
   };
 
+  const handleOutboundSave = async () => {
+    setOutboundError(null);
+    try {
+      await setProxyConfig(outboundProxy);
+      setOutboundSaved(true);
+      setTimeout(() => setOutboundSaved(false), 2000);
+    } catch (e) {
+      setOutboundError(e instanceof Error ? e.message : 'Failed to save outbound proxy');
+    }
+  };
+
+  const handleOutboundReset = async () => {
+    setOutboundError(null);
+    try {
+      await deleteProxyConfig();
+      setOutboundProxy({
+        enabled: false,
+        proxy_type: 'http',
+        host: '127.0.0.1',
+        port: 10809,
+      });
+      setOutboundSaved(true);
+      setTimeout(() => setOutboundSaved(false), 2000);
+    } catch (e) {
+      setOutboundError(e instanceof Error ? e.message : 'Failed to reset outbound proxy');
+    }
+  };
+
   return (
     <div className="max-w-[1000px] mx-auto">
       <PageHeader
         title="Settings"
-        description="Adjust local interface preferences."
+        description="Adjust local interface and route behavior."
       />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
@@ -100,8 +154,8 @@ export default function SettingsPage() {
 
           <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
             <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-              <CardTitle className="text-[15px] font-bold tracking-tight">Local Proxy Port</CardTitle>
-              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the default local port used by the proxy server.</p>
+              <CardTitle className="text-[15px] font-bold tracking-tight">Local Route Port</CardTitle>
+              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the local Claude Code endpoint port.</p>
             </CardHeader>
             <CardContent className="space-y-5 pt-6">
               {portError && (
@@ -118,7 +172,7 @@ export default function SettingsPage() {
               ) : (
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="space-y-2.5 flex-1 max-w-[240px]">
-                    <Label htmlFor="proxy-port-setting" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Proxy Listen Port</Label>
+                    <Label htmlFor="proxy-port-setting" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Route Listen Port</Label>
                     <Input
                       id="proxy-port-setting"
                       type="number"
@@ -139,6 +193,90 @@ export default function SettingsPage() {
                 <span className="inline-block w-1 h-1 rounded-full bg-muted-foreground/40"></span>
                 Default port is 15721
               </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
+            <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
+              <CardTitle className="text-[15px] font-bold tracking-tight">Outbound Network Proxy</CardTitle>
+              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Optional network proxy used when the local route connects to upstream providers and OAuth services.</p>
+            </CardHeader>
+            <CardContent className="space-y-5 pt-6">
+              {outboundError && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm font-medium text-destructive shadow-sm">
+                  {outboundError}
+                </div>
+              )}
+
+              {outboundLoading ? (
+                <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+                  <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                  Loading outbound proxy...
+                </div>
+              ) : (
+                <>
+                  <label className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={outboundProxy.enabled}
+                      onChange={(e) => setOutboundProxy({ ...outboundProxy, enabled: e.target.checked })}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    Use outbound network proxy
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)_120px]">
+                    <div className="space-y-2.5">
+                      <Label htmlFor="outbound-proxy-type" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Type</Label>
+                      <select
+                        id="outbound-proxy-type"
+                        value={outboundProxy.proxy_type}
+                        onChange={(e) => setOutboundProxy({ ...outboundProxy, proxy_type: e.target.value })}
+                        disabled={!outboundProxy.enabled}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 outline-none"
+                      >
+                        <option value="http">HTTP</option>
+                        <option value="socks5">SOCKS5</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2.5">
+                      <Label htmlFor="outbound-proxy-host" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Host</Label>
+                      <Input
+                        id="outbound-proxy-host"
+                        value={outboundProxy.host}
+                        onChange={(e) => setOutboundProxy({ ...outboundProxy, host: e.target.value })}
+                        disabled={!outboundProxy.enabled}
+                        placeholder="127.0.0.1"
+                        className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-2.5">
+                      <Label htmlFor="outbound-proxy-port" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Port</Label>
+                      <Input
+                        id="outbound-proxy-port"
+                        type="number"
+                        value={outboundProxy.port}
+                        onChange={(e) => setOutboundProxy({ ...outboundProxy, port: parseInt(e.target.value) || 10809 })}
+                        disabled={!outboundProxy.enabled}
+                        min={1}
+                        max={65535}
+                        className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={handleOutboundSave} className="h-10 rounded-xl shadow-sm px-6">
+                      {outboundSaved ? <Check className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                      {outboundSaved ? 'Saved' : 'Save Outbound Proxy'}
+                    </Button>
+                    <Button variant="outline" onClick={handleOutboundReset} className="h-10 rounded-xl border-white/10 hover:bg-white/5">
+                      <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                      Reset
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

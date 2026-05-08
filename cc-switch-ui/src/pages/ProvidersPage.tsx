@@ -8,10 +8,13 @@ import {
   getCurrentProviderId,
   getCodexOAuthStatus,
   setProxyTarget,
+  getProxyStatus,
+  startProxy,
+  stopProxy,
   type Provider,
 } from '../api';
 import type { CodexAccount } from '../api';
-import type { ProviderPreset } from '../config/providerPresets';
+import type { ProviderPreset } from '@/config/providerPresets';
 import { ProviderCard } from '@/components/providers/ProviderCard';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
 import {
@@ -24,7 +27,7 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { providerAuthMode, sortProviders } from '@/lib/provider';
+import { sortProviders } from '@/lib/provider';
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState<Record<string, Provider>>({});
@@ -38,6 +41,12 @@ export default function ProvidersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
+  const [proxyStatus, setProxyStatus] = useState<{
+    running: boolean;
+    listen_addr: string | null;
+    active_target_provider_id: string | null;
+  } | null>(null);
+  const [proxyError, setProxyError] = useState('');
 
   const providerList = sortProviders(providers);
 
@@ -88,6 +97,52 @@ export default function ProvidersPage() {
       .catch(() => setCodexAccounts([]));
   }, []);
 
+  useEffect(() => {
+    getProxyStatus()
+      .then(setProxyStatus)
+      .catch(() => setProxyStatus(null));
+  }, []);
+
+  const handleStartProxy = async (providerId: string) => {
+    try {
+      setProxyError('');
+      await setProxyTarget(providerId);
+      const result = await startProxy();
+      if (!result.success) throw new Error(result.error);
+      getProxyStatus().then(setProxyStatus).catch(() => {
+        setProxyStatus({ running: true, listen_addr: null, active_target_provider_id: providerId });
+      });
+    } catch (e) {
+      setProxyError(e instanceof Error ? e.message : 'Failed to start local route');
+    }
+  };
+
+  const handleStopProxy = async () => {
+    try {
+      setProxyError('');
+      const result = await stopProxy();
+      if (!result.success) throw new Error(result.error);
+      setProxyStatus(null);
+    } catch (e) {
+      setProxyError(e instanceof Error ? e.message : 'Failed to stop local route');
+    }
+  };
+
+  const handleSwitch = async (id: string) => {
+    try {
+      await switchProvider(id);
+      await setProxyTarget(id);
+      setCurrentProviderId(id);
+      if (proxyStatus?.running) {
+        await stopProxy();
+        await startProxy();
+        getProxyStatus().then(setProxyStatus).catch(() => {});
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Switch failed');
+    }
+  };
+
   const handlePresetSelect = (preset: ProviderPreset) => {
     setFormError('');
     setSelectedPreset(preset);
@@ -122,18 +177,6 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleSwitch = async (id: string) => {
-    try {
-      await switchProvider(id);
-      if (providers[id] && providerAuthMode(providers[id]) === 'oauth_proxy') {
-        await setProxyTarget(id);
-      }
-      setCurrentProviderId(id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Switch failed');
-    }
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -163,7 +206,7 @@ export default function ProvidersPage() {
     <div>
       <PageHeader
         title="Providers"
-        description="Create, switch, and maintain Claude Code provider routes."
+        description="Create, switch, and maintain Claude Code routes."
         action={
           <Button onClick={handleAdd}>
             <Plus className="h-4 w-4" />
@@ -175,6 +218,12 @@ export default function ProvidersPage() {
       {error && (
         <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {proxyError && (
+        <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-sm">
+          {proxyError}
         </div>
       )}
 
@@ -206,9 +255,13 @@ export default function ProvidersPage() {
               key={provider.id}
               provider={provider}
               active={provider.id === currentProviderId}
+              proxyRunning={proxyStatus?.running ?? false}
+              proxyTargetId={proxyStatus?.active_target_provider_id ?? null}
               onSwitch={handleSwitch}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onStartProxy={handleStartProxy}
+              onStopProxy={handleStopProxy}
             />
           ))}
         </div>

@@ -40,7 +40,7 @@ export function PresetSelector({ onSelect, selectedId }: Props) {
                   {usesOAuthProxy && (
                     <Badge variant="outline" className="shrink-0 gap-1 text-[10px] leading-4">
                       <KeyRound className="h-3 w-3" />
-                      OAuth Proxy
+                      OAuth
                     </Badge>
                   )}
                 </span>

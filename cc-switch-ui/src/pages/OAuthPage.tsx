@@ -3,17 +3,12 @@ import {
   getCodexOAuthStatus, startCodexOAuth, pollCodexOAuth,
   removeCodexAccount, setDefaultCodexAccount,
   getCopilotOAuthStatus, startCopilotOAuth, pollCopilotOAuth,
-  getProxyStatus, startProxy, stopProxy, setProxyTarget,
-  getProxyConfig, setProxyConfig, deleteProxyConfig,
-  listProviders, type Provider, type CodexAccount,
+  type CodexAccount,
 } from '@/api';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, Loader2, Server, RotateCcw, Save, Check, Trash2 } from 'lucide-react';
-import { providerAuthMode, sortProviders } from '@/lib/provider';
+import { Check, CheckCircle2, Circle, Loader2, Server, Trash2 } from 'lucide-react';
 
 interface CopilotStatus {
   authenticated: boolean;
@@ -26,26 +21,7 @@ interface CodexStatus {
   accounts: CodexAccount[];
 }
 
-interface ProxyStatus {
-  running: boolean;
-  listen_addr: string | null;
-  upstream_url: string;
-  http_proxy_url: string | null;
-  active_target_provider_id: string | null;
-  active_target_provider_name: string | null;
-}
-
-interface ProxyConfig {
-  enabled: boolean;
-  proxy_type: string;
-  host: string;
-  port: number;
-}
-
 export default function OAuthPage() {
-  // Provider state
-  const [providers, setProviders] = useState<Record<string, Provider>>({});
-
   // Codex OAuth state
   const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(null);
   const [codexPending, setCodexPending] = useState(false);
@@ -59,30 +35,6 @@ export default function OAuthPage() {
   const [copilotDeviceCode, setCopilotDeviceCode] = useState('');
   const [copilotUserCode, setCopilotUserCode] = useState('');
   const [copilotVerificationUri, setCopilotVerificationUri] = useState('');
-
-  // Proxy state
-  const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null);
-  const [proxyError, setProxyError] = useState('');
-
-  // Proxy config state
-  const [proxyConfig, setProxyConfigState] = useState<ProxyConfig>({
-    enabled: false,
-    proxy_type: 'http',
-    host: '127.0.0.1',
-    port: 10809,
-  });
-  const [proxyConfigLoading, setProxyConfigLoading] = useState(true);
-  const [proxyConfigSaved, setProxyConfigSaved] = useState(false);
-  const [proxyConfigError, setProxyConfigError] = useState<string | null>(null);
-
-  const loadProviders = useCallback(async () => {
-    try {
-      const data = await listProviders();
-      setProviders(data.providers);
-    } catch (e) {
-      console.error('Failed to load providers:', e);
-    }
-  }, []);
 
   const loadCodexStatus = useCallback(async () => {
     try {
@@ -102,39 +54,16 @@ export default function OAuthPage() {
     }
   }, []);
 
-  const loadProxyStatus = useCallback(async () => {
-    try {
-      const status = await getProxyStatus();
-      setProxyStatus(status);
-    } catch (e) {
-      console.error('Proxy status error:', e);
-    }
-  }, []);
-
-  const loadProxyConfig = useCallback(async () => {
-    try {
-      const config = await getProxyConfig();
-      setProxyConfigState(config);
-    } catch (e) {
-      console.error('Failed to load proxy config:', e);
-    } finally {
-      setProxyConfigLoading(false);
-    }
-  }, []);
-
   const loadAll = useCallback(async () => {
     await Promise.all([
-      loadProviders(),
       loadCodexStatus(),
       loadCopilotStatus(),
-      loadProxyStatus(),
     ]);
-  }, [loadProviders, loadCodexStatus, loadCopilotStatus, loadProxyStatus]);
+  }, [loadCodexStatus, loadCopilotStatus]);
 
   useEffect(() => {
-    void Promise.resolve().then(loadProxyConfig);
     Promise.resolve().then(loadAll);
-  }, [loadAll, loadProxyConfig]);
+  }, [loadAll]);
 
   // Codex OAuth handlers
   const handleStartCodexOAuth = async () => {
@@ -225,44 +154,11 @@ export default function OAuthPage() {
     return false;
   };
 
-  // Proxy config handlers
-  const handleProxyConfigSave = async () => {
-    setProxyConfigError(null);
-    try {
-      await setProxyConfig(proxyConfig);
-      setProxyConfigSaved(true);
-      setTimeout(() => setProxyConfigSaved(false), 2000);
-    } catch (e) {
-      setProxyConfigError(e instanceof Error ? e.message : 'Failed to save proxy config');
-    }
-  };
-
-  const handleProxyConfigReset = async () => {
-    setProxyConfigError(null);
-    try {
-      await deleteProxyConfig();
-      setProxyConfigState({
-        enabled: false,
-        proxy_type: 'http',
-        host: '127.0.0.1',
-        port: 10809,
-      });
-      setProxyConfigSaved(true);
-      setTimeout(() => setProxyConfigSaved(false), 2000);
-    } catch (e) {
-      setProxyConfigError(e instanceof Error ? e.message : 'Failed to reset proxy config');
-    }
-  };
-
-  // Proxy target providers
-  const providerList = sortProviders(providers);
-  const proxyTargetProviders = providerList.filter((p) => providerAuthMode(p) === 'oauth_proxy');
-
   return (
     <div>
       <PageHeader
-        title="OAuth & Proxy"
-        description="Manage OAuth connections and proxy configuration."
+        title="OAuth"
+        description="Manage account connections used by OAuth-backed routes."
       />
 
       <div className="space-y-6">
@@ -293,7 +189,7 @@ export default function OAuthPage() {
                   <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
                     {codexStatus?.authenticated
                       ? codexStatus.accounts.find((a) => a.is_default)?.login || codexStatus.accounts[0]?.login || 'Connected'
-                      : 'OAuth Proxy provider only'}
+                      : 'OAuth route provider only'}
                   </div>
                 </div>
               </div>
@@ -382,156 +278,6 @@ export default function OAuthPage() {
           </CardContent>
         </Card>
 
-        {/* Proxy Configuration Section */}
-        <Card>
-          <CardHeader className="border-b border-white/10">
-            <CardTitle>Proxy Configuration</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Configure proxy server for OAuth authentication (Codex/Copilot).
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {proxyConfigError && (
-              <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {proxyConfigError}
-              </div>
-            )}
-
-            {proxyConfigLoading ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading...
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="proxy-enabled"
-                    checked={proxyConfig.enabled}
-                    onChange={(e) => setProxyConfigState({ ...proxyConfig, enabled: e.target.checked })}
-                    className="h-4 w-4 rounded border-input"
-                  />
-                  <Label htmlFor="proxy-enabled">Enable Proxy</Label>
-                </div>
-
-                <div className="grid grid-cols-[auto_1fr_auto] gap-4 items-end">
-                  <div className="space-y-2">
-                    <Label htmlFor="proxy-type">Type</Label>
-                    <select
-                      id="proxy-type"
-                      value={proxyConfig.proxy_type}
-                      onChange={(e) => setProxyConfigState({ ...proxyConfig, proxy_type: e.target.value })}
-                      disabled={!proxyConfig.enabled}
-                      className="h-10 rounded-xl border border-input bg-white/[0.04] px-3 text-sm shadow-inner shadow-black/10 outline-none transition focus:border-primary/70 focus:ring-4 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <option value="http">HTTP</option>
-                      <option value="socks5">SOCKS5</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="proxy-host">Host</Label>
-                    <Input
-                      id="proxy-host"
-                      value={proxyConfig.host}
-                      onChange={(e) => setProxyConfigState({ ...proxyConfig, host: e.target.value })}
-                      disabled={!proxyConfig.enabled}
-                      placeholder="127.0.0.1"
-                    />
-                  </div>
-
-                  <div className="space-y-2 w-28">
-                    <Label htmlFor="proxy-port">Port</Label>
-                    <Input
-                      id="proxy-port"
-                      type="number"
-                      value={proxyConfig.port}
-                      onChange={(e) => setProxyConfigState({ ...proxyConfig, port: parseInt(e.target.value) || 10809 })}
-                      disabled={!proxyConfig.enabled}
-                      min={1}
-                      max={65535}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button onClick={handleProxyConfigSave} disabled={!proxyConfig.enabled}>
-                    {proxyConfigSaved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-                    {proxyConfigSaved ? 'Saved' : 'Save Proxy'}
-                  </Button>
-                  <Button variant="outline" onClick={handleProxyConfigReset}>
-                    <RotateCcw className="h-4 w-4" />
-                    Reset
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Proxy Server Control Section */}
-        <Card>
-          <CardHeader className="border-b border-white/10">
-            <CardTitle>Proxy Server</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Start the local proxy server for routing OAuth requests.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {proxyError && (
-              <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {proxyError}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label htmlFor="proxy-target" className="text-sm font-medium text-muted-foreground">
-                Active Target
-              </label>
-              <select
-                id="proxy-target"
-                value={proxyStatus?.active_target_provider_id || ''}
-                onChange={(e) => handleProxyTargetChange(e.target.value)}
-                disabled={proxyStatus?.running || proxyTargetProviders.length === 0}
-                className="h-10 w-full rounded-xl border border-input bg-white/[0.04] px-3 text-sm shadow-inner shadow-black/10 outline-none transition focus:border-primary/70 focus:ring-4 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">Select OAuth Proxy provider</option>
-                {proxyTargetProviders.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                {proxyStatus?.active_target_provider_name || 'No proxy target selected'}
-              </p>
-              {proxyStatus?.http_proxy_url && (
-                <p className="text-xs text-primary">via {proxyStatus.http_proxy_url}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`h-3 w-3 rounded-full ${proxyStatus?.running ? 'animate-pulse bg-emerald-500' : 'bg-muted'}`} />
-                <span className="text-sm font-medium">
-                  {proxyStatus?.running ? 'Running' : 'Stopped'}
-                </span>
-                {proxyStatus?.listen_addr && (
-                  <code className="rounded bg-white/[0.04] px-2 py-1 text-xs">
-                    {proxyStatus.listen_addr}/v1/messages
-                  </code>
-                )}
-              </div>
-              <Button
-                variant={proxyStatus?.running ? 'destructive' : 'default'}
-                onClick={handleToggleProxy}
-              >
-                {proxyStatus?.running ? 'Stop' : 'Start'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Device OAuth Modals */}
@@ -556,36 +302,6 @@ export default function OAuthPage() {
       )}
     </div>
   );
-
-  async function handleProxyTargetChange(id: string) {
-    if (!id) return;
-    try {
-      setProxyError('');
-      const result = await setProxyTarget(id);
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to set proxy target');
-      }
-      loadProxyStatus();
-    } catch (e) {
-      setProxyError(e instanceof Error ? e.message : 'Failed to set proxy target');
-    }
-  }
-
-  async function handleToggleProxy() {
-    try {
-      setProxyError('');
-      if (proxyStatus?.running) {
-        const result = await stopProxy();
-        if (!result.success) throw new Error(result.error || 'Failed to stop proxy');
-      } else {
-        const result = await startProxy();
-        if (!result.success) throw new Error(result.error || 'Failed to start proxy');
-      }
-      loadProxyStatus();
-    } catch (e) {
-      setProxyError(e instanceof Error ? e.message : 'Proxy operation failed');
-    }
-  }
 }
 
 function DeviceOAuthModal({
