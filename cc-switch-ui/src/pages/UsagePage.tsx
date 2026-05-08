@@ -21,6 +21,12 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function isMiniMaxUsage(item: { provider_id: string; model: string }) {
+  const provider = item.provider_id.toLowerCase();
+  const model = item.model.toLowerCase();
+  return provider.includes('minimax') || model.includes('minimax');
+}
+
 function StatCard({
   icon: Icon,
   label,
@@ -76,6 +82,16 @@ function TrendBar({ day, input, output, max }: { day: string; input: number; out
   );
 }
 
+function MiniMaxMetric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-2xl border border-white/5 bg-black/20 p-4 shadow-inner">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">{label}</div>
+      <div className="mt-2 font-mono text-xl font-bold tabular-nums text-foreground">{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
 export default function UsagePage() {
   const [summary, setSummary] = useState<ProxyUsageSummaryResponse | null>(null);
   const [trend, setTrend] = useState<ProxyUsageTrendResponse | null>(null);
@@ -97,7 +113,7 @@ export default function UsagePage() {
   }, []);
 
   useEffect(() => {
-    loadUsage();
+    Promise.resolve().then(loadUsage);
     const interval = setInterval(loadUsage, 10000);
     return () => clearInterval(interval);
   }, [loadUsage]);
@@ -108,12 +124,22 @@ export default function UsagePage() {
   }, 0) || 0;
 
   const topProvider = summary?.summary[0];
+  const minimaxItems = summary?.summary.filter(isMiniMaxUsage) || [];
+  const minimaxTotals = minimaxItems.reduce(
+    (totals, item) => ({
+      input: totals.input + item.total_input_tokens,
+      output: totals.output + item.total_output_tokens,
+      requests: totals.requests + item.request_count,
+    }),
+    { input: 0, output: 0, requests: 0 }
+  );
+  const minimaxModels = new Set(minimaxItems.map((item) => item.model).filter(Boolean)).size;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         title="Usage"
-        description="Monitor proxy request usage and trends."
+        description="Monitor local route request usage and trends."
       />
 
       {loading ? (
@@ -127,11 +153,44 @@ export default function UsagePage() {
           </div>
           <div className="mt-6 text-lg font-semibold text-foreground">No usage data yet</div>
           <div className="mt-2 max-w-sm text-sm text-muted-foreground">
-            Proxy requests will be tracked here once the proxy server starts and handles traffic.
+            Route requests will be tracked here once the local route starts and handles traffic.
           </div>
         </div>
       ) : (
         <>
+          <Card className="overflow-hidden border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
+            <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
+              <CardTitle className="flex items-center justify-between gap-3 text-sm font-semibold text-muted-foreground tracking-tight">
+                <div className="flex items-center gap-2.5">
+                  <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+                    <Activity className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  MiniMax Usage
+                </div>
+                <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                  Tokens only
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              {minimaxTotals.requests === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-center">
+                  <div className="text-sm font-semibold text-foreground">No MiniMax usage yet</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Start a MiniMax route request and token usage will appear here.
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-4">
+                  <MiniMaxMetric label="Requests" value={minimaxTotals.requests.toLocaleString()} />
+                  <MiniMaxMetric label="Input" value={formatTokens(minimaxTotals.input)} sub="tokens" />
+                  <MiniMaxMetric label="Output" value={formatTokens(minimaxTotals.output)} sub="tokens" />
+                  <MiniMaxMetric label="Models" value={minimaxModels.toLocaleString()} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard
               icon={Zap}
@@ -151,7 +210,7 @@ export default function UsagePage() {
               icon={Clock}
               label="Total Requests"
               value={(summary?.total_requests || 0).toLocaleString()}
-              sub="proxy requests"
+              sub="route requests"
               accent="emerald-500"
             />
             <StatCard
@@ -214,7 +273,11 @@ export default function UsagePage() {
               <CardContent className="p-6">
                 <div className="space-y-4">
                   {summary.summary.map((item, i) => (
-                    <div key={`${item.provider_id}-${item.model}`} className="group relative overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-4 transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04]">
+                    <div key={`${item.provider_id}-${item.model}`} className={`group relative overflow-hidden rounded-xl border p-4 transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04] ${
+                      isMiniMaxUsage(item)
+                        ? 'border-emerald-500/20 bg-emerald-500/[0.04]'
+                        : 'border-white/5 bg-white/[0.02]'
+                    }`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-sm">
@@ -222,7 +285,14 @@ export default function UsagePage() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground">{item.provider_id}</div>
-                            <div className="text-xs text-muted-foreground">{item.model}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{item.model}</span>
+                              {isMiniMaxUsage(item) && (
+                                <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                                  MiniMax
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">

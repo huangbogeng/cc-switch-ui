@@ -37,7 +37,7 @@ export function providerAuthMode(provider: Provider): ProviderAuthMode {
 }
 
 export function providerAuthLabel(provider: Provider) {
-  return providerAuthMode(provider) === 'oauth_proxy' ? 'OAuth Proxy' : 'API Key';
+  return providerAuthMode(provider) === 'oauth_proxy' ? 'OAuth Account' : 'API Key';
 }
 
 export function providerApiFormat(provider: Provider) {

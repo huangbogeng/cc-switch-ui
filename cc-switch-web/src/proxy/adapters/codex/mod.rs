@@ -10,8 +10,8 @@ use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
-    TransformOutput, UsageParseResult,
+    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, StreamingResponseFormat,
+    TransformInput, TransformOutput, UsageParseResult,
 };
 use std::sync::Arc;
 
@@ -67,13 +67,8 @@ impl ProviderAdapter for CodexAdapter {
         response::transform(body, is_streaming)
     }
 
-    fn extract_http_proxy(&self, provider: &Provider) -> Option<String> {
-        provider
-            .meta
-            .get("codexHttpProxy")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string)
+    fn streaming_response_format(&self) -> StreamingResponseFormat {
+        StreamingResponseFormat::OpenAIResponses
     }
 
     fn extract_upstream_url(&self, _provider: &Provider) -> Option<String> {

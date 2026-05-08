@@ -5,6 +5,13 @@ use futures::{Stream, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenAIChatStreamUsage {
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
 pub fn responses_sse_to_anthropic<E>(
     stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
@@ -243,6 +250,168 @@ where
     }
 }
 
+#[cfg(test)]
+pub fn openai_chat_sse_to_anthropic<E>(
+    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
+where
+    E: std::error::Error + Send + 'static,
+{
+    openai_chat_sse_to_anthropic_with_usage(stream, |_| {})
+}
+
+pub fn openai_chat_sse_to_anthropic_with_usage<E, F>(
+    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
+    on_usage: F,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
+where
+    E: std::error::Error + Send + 'static,
+    F: Fn(OpenAIChatStreamUsage) + Send + 'static,
+{
+    async_stream::stream! {
+        let mut buffer = String::new();
+        let mut message_id = String::new();
+        let mut model = String::new();
+        let mut sent_message_start = false;
+        let mut sent_text_start = false;
+        let mut sent_text_stop = false;
+        let mut sent_message_stop = false;
+        let mut sent_usage = false;
+        let mut latest_usage: Option<OpenAIChatStreamUsage> = None;
+
+        tokio::pin!(stream);
+
+        while let Some(chunk) = stream.next().await {
+            let bytes = match chunk {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    yield Err(std::io::Error::other(err.to_string()));
+                    continue;
+                }
+            };
+
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+            while let Some(block) = take_sse_block(&mut buffer) {
+                let Some((_event_name, data)) = parse_sse_block(&block) else {
+                    continue;
+                };
+                if data.trim() == "[DONE]" {
+                    if !sent_usage {
+                        if let Some(usage) = latest_usage.take() {
+                            on_usage(usage);
+                            sent_usage = true;
+                        }
+                    }
+                    if sent_message_stop {
+                        continue;
+                    }
+                    if sent_text_start && !sent_text_stop {
+                        sent_text_stop = true;
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": 0
+                        })));
+                    }
+                    if !sent_message_start {
+                        yield Ok(message_start(&message_id, &model));
+                    }
+                    yield Ok(sse_event("message_delta", json!({
+                        "type": "message_delta",
+                        "delta": {
+                            "stop_reason": "end_turn",
+                            "stop_sequence": Value::Null
+                        },
+                        "usage": { "output_tokens": 0 }
+                    })));
+                    yield Ok(sse_event("message_stop", json!({ "type": "message_stop" })));
+                    sent_message_stop = true;
+                    continue;
+                }
+
+                let data: Value = match serde_json::from_str(&data) {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+
+                if message_id.is_empty() {
+                    if let Some(id) = data.get("id").and_then(Value::as_str) {
+                        message_id = id.to_string();
+                    }
+                }
+                if model.is_empty() {
+                    if let Some(response_model) = data.get("model").and_then(Value::as_str) {
+                        model = response_model.to_string();
+                    }
+                }
+                if let Some(usage) = openai_chat_stream_usage(data.get("usage"), &model) {
+                    latest_usage = Some(usage);
+                }
+                if !sent_message_start {
+                    sent_message_start = true;
+                    yield Ok(message_start(&message_id, &model));
+                }
+
+                let Some(choice) = data
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first()) else {
+                    continue;
+                };
+
+                if let Some(content) = choice
+                    .get("delta")
+                    .and_then(|delta| delta.get("content"))
+                    .and_then(Value::as_str)
+                {
+                    if !sent_text_start {
+                        sent_text_start = true;
+                        sent_text_stop = false;
+                        yield Ok(sse_event("content_block_start", json!({
+                            "type": "content_block_start",
+                            "index": 0,
+                            "content_block": { "type": "text", "text": "" }
+                        })));
+                    }
+                    yield Ok(sse_event("content_block_delta", json!({
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": { "type": "text_delta", "text": content }
+                    })));
+                }
+
+                if choice.get("finish_reason").and_then(Value::as_str).is_some() {
+                    if sent_message_stop {
+                        continue;
+                    }
+                    if sent_text_start && !sent_text_stop {
+                        sent_text_stop = true;
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": 0
+                        })));
+                    }
+                    yield Ok(sse_event("message_delta", json!({
+                        "type": "message_delta",
+                        "delta": {
+                            "stop_reason": openai_finish_reason(choice.get("finish_reason").and_then(Value::as_str)),
+                            "stop_sequence": Value::Null
+                        },
+                        "usage": openai_usage(data.get("usage"))
+                    })));
+                    yield Ok(sse_event("message_stop", json!({ "type": "message_stop" })));
+                    sent_message_stop = true;
+                }
+            }
+        }
+
+        if !sent_usage {
+            if let Some(usage) = latest_usage.take() {
+                on_usage(usage);
+            }
+        }
+    }
+}
+
 fn take_sse_block(buffer: &mut String) -> Option<String> {
     let index = buffer.find("\n\n")?;
     let block = buffer[..index].to_string();
@@ -286,6 +455,40 @@ fn message_start(message_id: &str, model: &str) -> Bytes {
 
 fn sse_event(event: &str, data: Value) -> Bytes {
     Bytes::from(format!("event: {event}\ndata: {}\n\n", data))
+}
+
+fn openai_usage(usage: Option<&Value>) -> Value {
+    let Some(usage) = usage else {
+        return json!({ "output_tokens": 0 });
+    };
+    json!({
+        "input_tokens": token_usage_value(usage, &["prompt_tokens", "input_tokens"]).unwrap_or(0),
+        "output_tokens": token_usage_value(usage, &["completion_tokens", "output_tokens"]).unwrap_or(0),
+    })
+}
+
+fn openai_chat_stream_usage(usage: Option<&Value>, model: &str) -> Option<OpenAIChatStreamUsage> {
+    let usage = usage?;
+    let input_tokens = token_usage_value(usage, &["prompt_tokens", "input_tokens"])?;
+    let output_tokens = token_usage_value(usage, &["completion_tokens", "output_tokens"])?;
+    Some(OpenAIChatStreamUsage {
+        model: model.to_string(),
+        input_tokens,
+        output_tokens,
+    })
+}
+
+fn token_usage_value(usage: &Value, keys: &[&str]) -> Option<i64> {
+    keys.iter()
+        .find_map(|key| usage.get(*key).and_then(Value::as_i64))
+}
+
+fn openai_finish_reason(reason: Option<&str>) -> &'static str {
+    match reason {
+        Some("length") => "max_tokens",
+        Some("tool_calls") | Some("function_call") => "tool_use",
+        _ => "end_turn",
+    }
 }
 
 fn usage_from_responses(usage: Option<&Value>) -> Value {
@@ -338,5 +541,72 @@ mod tests {
         assert!(text.contains("event: content_block_delta"));
         assert!(text.contains("\"text\":\"hi\""));
         assert!(text.contains("event: message_stop"));
+    }
+
+    #[tokio::test]
+    async fn converts_openai_chat_delta_stream_once() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}\n\n\
+             data: [DONE]\n\n",
+        ))];
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(text.contains("event: message_start"));
+        assert!(text.contains("\"text\":\"hi\""));
+        assert_eq!(text.matches("event: message_stop").count(), 1);
+        assert_eq!(text.matches("event: content_block_stop").count(), 1);
+    }
+
+    #[tokio::test]
+    async fn captures_openai_chat_stream_usage_from_usage_chunk() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{}}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":5}}\n\n\
+             data: [DONE]\n\n",
+        ))];
+        let usage = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let captured = usage.clone();
+
+        let output = openai_chat_sse_to_anthropic_with_usage(stream::iter(chunks), move |record| {
+            *captured.lock().unwrap() = Some(record);
+        })
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+        let usage = usage.lock().unwrap().clone().unwrap();
+
+        assert!(text.contains("\"text\":\"hi\""));
+        assert_eq!(usage.model, "MiniMax-M2.7");
+        assert_eq!(usage.input_tokens, 3);
+        assert_eq!(usage.output_tokens, 5);
+    }
+
+    #[tokio::test]
+    async fn captures_openai_chat_stream_usage_with_input_output_aliases() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+             data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":11}}\n\n",
+        ))];
+        let usage = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let captured = usage.clone();
+
+        openai_chat_sse_to_anthropic_with_usage(stream::iter(chunks), move |record| {
+            *captured.lock().unwrap() = Some(record);
+        })
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+        let usage = usage.lock().unwrap().clone().unwrap();
+
+        assert_eq!(usage.input_tokens, 7);
+        assert_eq!(usage.output_tokens, 11);
     }
 }

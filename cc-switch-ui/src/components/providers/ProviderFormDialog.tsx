@@ -73,14 +73,14 @@ export function ProviderFormDialog({
                 <Badge style={{ background: selectedPreset.iconColor }} className="border-transparent text-white">
                   {selectedPreset.name}
                 </Badge>
-                <Badge variant="outline">{usesOAuthProxy ? 'OAuth Proxy' : 'API Key'}</Badge>
+                <Badge variant="outline">{usesOAuthProxy ? 'OAuth Account' : 'API Key'}</Badge>
               </div>
               {selectedPreset.description && (
                 <p className="mt-2 text-sm leading-5 text-muted-foreground">{selectedPreset.description}</p>
               )}
               {usesOAuthProxy && (
                 <p className="mt-3 rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-sm leading-5 text-primary">
-                  This provider uses a ChatGPT account through the local Codex proxy. Connect Codex OAuth on the Dashboard; no API key is required here.
+                  This route uses a ChatGPT account through the local route endpoint. Connect Codex OAuth on the OAuth page; no API key is required here.
                 </p>
               )}
             </div>
@@ -154,7 +154,7 @@ export function ProviderFormDialog({
               ) : (
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-sm leading-5 text-primary">
-                    Uses managed ChatGPT OAuth credentials. This provider is still saved as a switchable route.
+                    Uses managed ChatGPT OAuth credentials. This provider is saved as a switchable route.
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="codex-account">ChatGPT Account</Label>
@@ -244,7 +244,11 @@ export function ProviderFormDialog({
               </Button>
             </FormSection>
 
-            <FormSection title="Advanced">
+            <details className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <summary className="cursor-pointer select-none text-sm font-medium leading-5 text-muted-foreground">
+                Advanced
+              </summary>
+              <div className="space-y-4 pt-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="api-format">API Format</Label>
@@ -282,29 +286,15 @@ export function ProviderFormDialog({
               </div>
 
               {usesOAuthProxy && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="codex-http-proxy">Codex HTTP Proxy URL</Label>
-                    <Input
-                      id="codex-http-proxy"
-                      value={formData.codexHttpProxy}
-                      onChange={(e) => onChange({ ...formData, codexHttpProxy: e.target.value })}
-                      placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7890"
-                    />
-                    <p className="text-xs leading-4 text-muted-foreground">
-                      Applies to Codex upstream forwarding for this provider.
-                    </p>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={formData.codexFastMode}
-                      onChange={(e) => onChange({ ...formData, codexFastMode: e.target.checked })}
-                      className="h-4 w-4 rounded border-input accent-primary"
-                    />
-                    Codex FAST mode
-                  </label>
-                </div>
+                <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={formData.codexFastMode}
+                    onChange={(e) => onChange({ ...formData, codexFastMode: e.target.checked })}
+                    className="h-4 w-4 rounded border-input accent-primary"
+                  />
+                  Codex FAST mode
+                </label>
               )}
 
               <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
@@ -316,7 +306,8 @@ export function ProviderFormDialog({
                 />
                 Disable Claude Code nonessential traffic
               </label>
-            </FormSection>
+              </div>
+            </details>
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>

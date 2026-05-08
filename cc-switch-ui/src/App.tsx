@@ -30,7 +30,7 @@ export default function App() {
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', description: 'Live status', icon: LayoutDashboard },
     { id: 'providers', label: 'Providers', description: 'Model routes', icon: Users },
-    { id: 'oauth', label: 'OAuth', description: 'Auth & proxy', icon: Key },
+    { id: 'oauth', label: 'OAuth', description: 'Accounts', icon: Key },
     { id: 'usage', label: 'Usage', description: 'Request stats', icon: BarChart3 },
     { id: 'settings', label: 'Settings', description: 'Preferences', icon: Settings },
   ];

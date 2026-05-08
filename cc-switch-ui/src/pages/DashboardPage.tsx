@@ -12,10 +12,10 @@ import {
   CurrentProviderCard,
   ProviderGrid,
   ProxyCard,
-  UsageCard,
   ProxyUsageCard,
+  UsageCard,
 } from '@/components/dashboard/DashboardPanels';
-import { providerAuthMode, sortProviders } from '@/lib/provider';
+import { sortProviders } from '@/lib/provider';
 
 export default function DashboardPage() {
   const [currentProviderId, setCurrentProviderId] = useState<string | null>(null);
@@ -103,71 +103,77 @@ export default function DashboardPage() {
     try {
       await switchProvider(id);
       setCurrentProviderId(id);
+      // If local route is running, restart it for the new provider.
+      if (proxyStatus?.running) {
+        await stopProxy();
+        await startProxy();
+        await loadProxyStatus();
+      }
     } catch (e) {
       console.error('Switch provider error:', e);
     }
   };
 
-  const handleProxyTargetChange = async (id: string) => {
-    if (!id) return;
+  const handleRouteTargetChange = async (providerId: string) => {
+    if (!providerId) return;
     try {
       setProxyError('');
-      const result = await setProxyTarget(id);
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to set proxy target');
-      }
-      loadProxyStatus();
+      const result = await setProxyTarget(providerId);
+      if (!result.success) throw new Error(result.error || 'Failed to set route target');
+      await loadProxyStatus();
     } catch (e) {
-      setProxyError(e instanceof Error ? e.message : 'Failed to set proxy target');
+      setProxyError(e instanceof Error ? e.message : 'Failed to set route target');
     }
   };
 
-  const handleToggleProxy = async () => {
+  const handleToggleRoute = async () => {
     try {
       setProxyError('');
       if (proxyStatus?.running) {
         const result = await stopProxy();
-        if (!result.success) throw new Error(result.error || 'Failed to stop proxy');
+        if (!result.success) throw new Error(result.error || 'Failed to stop local route');
       } else {
         const result = await startProxy();
-        if (!result.success) throw new Error(result.error || 'Failed to start proxy');
+        if (!result.success) throw new Error(result.error || 'Failed to start local route');
       }
-      loadProxyStatus();
+      await loadProxyStatus();
     } catch (e) {
-      setProxyError(e instanceof Error ? e.message : 'Proxy operation failed');
+      setProxyError(e instanceof Error ? e.message : 'Local route operation failed');
     }
   };
 
   const currentProvider = currentProviderId ? providers[currentProviderId] : null;
   const providerList = sortProviders(providers);
-  const proxyTargetProviders = providerList.filter((p) => providerAuthMode(p) === 'oauth_proxy');
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         title="Dashboard"
-        description="Monitor active provider and proxy status."
+        description="Monitor active provider and local route status."
       />
+      {proxyError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive shadow-sm">
+          {proxyError}
+        </div>
+      )}
       <div className="space-y-8">
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <CurrentProviderCard loading={loadingProviders} provider={currentProvider} />
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-1 xl:gap-6">
-            <ProxyCard
-              status={proxyStatus}
-              targetProviders={proxyTargetProviders}
-              error={proxyError}
-              onToggle={handleToggleProxy}
-              onTargetChange={handleProxyTargetChange}
+          <ProxyCard
+            status={proxyStatus}
+            targetProviders={providerList}
+            error={proxyError}
+            onToggle={handleToggleRoute}
+            onTargetChange={handleRouteTargetChange}
+          />
+          {usage && <UsageCard usage={usage} />}
+          {proxyUsage && proxyUsage.total_requests > 0 && (
+            <ProxyUsageCard
+              totalInputTokens={proxyUsage.total_input_tokens}
+              totalOutputTokens={proxyUsage.total_output_tokens}
+              totalRequests={proxyUsage.total_requests}
             />
-            {usage && <UsageCard usage={usage} />}
-            {proxyUsage && (
-              <ProxyUsageCard
-                totalInputTokens={proxyUsage.total_input_tokens}
-                totalOutputTokens={proxyUsage.total_output_tokens}
-                totalRequests={proxyUsage.total_requests}
-              />
-            )}
-          </div>
+          )}
         </div>
 
         <ProviderGrid

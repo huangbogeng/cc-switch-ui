@@ -1,7 +1,10 @@
 //! ProviderAdapter trait definition
 
 use super::error::ProviderError;
-use super::types::{AuthInfo, AuthStrategy, TransformInput, TransformOutput, UsageParseResult};
+use super::types::{
+    AuthInfo, AuthStrategy, StreamingResponseFormat, TransformInput, TransformOutput,
+    UsageParseResult,
+};
 use crate::database::Provider;
 use bytes::Bytes;
 use http::{HeaderName, HeaderValue};
@@ -88,22 +91,17 @@ pub trait ProviderAdapter: Send + Sync {
         is_streaming: bool,
     ) -> Result<UsageParseResult, ProviderError>;
 
+    /// Streaming format produced by this provider after request transformation.
+    fn streaming_response_format(&self) -> StreamingResponseFormat {
+        StreamingResponseFormat::Anthropic
+    }
+
     /// Get account ID from provider metadata
     fn extract_account_id(&self, provider: &Provider) -> Option<String> {
         provider
             .meta
             .get("authBinding")
             .and_then(|v| v.as_str())
-            .map(str::to_string)
-    }
-
-    /// Get HTTP proxy URL from provider metadata
-    fn extract_http_proxy(&self, provider: &Provider) -> Option<String> {
-        provider
-            .meta
-            .get("codexHttpProxy")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
             .map(str::to_string)
     }
 

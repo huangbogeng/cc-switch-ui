@@ -6,7 +6,10 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use cc_switch_lib::providers::{AuthStrategy, ProviderAdapter, TransformInput};
+use cc_switch_lib::providers::{
+    AuthStrategy, ProviderAdapter, StreamingResponseFormat, TransformInput,
+};
+use futures::StreamExt;
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -14,7 +17,9 @@ use tokio::sync::RwLock;
 
 use super::headers::{copy_forward_headers, copy_response_headers};
 use super::session::{build_prompt_cache_key, extract_session_id};
-use super::streaming_responses::responses_sse_to_anthropic;
+use super::streaming_responses::{
+    openai_chat_sse_to_anthropic_with_usage, responses_sse_to_anthropic,
+};
 use super::types::{ProxyConfig, ProxyStatus};
 
 /// Forwarder handles proxying requests to OpenAI API with Codex OAuth auth
@@ -33,7 +38,7 @@ impl Forwarder {
             .filter(|value| !value.trim().is_empty())
         {
             let proxy = reqwest::Proxy::all(proxy_url)
-                .map_err(|e| format!("Invalid Codex HTTP proxy URL: {e}"))?;
+                .map_err(|e| format!("Invalid outbound network proxy URL: {e}"))?;
             builder = builder.proxy(proxy);
         }
         let http_client = builder
@@ -98,9 +103,6 @@ impl Forwarder {
             .extract_upstream_url(&state.provider)
             .unwrap_or_else(|| self.config.upstream_url.clone());
 
-        // Get HTTP proxy from adapter
-        let http_proxy = state.adapter.extract_http_proxy(&state.provider);
-
         // Get prompt cache key from adapter
         let prompt_cache_key = state
             .adapter
@@ -143,7 +145,6 @@ impl Forwarder {
         let transform_input = TransformInput {
             body: body_json,
             upstream_url: upstream_url.clone(),
-            http_proxy_url: http_proxy,
             prompt_cache_key: Some(cache_key),
             requested_stream,
             codex_fast_mode: self.config.codex_fast_mode,
@@ -257,7 +258,49 @@ impl Forwarder {
         }
 
         if requested_stream {
-            let stream = responses_sse_to_anthropic(upstream_res.bytes_stream());
+            let stream = match state.adapter.streaming_response_format() {
+                StreamingResponseFormat::Anthropic => {
+                    return Ok(response
+                        .header(header::CONTENT_TYPE, "text/event-stream")
+                        .body(Body::from_stream(upstream_res.bytes_stream()))
+                        .unwrap());
+                }
+                StreamingResponseFormat::OpenAIChat => {
+                    let db = state.db.clone();
+                    let provider_id = state.provider_id.clone();
+                    openai_chat_sse_to_anthropic_with_usage(
+                        upstream_res.bytes_stream(),
+                        move |usage| {
+                            let record = cc_switch_lib::database::UsageRecord {
+                                provider_id: provider_id.clone(),
+                                model: usage.model,
+                                input_tokens: usage.input_tokens,
+                                output_tokens: usage.output_tokens,
+                                cache_read_tokens: None,
+                                request_timestamp: unix_timestamp(),
+                            };
+                            let db = db.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = db.save_usage_record(&record) {
+                                    log::error!("[Proxy] Failed to save streaming usage record: {}", e);
+                                } else {
+                                    log::info!(
+                                        "[Proxy] Streaming usage recorded: provider={}, model={}, input={}, output={}",
+                                        record.provider_id,
+                                        record.model,
+                                        record.input_tokens,
+                                        record.output_tokens
+                                    );
+                                }
+                            });
+                        },
+                    )
+                    .boxed()
+                }
+                StreamingResponseFormat::OpenAIResponses => {
+                    responses_sse_to_anthropic(upstream_res.bytes_stream()).boxed()
+                }
+            };
             return Ok(response
                 .header(header::CONTENT_TYPE, "text/event-stream")
                 .body(Body::from_stream(stream))
@@ -322,6 +365,13 @@ fn cache_key_log_id(value: &str) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("{hash:016x}")
+}
+
+fn unix_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Shared state for proxy server

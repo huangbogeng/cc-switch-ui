@@ -35,7 +35,7 @@ export const providerPresets: ProviderPreset[] = [
     apiKeyUrl: 'https://platform.minimaxi.com/subscribe/coding-plan',
     settingsConfig: {
       env: {
-        ANTHROPIC_BASE_URL: 'https://api.minimaxi.com/anthropic',
+        ANTHROPIC_BASE_URL: 'https://api.minimaxi.com/v1',
         ANTHROPIC_AUTH_TOKEN: '',
         API_TIMEOUT_MS: '3000000',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
@@ -48,6 +48,7 @@ export const providerPresets: ProviderPreset[] = [
     icon: 'minimax',
     iconColor: '#FF6B6B',
     description: 'MiniMax M2.7 模型',
+    apiFormat: 'openai_chat',
   },
   {
     id: 'siliconflow',
@@ -102,7 +103,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'openai',
     iconColor: '#000000',
-    description: 'OpenAI Codex official account through OAuth + local proxy',
+    description: 'OpenAI Codex account through OAuth + local route',
     authMode: 'oauth_proxy',
     providerType: 'codex_oauth',
     requiresOAuth: true,

@@ -259,7 +259,7 @@ export async function switchProvider(id: string) {
   });
 }
 
-// Proxy Settings
+// Outbound network proxy settings
 export interface ProxyConfig {
   enabled: boolean;
   proxy_type: string;

@@ -1,4 +1,5 @@
-import { CheckCircle2, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap, BarChart3 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BarChart3, Check, CheckCircle2, ChevronDown, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap } from 'lucide-react';
 import type { CodexAccount, CopilotAccount, CopilotUsageResponse, Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,7 @@ export function CurrentProviderCard({
   provider: Provider | null;
 }) {
   return (
-    <Card className="xl:col-span-2 overflow-hidden relative group border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
+    <Card className="overflow-hidden relative group border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
       <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
         <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
@@ -175,7 +176,7 @@ export function CodexOAuthStatusCard({
             <div className="min-w-0">
               <div className="truncate text-sm font-medium leading-5">ChatGPT Codex</div>
               <div className="truncate text-xs leading-4 text-muted-foreground">
-                {status?.authenticated ? accountName : 'OAuth Proxy provider only'}
+                {status?.authenticated ? accountName : 'OAuth route provider only'}
               </div>
             </div>
           </div>
@@ -231,7 +232,7 @@ export function ProxyCard({
           <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
             <Server className="h-4 w-4 text-emerald-500" />
           </div>
-          Proxy Server
+          Local Route
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
@@ -241,26 +242,18 @@ export function ProxyCard({
           </div>
         )}
         <div className="space-y-2.5">
-          <label htmlFor="proxy-target" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">
-            Active Target
-          </label>
-          <select
-            id="proxy-target"
-            value={status?.active_target_provider_id || ''}
-            onChange={(event) => onTargetChange(event.target.value)}
+          <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">
+            Route Target
+          </div>
+          <RouteTargetMenu
+            providers={targetProviders}
+            selectedId={status?.active_target_provider_id || ''}
             disabled={status?.running || targetProviders.length === 0}
-            className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm font-medium text-foreground shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 outline-none"
-          >
-            <option value="">Select OAuth Proxy provider</option>
-            {targetProviders.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.name}
-              </option>
-            ))}
-          </select>
+            onChange={onTargetChange}
+          />
           <div className="flex flex-col gap-1">
             <p className="truncate text-xs font-medium text-muted-foreground">
-              {status?.active_target_provider_name || 'No proxy target selected'}
+              {status?.active_target_provider_name || 'No route selected'}
             </p>
             {status?.http_proxy_url && (
               <p className="truncate font-mono text-[11px] text-primary/80 bg-primary/10 w-fit px-1.5 py-0.5 rounded-md">
@@ -295,6 +288,95 @@ export function ProxyCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function RouteTargetMenu({
+  providers,
+  selectedId,
+  disabled,
+  onChange,
+}: {
+  providers: Provider[];
+  selectedId: string;
+  disabled: boolean;
+  onChange: (providerId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const selectedProvider = providers.find((provider) => provider.id === selectedId);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((value) => !value)}
+        className="grid h-12 w-full grid-cols-[32px_minmax(0,1fr)_16px] items-center gap-3 rounded-xl border border-white/10 bg-black/25 px-3 text-left shadow-inner shadow-black/20 outline-none transition hover:border-white/20 hover:bg-white/[0.06] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-xs font-bold text-foreground">
+          {selectedProvider ? providerInitial(selectedProvider) : '-'}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold leading-5 text-foreground">
+            {selectedProvider?.name || 'Select provider route'}
+          </div>
+          <div className="truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            {selectedProvider ? providerAuthLabel(selectedProvider) : 'No route selected'}
+          </div>
+        </div>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-card/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
+          {providers.map((provider) => {
+            const selected = provider.id === selectedId;
+            return (
+              <button
+                key={provider.id}
+                type="button"
+                onClick={() => {
+                  onChange(provider.id);
+                  setOpen(false);
+                }}
+                className={`grid w-full grid-cols-[32px_minmax(0,1fr)_18px] items-center gap-3 rounded-lg px-2.5 py-2 text-left transition ${
+                  selected
+                    ? 'bg-primary/15 text-foreground'
+                    : 'text-muted-foreground hover:bg-white/[0.06] hover:text-foreground'
+                }`}
+              >
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-bold ${
+                  selected
+                    ? 'border-primary/30 bg-primary/20 text-primary'
+                    : 'border-white/10 bg-white/[0.04] text-foreground/80'
+                }`}>
+                  {providerInitial(provider)}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold leading-5">{provider.name}</div>
+                  <div className="truncate text-[11px] font-medium uppercase tracking-wider opacity-70">
+                    {providerAuthLabel(provider)}
+                  </div>
+                </div>
+                {selected && <Check className="h-4 w-4 text-primary" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -370,7 +452,7 @@ export function ProxyUsageCard({
             <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
               <BarChart3 className="h-4 w-4 text-violet-500" />
             </div>
-            <span>Proxy Usage</span>
+            <span>Route Usage</span>
           </div>
           <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-white/5 border-white/10">
             {totalRequests > 0 ? `${totalRequests} reqs` : 'No data'}
@@ -391,7 +473,7 @@ export function ProxyUsageCard({
           </div>
         </div>
         {totalRequests === 0 && (
-          <p className="text-center text-[11px] text-muted-foreground/70 py-2">Start proxy to track usage</p>
+          <p className="text-center text-[11px] text-muted-foreground/70 py-2">Start local route to track usage</p>
         )}
       </CardContent>
     </Card>
