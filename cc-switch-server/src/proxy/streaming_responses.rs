@@ -279,10 +279,12 @@ where
         let mut sent_message_start = false;
         let mut sent_text_start = false;
         let mut sent_text_stop = false;
+        let mut text_block_index: Option<u32> = None;
+        let mut thinking_block_index: Option<u32> = None;
         let mut sent_message_stop = false;
         let mut sent_usage = false;
         let mut latest_usage: Option<OpenAIChatStreamUsage> = None;
-        let mut next_content_index: u32 = 1;
+        let mut next_content_index: u32 = 0;
         let mut tool_blocks_by_index: HashMap<u32, ToolBlockState> = HashMap::new();
         let mut open_tool_block_indices: Vec<u32> = Vec::new();
         let mut valid_closed_tool_blocks: u32 = 0;
@@ -327,9 +329,16 @@ where
                     }
                     if sent_text_start && !sent_text_stop {
                         sent_text_stop = true;
+                        let index = text_block_index.unwrap_or(0);
                         yield Ok(sse_event("content_block_stop", json!({
                             "type": "content_block_stop",
-                            "index": 0
+                            "index": index
+                        })));
+                    }
+                    if let Some(index) = thinking_block_index.take() {
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": index
                         })));
                     }
                     for index in closed_tool_block_indices {
@@ -387,6 +396,33 @@ where
                     continue;
                 }
 
+                if let Some(reasoning) = choice
+                    .get("delta")
+                    .and_then(|delta| delta.get("reasoning_content"))
+                    .and_then(Value::as_str)
+                {
+                    if !reasoning.is_empty() {
+                        let index = if let Some(index) = thinking_block_index {
+                            index
+                        } else {
+                            let index = next_content_index;
+                            next_content_index += 1;
+                            thinking_block_index = Some(index);
+                            yield Ok(sse_event("content_block_start", json!({
+                                "type": "content_block_start",
+                                "index": index,
+                                "content_block": { "type": "thinking", "thinking": "" }
+                            })));
+                            index
+                        };
+                        yield Ok(sse_event("content_block_delta", json!({
+                            "type": "content_block_delta",
+                            "index": index,
+                            "delta": { "type": "thinking_delta", "thinking": reasoning }
+                        })));
+                    }
+                }
+
                 if let Some(content) = choice
                     .get("delta")
                     .and_then(|delta| delta.get("content"))
@@ -395,15 +431,19 @@ where
                     if !sent_text_start {
                         sent_text_start = true;
                         sent_text_stop = false;
+                        let index = next_content_index;
+                        next_content_index += 1;
+                        text_block_index = Some(index);
                         yield Ok(sse_event("content_block_start", json!({
                             "type": "content_block_start",
-                            "index": 0,
+                            "index": index,
                             "content_block": { "type": "text", "text": "" }
                         })));
                     }
+                    let index = text_block_index.unwrap_or(0);
                     yield Ok(sse_event("content_block_delta", json!({
                         "type": "content_block_delta",
-                        "index": 0,
+                        "index": index,
                         "delta": { "type": "text_delta", "text": content }
                     })));
                 }
@@ -415,9 +455,10 @@ where
                 {
                     if sent_text_start && !sent_text_stop {
                         sent_text_stop = true;
+                        let index = text_block_index.unwrap_or(0);
                         yield Ok(sse_event("content_block_stop", json!({
                             "type": "content_block_stop",
-                            "index": 0
+                            "index": index
                         })));
                     }
                     for tool_call in tool_calls {
@@ -502,9 +543,16 @@ where
                     }
                     if sent_text_start && !sent_text_stop {
                         sent_text_stop = true;
+                        let index = text_block_index.unwrap_or(0);
                         yield Ok(sse_event("content_block_stop", json!({
                             "type": "content_block_stop",
-                            "index": 0
+                            "index": index
+                        })));
+                    }
+                    if let Some(index) = thinking_block_index.take() {
+                        yield Ok(sse_event("content_block_stop", json!({
+                            "type": "content_block_stop",
+                            "index": index
                         })));
                     }
                     let closed_tool_block_indices = close_open_tool_blocks(
@@ -766,6 +814,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn converts_openai_chat_reasoning_content_to_thinking_block() {
+        let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
+            "data: {\"id\":\"c2\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"reasoning_content\":\"think-a\"}}]}\n\n\
+             data: {\"id\":\"c2\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"reasoning_content\":\"think-b\"}}]}\n\n\
+             data: {\"id\":\"c2\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"content\":\"final\"}}]}\n\n\
+             data: {\"id\":\"c2\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+             data: [DONE]\n\n",
+        ))];
+
+        let output = openai_chat_sse_to_anthropic(stream::iter(chunks))
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(text.contains("\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}"));
+        assert!(text.contains("\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"think-a\"}"));
+        assert!(text.contains("\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"think-b\"}"));
+        assert!(text.contains("\"content_block\":{\"type\":\"text\",\"text\":\"\"}"));
+        assert!(text.contains("\"delta\":{\"type\":\"text_delta\",\"text\":\"final\"}"));
+    }
+
+    #[tokio::test]
     async fn captures_openai_chat_stream_usage_from_usage_chunk() {
         let chunks = vec![Ok::<_, std::io::Error>(Bytes::from(
             "data: {\"id\":\"c1\",\"model\":\"MiniMax-M2.7\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n\
@@ -886,7 +957,7 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(output.concat().to_vec()).unwrap();
 
-        assert!(text.contains("\"index\":1"));
+        assert!(text.contains("\"type\":\"tool_use\""));
         assert_eq!(text.matches("event: content_block_stop").count(), 1);
         assert_eq!(text.matches("event: message_stop").count(), 1);
     }

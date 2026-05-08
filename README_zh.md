@@ -49,10 +49,10 @@ curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/insta
 安装完成后，直接运行即可启动服务：
 
 ```bash
-cc-switch-web
+cc-switch-server
 ```
 
-安装脚本默认把程序放在 `~/.local/share/cc-switch-web`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
+安装脚本默认把程序放在 `~/.local/share/cc-switch-server`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
 
 ### 源码编译
 
@@ -63,7 +63,7 @@ cc-switch-web
 cargo build --release
 
 # 运行服务
-cargo run --bin cc-switch-web
+cargo run --bin cc-switch-server
 ```
 
 ### 访问 Web UI
@@ -120,7 +120,7 @@ graph TD
     %% Nodes
     UI["💻 Browser (React UI)<br/>http://localhost:5007/ui"]:::frontend
     
-    subgraph CC_Switch_Web ["cc-switch-web (Rust + Axum)"]
+    subgraph CC_Switch_Web ["cc-switch-server (Rust + Axum)"]
         API["🔌 REST API<br/>/api/*"]:::backend
         OAuth["🔐 OAuth 认证处理<br/>codex / copilot"]:::backend
         Proxy["🌐 本地代理<br/>:15721"]:::backend
@@ -176,7 +176,7 @@ pnpm lint       # 运行 ESLint 检查
 ### 后端 (Rust + Axum)
 
 ```bash
-cargo run --bin cc-switch-web  # 运行 API 服务器
+cargo run --bin cc-switch-server  # 运行 API 服务器
 cargo fmt && cargo clippy      # 代码格式化和 Lint 检查
 cargo test                     # 运行测试
 ```
@@ -185,7 +185,7 @@ cargo test                     # 运行测试
 
 ```text
 cc-switch-ui/          # React 前端工作区
-cc-switch-web/         # Axum HTTP 服务器 (Rust)
+cc-switch-server/         # Axum HTTP 服务器 (Rust)
 cc-switch-lib/         # 共享核心库 (Rust)
   └── src/
       ├── database/    # 基于 rusqlite 的 SQLite 持久化

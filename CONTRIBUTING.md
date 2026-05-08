@@ -28,7 +28,7 @@ cd cc-switch-ui && pnpm install
 pnpm dev
 
 # In another terminal, start the backend
-cargo run --bin cc-switch-web
+cargo run --bin cc-switch-server
 ```
 
 ### Useful Commands
@@ -42,7 +42,7 @@ pnpm lint         # ESLint check
 
 Backend (in project root):
 ```bash
-cargo run --bin cc-switch-web    # Run backend on :5007
+cargo run --bin cc-switch-server    # Run backend on :5007
 cargo build --release            # Release build
 cargo fmt && cargo clippy        # Format and lint
 ```
@@ -78,7 +78,7 @@ chore(deps): update dependencies
 
 # 贡献指南
 
-> [English Version](#contributing-to-cc-switch-web)
+> [English Version](#contributing-to-cc-switch-server)
 
 感谢你对 CC Switch Web 的贡献兴趣！参与之前请阅读我们的[行为准则](./CODE_OF_CONDUCT.md)。
 
@@ -106,7 +106,7 @@ cd cc-switch-ui && pnpm install
 pnpm dev
 
 # 另一个终端启动后端
-cargo run --bin cc-switch-web
+cargo run --bin cc-switch-server
 ```
 
 ### 常用命令
@@ -120,7 +120,7 @@ pnpm lint         # ESLint 检查
 
 后端（项目根目录）：
 ```bash
-cargo run --bin cc-switch-web    # 运行后端于 :5007
+cargo run --bin cc-switch-server    # 运行后端于 :5007
 cargo build --release            # 发布版本构建
 cargo fmt && cargo clippy         # 格式化和检查
 ```

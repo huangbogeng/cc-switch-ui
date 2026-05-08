@@ -1,4 +1,4 @@
-//! Proxy module for cc-switch-web
+//! Proxy module for cc-switch-server
 
 pub mod adapters;
 pub mod circuit_breaker;

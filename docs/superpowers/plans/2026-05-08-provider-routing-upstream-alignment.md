@@ -2,7 +2,7 @@
 
 **Goal:** 对齐 upstream `cc-switch` 的 provider 代理路由语义，构建全 provider 的统一闭环（路由选择、重试、熔断、切换同步、usage/request-log），并修复 MiniMax 只是该闭环内的子问题。
 
-**Scope:** `cc-switch-web` + `cc-switch-lib` 后端代理链路；不包含新增 UI 功能。
+**Scope:** `cc-switch-server` + `cc-switch-lib` 后端代理链路；不包含新增 UI 功能。
 
 **Out of Scope:** 前端交互重设计、非代理模块重构。
 
@@ -12,9 +12,9 @@
 
 ### Task 0.1: 明确当前入口与契约断点
 - Files:
-  - `cc-switch-web/src/proxy/handlers.rs`
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/types.rs`
+  - `cc-switch-server/src/proxy/handlers.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/types.rs`
   - `cc-switch-lib/src/providers/*.rs`
 - Deliverables:
   - 当前请求路径图（handler -> forwarder -> adapter -> upstream）
@@ -22,7 +22,7 @@
 
 ### Task 0.2: 锁定测试基线
 - Commands:
-  - `cargo test -p cc-switch-web`
+  - `cargo test -p cc-switch-server`
   - `cargo test -p cc-switch-lib`
 - Deliverables:
   - 当前通过/失败测试快照
@@ -34,10 +34,10 @@
 
 ### Task 1.1: 引入 ProviderRouter（按 app_type 选择候选 provider）
 - Create:
-  - `cc-switch-web/src/proxy/provider_router.rs`
+  - `cc-switch-server/src/proxy/provider_router.rs`
 - Modify:
-  - `cc-switch-web/src/proxy/mod.rs`
-  - `cc-switch-web/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/mod.rs`
+  - `cc-switch-server/src/proxy/server.rs`
 - Requirements:
   - 支持 `auto_failover_enabled` 开关语义
   - failover 开启：按队列顺序返回候选 provider
@@ -45,9 +45,9 @@
 
 ### Task 1.2: 引入 CircuitBreaker（key=`app_type:provider_id`）
 - Create:
-  - `cc-switch-web/src/proxy/circuit_breaker.rs`
+  - `cc-switch-server/src/proxy/circuit_breaker.rs`
 - Modify:
-  - `cc-switch-web/src/proxy/provider_router.rs`
+  - `cc-switch-server/src/proxy/provider_router.rs`
 - Requirements:
   - 状态：Closed/Open/HalfOpen
   - `allow_request()` + `record_success()/record_failure()`
@@ -55,7 +55,7 @@
 
 ### Task 1.3: 重构 Forwarder 为 `forward_with_retry`
 - Modify:
-  - `cc-switch-web/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
 - Requirements:
   - 以候选 provider 列表循环尝试
   - 每次失败记录 breaker 结果
@@ -64,13 +64,13 @@
 
 ### Task 1.4: Handler 统一走 Router + Retry
 - Modify:
-  - `cc-switch-web/src/proxy/handlers.rs`
+  - `cc-switch-server/src/proxy/handlers.rs`
 - Requirements:
   - handler 不再硬编码 provider 判定
   - 所有代理请求统一走 `router.select_providers -> forward_with_retry`
 
 ### Verification (Phase 1)
-- `cargo test -p cc-switch-web proxy`
+- `cargo test -p cc-switch-server proxy`
 - 新增单测覆盖：
   - failover 开关开/关的候选 provider 选择
   - breaker 打开时 provider 跳过
@@ -82,10 +82,10 @@
 
 ### Task 2.1: 引入 FailoverSwitchManager
 - Create:
-  - `cc-switch-web/src/proxy/failover_switch.rs`
+  - `cc-switch-server/src/proxy/failover_switch.rs`
 - Modify:
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/server.rs`
 - Requirements:
   - 去重切换（避免并发重复切换）
   - 成功切换后同步当前 provider 状态
@@ -93,7 +93,7 @@
 
 ### Task 2.2: 对齐 request-log/usage 记录点
 - Modify:
-  - `cc-switch-web/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
   - `cc-switch-lib/src/database/mod.rs`（如需补字段或接口）
 - Requirements:
   - 请求级记录与 usage 记录分层
@@ -111,8 +111,8 @@
 
 ### Task 3.1: 统一流式 message/tool stop 语义
 - Modify:
-  - `cc-switch-web/src/proxy/streaming_responses.rs`
-  - `cc-switch-web/src/proxy/adapters/minimax/response.rs`
+  - `cc-switch-server/src/proxy/streaming_responses.rs`
+  - `cc-switch-server/src/proxy/adapters/minimax/response.rs`
 - Requirements:
   - tool block start/delta/stop 成对闭合
   - `finish_reason=tool_calls/function_call` 仅在有效 tool block 时映射 `tool_use`
@@ -120,8 +120,8 @@
 
 ### Task 3.2: 统一 [DONE] 收尾与 usage flush
 - Modify:
-  - `cc-switch-web/src/proxy/streaming_responses.rs`
-  - `cc-switch-web/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/streaming_responses.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
 - Requirements:
   - [DONE] 前后不会重复 `message_stop`
   - usage 可以晚到并在结束时 flush
@@ -129,15 +129,15 @@
 
 ### Task 3.3: 补齐 adapter 契约测试（全 provider 最小覆盖）
 - Modify:
-  - `cc-switch-web/src/proxy/adapters/*/request.rs`
-  - `cc-switch-web/src/proxy/adapters/*/response.rs`
+  - `cc-switch-server/src/proxy/adapters/*/request.rs`
+  - `cc-switch-server/src/proxy/adapters/*/response.rs`
 - Requirements:
   - Anthropic/OpenAI/Gemini/Codex/Copilot/MiniMax 至少各 1 条请求转换 + 1 条响应转换断言
 
 ### Verification (Phase 3)
-- `cargo test -p cc-switch-web minimax -- --nocapture`
-- `cargo test -p cc-switch-web streaming_responses -- --nocapture`
-- `cargo test -p cc-switch-web adapters -- --nocapture`
+- `cargo test -p cc-switch-server minimax -- --nocapture`
+- `cargo test -p cc-switch-server streaming_responses -- --nocapture`
+- `cargo test -p cc-switch-server adapters -- --nocapture`
 
 ---
 
@@ -188,6 +188,6 @@
   - adapter contract tests expanded (Claude/Gemini/Copilot/Codex)
 
 Latest validation snapshot:
-- `cargo check -p cc-switch-web` PASS
-- `cargo test -p cc-switch-web` PASS (`50 passed`)
+- `cargo check -p cc-switch-server` PASS
+- `cargo test -p cc-switch-server` PASS (`50 passed`)
 - `cargo test -p cc-switch-lib` PASS (`42 passed`)

@@ -49,10 +49,10 @@ curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/insta
 After installation, simply run:
 
 ```bash
-cc-switch-web
+cc-switch-server
 ```
 
-The installer places the application under `~/.local/share/cc-switch-web` by default. User data stays in `~/.cc-switch`, including the SQLite database.
+The installer places the application under `~/.local/share/cc-switch-server` by default. User data stays in `~/.cc-switch`, including the SQLite database.
 
 ### Build from Source
 
@@ -63,7 +63,7 @@ If you prefer to build from source:
 cargo build --release
 
 # Run the server
-cargo run --bin cc-switch-web
+cargo run --bin cc-switch-server
 ```
 
 ### 2. Access the Web UI
@@ -120,7 +120,7 @@ graph TD
     %% Nodes
     UI["💻 Browser (React UI)<br/>http://localhost:5007/ui"]:::frontend
     
-    subgraph CC_Switch_Web ["cc-switch-web (Rust + Axum)"]
+    subgraph CC_Switch_Web ["cc-switch-server (Rust + Axum)"]
         API["🔌 REST API<br/>/api/*"]:::backend
         OAuth["🔐 OAuth Handler<br/>codex / copilot"]:::backend
         Proxy["🌐 Local Proxy<br/>:15721"]:::backend
@@ -176,7 +176,7 @@ pnpm lint       # Run ESLint checks
 ### Backend (Rust + Axum)
 
 ```bash
-cargo run --bin cc-switch-web  # Run the API server
+cargo run --bin cc-switch-server  # Run the API server
 cargo fmt && cargo clippy      # Formatting and linting
 cargo test                     # Run tests
 ```
@@ -185,7 +185,7 @@ cargo test                     # Run tests
 
 ```text
 cc-switch-ui/          # React frontend workspace
-cc-switch-web/         # Axum HTTP server (Rust)
+cc-switch-server/         # Axum HTTP server (Rust)
 cc-switch-lib/         # Shared core library (Rust)
   └── src/
       ├── database/    # SQLite persistence via rusqlite

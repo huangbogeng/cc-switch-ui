@@ -2,11 +2,11 @@
 set -e
 
 REPO="huangbogeng/cc-switch-ui"
-INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.local/share/cc-switch-web}"
+INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.local/share/cc-switch-server}"
 DATA_DIR="$HOME/.cc-switch"
 
 echo "=========================================="
-echo "    Installing CC Switch Web Admin"
+echo "    Installing CC Switch Server"
 echo "=========================================="
 
 # 1. Fetch the latest release version
@@ -43,7 +43,7 @@ case "$PLATFORM-$ARCH" in
 esac
 
 # 3. Download the tarball
-FILENAME="cc-switch-web-$DEST.tar.gz"
+FILENAME="cc-switch-server-$DEST.tar.gz"
 URL="https://github.com/$REPO/releases/download/$VERSION/$FILENAME"
 
 echo "-> Downloading $URL..."
@@ -58,12 +58,14 @@ echo "-> Extracting to $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
 # Extract directly into INSTALL_DIR. 
-# The tarball contains a 'cc-switch-web' folder, so we strip 1 component.
+# The tarball contains a 'cc-switch-server' folder, so we strip 1 component.
 tar -xzf /tmp/$FILENAME -C "$INSTALL_DIR" --strip-components=1
 rm -f /tmp/$FILENAME
 
 # Ensure it's executable
-chmod +x "$INSTALL_DIR/cc-switch-web"
+chmod +x "$INSTALL_DIR/cc-switch-server"
+# Backward-compatible command alias
+ln -sf "$INSTALL_DIR/cc-switch-server" "$INSTALL_DIR/cc-switch-web"
 
 # 5. Add to PATH
 SHELL_FILES=()
@@ -86,7 +88,7 @@ for RC_FILE in "${SHELL_FILES[@]}"; do
   
   if ! grep -q "export PATH=.*$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
     echo "" >> "$RC_FILE"
-    echo "# Added by CC Switch Web Installer" >> "$RC_FILE"
+    echo "# Added by CC Switch Server Installer" >> "$RC_FILE"
     echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$RC_FILE"
     echo "  ✅ Added to $RC_FILE"
   else
@@ -95,7 +97,7 @@ for RC_FILE in "${SHELL_FILES[@]}"; do
 done
 
 echo ""
-echo "🎉 CC Switch Web has been successfully installed!"
+echo "🎉 CC Switch Server has been successfully installed!"
 echo "Install directory: $INSTALL_DIR"
 echo "Data directory: $DATA_DIR"
 echo ""
@@ -107,6 +109,7 @@ elif [[ " ${SHELL_FILES[*]} " =~ ".bashrc" ]]; then
 else
   echo "    source ${SHELL_FILES[0]}"
 fi
-echo "    cc-switch-web"
+echo "    cc-switch-server"
+echo "    # legacy alias: cc-switch-web"
 echo ""
 echo "The admin UI will be available at: http://localhost:5007/ui"

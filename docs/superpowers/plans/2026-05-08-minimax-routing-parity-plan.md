@@ -2,48 +2,48 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Align `cc-switch-ui` / `cc-switch-web` MiniMax routing behavior with upstream `farion1231/cc-switch` for route entry coverage, provider selection/failover policy, and request-path compatibility.
+**Goal:** Align `cc-switch-ui` / `cc-switch-server` MiniMax routing behavior with upstream `farion1231/cc-switch` for route entry coverage, provider selection/failover policy, and request-path compatibility.
 
 **Architecture:** Expand proxy entry routes first so MiniMax-compatible clients can hit canonical endpoints (`/chat/completions`, `/v1/chat/completions`, `/responses`). Then upgrade provider routing from static in-memory toggles to DB-driven app-scoped policy. Finally harden MiniMax URL/path construction and add integration tests across routing + failover + usage recording boundaries.
 
-**Tech Stack:** Rust (`axum`, `tokio`), existing `cc-switch-web` proxy modules, SQLite-backed provider config via `cc_switch_lib::database`, cargo test.
+**Tech Stack:** Rust (`axum`, `tokio`), existing `cc-switch-server` proxy modules, SQLite-backed provider config via `cc_switch_lib::database`, cargo test.
 
 ---
 
 ## File Structure
 
-- Modify: `cc-switch-web/src/proxy/server.rs`
+- Modify: `cc-switch-server/src/proxy/server.rs`
   - Responsibility: expose proxy HTTP route matrix and wire request handlers to runtime state.
-- Modify: `cc-switch-web/src/proxy/handlers.rs`
+- Modify: `cc-switch-server/src/proxy/handlers.rs`
   - Responsibility: normalize incoming paths and dispatch by client format.
-- Modify: `cc-switch-web/src/proxy/session.rs`
+- Modify: `cc-switch-server/src/proxy/session.rs`
   - Responsibility: classify request format from incoming path for downstream adapters/usage.
-- Modify: `cc-switch-web/src/proxy/provider_router.rs`
+- Modify: `cc-switch-server/src/proxy/provider_router.rs`
   - Responsibility: provider candidate selection, app-scoped failover policy, circuit-breaker gating.
-- Modify: `cc-switch-web/src/proxy/forwarder.rs`
+- Modify: `cc-switch-server/src/proxy/forwarder.rs`
   - Responsibility: consume ordered provider candidates and report success/failure back to router.
-- Modify: `cc-switch-web/src/proxy/adapters/minimax/mod.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/minimax/mod.rs`
   - Responsibility: MiniMax base URL extraction and final upstream URL building.
-- Modify: `cc-switch-web/src/proxy/adapters/minimax/request.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/minimax/request.rs`
   - Responsibility: request normalization required by MiniMax OpenAI-compatible endpoints.
-- Modify: `cc-switch-web/src/handlers/settings.rs`
+- Modify: `cc-switch-server/src/handlers/settings.rs`
   - Responsibility: expose/read app-scoped failover and circuit-breaker config used by router.
-- Modify: `cc-switch-web/src/handlers/providers.rs`
+- Modify: `cc-switch-server/src/handlers/providers.rs`
   - Responsibility: keep proxy target + current provider semantics coherent with routing selection.
-- Test: `cc-switch-web/src/proxy/server.rs` (unit tests)
-- Test: `cc-switch-web/src/proxy/provider_router.rs` (unit tests)
-- Test: `cc-switch-web/src/proxy/adapters/minimax/mod.rs` (unit tests)
-- Create: `cc-switch-web/tests/minimax_routing_parity.rs`
+- Test: `cc-switch-server/src/proxy/server.rs` (unit tests)
+- Test: `cc-switch-server/src/proxy/provider_router.rs` (unit tests)
+- Test: `cc-switch-server/src/proxy/adapters/minimax/mod.rs` (unit tests)
+- Create: `cc-switch-server/tests/minimax_routing_parity.rs`
   - Responsibility: black-box integration tests for MiniMax routing parity scenarios.
 - Modify: `docs/superpowers/plans/2026-05-08-minimax-routing-parity-plan.md` (checklist status only during execution)
 
 ### Task 1: Expand Proxy Route Entry Matrix
 
 **Files:**
-- Modify: `cc-switch-web/src/proxy/server.rs`
-- Modify: `cc-switch-web/src/proxy/handlers.rs`
-- Modify: `cc-switch-web/src/proxy/session.rs`
-- Test: `cc-switch-web/src/proxy/server.rs`
+- Modify: `cc-switch-server/src/proxy/server.rs`
+- Modify: `cc-switch-server/src/proxy/handlers.rs`
+- Modify: `cc-switch-server/src/proxy/session.rs`
+- Test: `cc-switch-server/src/proxy/server.rs`
 
 - [ ] **Step 1: Write the failing tests for route coverage**
 
@@ -61,7 +61,7 @@ async fn proxy_accepts_responses_paths() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p cc-switch-web proxy_accepts_openai_chat_paths proxy_accepts_responses_paths -- --nocapture`
+Run: `cargo test -p cc-switch-server proxy_accepts_openai_chat_paths proxy_accepts_responses_paths -- --nocapture`
 Expected: FAIL with 404/route-not-found assertions.
 
 - [ ] **Step 3: Write minimal implementation in server router**
@@ -89,23 +89,23 @@ if path.contains("/responses") {
 
 - [ ] **Step 5: Run tests to verify pass**
 
-Run: `cargo test -p cc-switch-web proxy_accepts_openai_chat_paths proxy_accepts_responses_paths -- --nocapture`
+Run: `cargo test -p cc-switch-server proxy_accepts_openai_chat_paths proxy_accepts_responses_paths -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add cc-switch-web/src/proxy/server.rs cc-switch-web/src/proxy/handlers.rs cc-switch-web/src/proxy/session.rs
+git add cc-switch-server/src/proxy/server.rs cc-switch-server/src/proxy/handlers.rs cc-switch-server/src/proxy/session.rs
 git commit -m "feat(proxy): add openai/responses route entry coverage"
 ```
 
 ### Task 2: Upgrade ProviderRouter to App-Scoped DB-Driven Policy
 
 **Files:**
-- Modify: `cc-switch-web/src/proxy/provider_router.rs`
-- Modify: `cc-switch-web/src/proxy/server.rs`
-- Modify: `cc-switch-web/src/proxy/forwarder.rs`
-- Test: `cc-switch-web/src/proxy/provider_router.rs`
+- Modify: `cc-switch-server/src/proxy/provider_router.rs`
+- Modify: `cc-switch-server/src/proxy/server.rs`
+- Modify: `cc-switch-server/src/proxy/forwarder.rs`
+- Test: `cc-switch-server/src/proxy/provider_router.rs`
 
 - [ ] **Step 1: Write failing tests for app-scoped failover behavior**
 
@@ -124,7 +124,7 @@ async fn router_returns_error_when_all_candidates_circuit_open() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p cc-switch-web router_uses_db_failover_switch_per_app_type router_returns_error_when_all_candidates_circuit_open -- --nocapture`
+Run: `cargo test -p cc-switch-server router_uses_db_failover_switch_per_app_type router_returns_error_when_all_candidates_circuit_open -- --nocapture`
 Expected: FAIL due to missing DB-driven selection/error branch.
 
 - [ ] **Step 3: Implement router interface and selection contract**
@@ -157,22 +157,22 @@ Err(RouterSelectionError::AllCircuitOpen) => StatusCode::SERVICE_UNAVAILABLE
 
 - [ ] **Step 5: Run target tests**
 
-Run: `cargo test -p cc-switch-web provider_router -- --nocapture`
+Run: `cargo test -p cc-switch-server provider_router -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add cc-switch-web/src/proxy/provider_router.rs cc-switch-web/src/proxy/server.rs cc-switch-web/src/proxy/forwarder.rs
+git add cc-switch-server/src/proxy/provider_router.rs cc-switch-server/src/proxy/server.rs cc-switch-server/src/proxy/forwarder.rs
 git commit -m "feat(proxy): make provider routing app-scoped and db-driven"
 ```
 
 ### Task 3: MiniMax URL/Endpoint Compatibility Hardening
 
 **Files:**
-- Modify: `cc-switch-web/src/proxy/adapters/minimax/mod.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/minimax/request.rs`
-- Test: `cc-switch-web/src/proxy/adapters/minimax/mod.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/minimax/mod.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/minimax/request.rs`
+- Test: `cc-switch-server/src/proxy/adapters/minimax/mod.rs`
 
 - [ ] **Step 1: Write failing URL-build tests for MiniMax**
 
@@ -190,7 +190,7 @@ fn minimax_build_url_supports_prefix_and_full_endpoint_modes() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p cc-switch-web minimax_build_url_avoids_double_v1 minimax_build_url_supports_prefix_and_full_endpoint_modes -- --nocapture`
+Run: `cargo test -p cc-switch-server minimax_build_url_avoids_double_v1 minimax_build_url_supports_prefix_and_full_endpoint_modes -- --nocapture`
 Expected: FAIL on duplicated path or incorrect endpoint mode.
 
 - [ ] **Step 3: Implement deterministic URL builder**
@@ -213,22 +213,22 @@ if request_body.get("stream_options").is_none() {
 
 - [ ] **Step 5: Run adapter tests**
 
-Run: `cargo test -p cc-switch-web minimax -- --nocapture`
+Run: `cargo test -p cc-switch-server minimax -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add cc-switch-web/src/proxy/adapters/minimax/mod.rs cc-switch-web/src/proxy/adapters/minimax/request.rs
+git add cc-switch-server/src/proxy/adapters/minimax/mod.rs cc-switch-server/src/proxy/adapters/minimax/request.rs
 git commit -m "fix(minimax): harden endpoint building and request compatibility"
 ```
 
 ### Task 4: End-to-End Parity Tests for Routing + Failover
 
 **Files:**
-- Create: `cc-switch-web/tests/minimax_routing_parity.rs`
-- Modify: `cc-switch-web/src/handlers/providers.rs`
-- Modify: `cc-switch-web/src/handlers/settings.rs`
+- Create: `cc-switch-server/tests/minimax_routing_parity.rs`
+- Modify: `cc-switch-server/src/handlers/providers.rs`
+- Modify: `cc-switch-server/src/handlers/settings.rs`
 
 - [ ] **Step 1: Write failing integration tests**
 
@@ -251,7 +251,7 @@ async fn minimax_all_open_circuits_returns_503() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p cc-switch-web --test minimax_routing_parity -- --nocapture`
+Run: `cargo test -p cc-switch-server --test minimax_routing_parity -- --nocapture`
 Expected: FAIL due to current routing behavior mismatch.
 
 - [ ] **Step 3: Implement missing handler glue**
@@ -268,13 +268,13 @@ state.db.set_proxy_target_provider_id(&id)?;
 
 - [ ] **Step 4: Run integration tests**
 
-Run: `cargo test -p cc-switch-web --test minimax_routing_parity -- --nocapture`
+Run: `cargo test -p cc-switch-server --test minimax_routing_parity -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cc-switch-web/tests/minimax_routing_parity.rs cc-switch-web/src/handlers/providers.rs cc-switch-web/src/handlers/settings.rs
+git add cc-switch-server/tests/minimax_routing_parity.rs cc-switch-server/src/handlers/providers.rs cc-switch-server/src/handlers/settings.rs
 git commit -m "test(proxy): add minimax routing parity integration coverage"
 ```
 
@@ -288,15 +288,15 @@ git commit -m "test(proxy): add minimax routing parity integration coverage"
 Run: `cargo fmt --all -- --check`
 Expected: PASS.
 
-Run: `cargo clippy -p cc-switch-web --all-targets -- -D warnings`
+Run: `cargo clippy -p cc-switch-server --all-targets -- -D warnings`
 Expected: PASS.
 
-Run: `cargo test -p cc-switch-web -- --nocapture`
+Run: `cargo test -p cc-switch-server -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 2: Smoke run proxy server**
 
-Run: `cargo run -p cc-switch-web`
+Run: `cargo run -p cc-switch-server`
 Expected: server starts, health endpoint reachable, no startup panic.
 
 - [ ] **Step 3: Final commit (if verification-only changes exist)**

@@ -1,0 +1,8 @@
+
+running 3 tests
+test proxy::adapters::deepseek::request::tests::normalizes_legacy_anthropic_url_to_chat_completions ... ok
+test proxy::adapters::deepseek::request::tests::keeps_assistant_reasoning_content_for_deepseek_thinking_mode ... ok
+test proxy::adapters::deepseek::request::tests::strips_thinking_blocks_and_signatures_before_conversion ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 57 filtered out; finished in 0.00s
+

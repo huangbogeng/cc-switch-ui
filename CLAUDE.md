@@ -19,7 +19,7 @@ pnpm lint       # ESLint check
 
 ### Backend (Rust + Axum)
 ```bash
-cargo run --bin cc-switch-web  # Runs on http://localhost:5007
+cargo run --bin cc-switch-server  # Runs on http://localhost:5007
 cargo build --release          # Build release binary
 ```
 
@@ -36,10 +36,10 @@ cargo fmt && cargo clippy      # Rust formatting and linting
   - `src/oauth/` — OAuth authentication (Codex, Copilot)
   - `src/config.rs` — Configuration management
   - `src/live.rs` — Live config sync mechanism
-- `cc-switch-web/` — Axum HTTP server with REST API handlers
+- `cc-switch-server/` — Axum HTTP server with REST API handlers
   - `src/handlers/` — API route handlers (auth, oauth, providers)
   - `src/proxy/` — Proxy server for provider requests
-  - `src/main.rs` — Entry point, exposes binary `cc-switch-web`
+  - `src/main.rs` — Entry point, exposes binary `cc-switch-server`
 - `cc-switch-ui/` — React 19 frontend
   - `src/api/index.ts` — API client layer
   - `src/pages/` — DashboardPage, LoginPage, ProvidersPage

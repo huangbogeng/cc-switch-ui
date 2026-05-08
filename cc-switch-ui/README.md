@@ -21,7 +21,7 @@ npm run dev
 The Vite dev server proxies `/api` to `http://localhost:5007`, so run the backend from the repository root in another terminal:
 
 ```bash
-cargo run --bin cc-switch-web
+cargo run --bin cc-switch-server
 ```
 
 ## Build

@@ -9,7 +9,7 @@
 | `.rs` 文件总数 | 63 |
 | 总代码行数 | ~12,568 |
 | `cc-switch-lib/`（核心库） | 25 文件，~5,228 行 |
-| `cc-switch-web/`（Web 服务） | 38 文件，~7,336 行 |
+| `cc-switch-server/`（Web 服务） | 38 文件，~7,336 行 |
 
 ---
 
@@ -20,14 +20,14 @@
 | 文件 | 行数 | 问题描述 |
 |------|------|----------|
 | `cc-switch-lib/src/oauth/copilot/mod.rs` | **1003** | 整个 CopilotAuthManager 塞在一个文件：设备码流程、token 刷新、多账号管理、迁移逻辑全在一起 |
-| `cc-switch-web/src/proxy/streaming_responses.rs` | **924** | 多个独立的流式转换管道混在一起：Responses→Anthropic、Chat→Anthropic 等多个函数 |
+| `cc-switch-server/src/proxy/streaming_responses.rs` | **924** | 多个独立的流式转换管道混在一起：Responses→Anthropic、Chat→Anthropic 等多个函数 |
 
 ### 中等
 
 | 文件 | 行数 | 问题描述 |
 |------|------|----------|
 | `cc-switch-lib/src/database/mod.rs` | **821** | 类型定义 + DDL + 迁移 + CRUD + 测试全在一个文件 |
-| `cc-switch-web/src/proxy/forwarder.rs` | **656** | Forwarder 的核心转发逻辑过长，分支复杂 |
+| `cc-switch-server/src/proxy/forwarder.rs` | **656** | Forwarder 的核心转发逻辑过长，分支复杂 |
 | `cc-switch-lib/src/oauth/codex/mod.rs` | **650** | 与 copilot 同样的问题，建议同样拆分 |
 
 ### 边界（可接受但需关注）
@@ -35,12 +35,12 @@
 | 文件 | 行数 | 说明 |
 |------|------|------|
 | `cc-switch-lib/src/oauth/copilot/tests.rs` | **572** | 测试文件长是正常的 |
-| `cc-switch-web/src/proxy/transform_responses.rs` | **424** | 几个转换函数天然聚合在一起 |
+| `cc-switch-server/src/proxy/transform_responses.rs` | **424** | 几个转换函数天然聚合在一起 |
 | `cc-switch-lib/src/oauth/copilot/types.rs` | **383** | 纯类型定义，结构清晰 |
-| `cc-switch-web/src/handlers/providers.rs` | **325** | 7个 handler 函数，每个约40行 |
-| `cc-switch-web/src/proxy/adapters/minimax/request.rs` | **309** | 转换逻辑确实复杂 |
+| `cc-switch-server/src/handlers/providers.rs` | **325** | 7个 handler 函数，每个约40行 |
+| `cc-switch-server/src/proxy/adapters/minimax/request.rs` | **309** | 转换逻辑确实复杂 |
 | `cc-switch-lib/src/config.rs` | **307** | 配置工具函数集合 |
-| `cc-switch-web/src/main.rs` | **302** | 路由注册占了一半行数 |
+| `cc-switch-server/src/main.rs` | **302** | 路由注册占了一半行数 |
 
 ---
 
@@ -63,14 +63,14 @@
 
 ### 优点
 
-- **crate 边界清晰**：`cc-switch-lib` 持有领域逻辑（database、OAuth、providers、config），`cc-switch-web` 持有 HTTP server、router、proxy，无循环依赖
+- **crate 边界清晰**：`cc-switch-lib` 持有领域逻辑（database、OAuth、providers、config），`cc-switch-server` 持有 HTTP server、router、proxy，无循环依赖
 - **Adapter 模式统一**：`proxy/adapters/` 下每个 provider 一个子目录，结构一致，新增 provider 很容易
 - **模块声明干净**：`lib.rs`、`mod.rs` 中的声明和 re-export 清晰明确
 
 ### 缺点
 
 - `cc-switch-lib/src/oauth/` 下的 3 个大文件（copilot/mod.rs 1003行、codex/mod.rs 650行、copilot/types.rs 383行）合计超 2000 行，占库代码的 40%
-- `cc-switch-web/src/proxy/` 共 14 个子模块（不含 adapters），是 web crate 最大的模块簇，约 4000 行
+- `cc-switch-server/src/proxy/` 共 14 个子模块（不含 adapters），是 web crate 最大的模块簇，约 4000 行
 - 4 个 adapter 下的 response.rs 样板文件可以内联消除
 
 ---
