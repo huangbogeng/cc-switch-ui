@@ -3,6 +3,7 @@
 pub mod common;
 pub mod openai_chat;
 pub mod responses;
+pub mod tool_blocks;
 
 #[cfg(test)]
 #[allow(unused_imports)]

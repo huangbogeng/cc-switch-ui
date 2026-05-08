@@ -1,6 +1,7 @@
 //! OpenAI Chat SSE to Anthropic Messages SSE conversion.
 
 use super::common::{message_start, parse_sse_block, sse_event, take_sse_block};
+use super::tool_blocks::{close_open_tool_blocks, guarded_openai_finish_reason, ToolBlockState};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -356,45 +357,6 @@ where
     }
 }
 
-#[derive(Debug, Default)]
-struct ToolBlockState {
-    anthropic_index: u32,
-    id: String,
-    name: String,
-    started: bool,
-    pending_args: String,
-    all_arguments: String,
-}
-
-fn close_open_tool_blocks(
-    open_tool_block_indices: &mut Vec<u32>,
-    tool_blocks_by_index: &mut HashMap<u32, ToolBlockState>,
-    valid_closed_tool_blocks: &mut u32,
-    model: &str,
-    message_id: &str,
-    warn_reason: &str,
-) -> Vec<u32> {
-    let mut closed_indices = Vec::with_capacity(open_tool_block_indices.len());
-    for tool_index in open_tool_block_indices.drain(..) {
-        let Some(state) = tool_blocks_by_index.remove(&tool_index) else {
-            continue;
-        };
-        if is_valid_tool_block(&state) {
-            *valid_closed_tool_blocks += 1;
-        } else {
-            log::warn!(
-                "tool_use_downgrade reason={} model={} message_id={} tool_index={}",
-                warn_reason,
-                model,
-                message_id,
-                tool_index
-            );
-        }
-        closed_indices.push(state.anthropic_index);
-    }
-    closed_indices
-}
-
 fn openai_usage(usage: Option<&Value>) -> Value {
     let Some(usage) = usage else {
         return json!({ "output_tokens": 0 });
@@ -419,41 +381,6 @@ fn openai_chat_stream_usage(usage: Option<&Value>, model: &str) -> Option<OpenAI
 fn token_usage_value(usage: &Value, keys: &[&str]) -> Option<i64> {
     keys.iter()
         .find_map(|key| usage.get(*key).and_then(Value::as_i64))
-}
-
-fn openai_finish_reason(reason: Option<&str>) -> &'static str {
-    match reason {
-        Some("length") => "max_tokens",
-        Some("tool_calls") | Some("function_call") => "tool_use",
-        _ => "end_turn",
-    }
-}
-
-fn guarded_openai_finish_reason(
-    reason: Option<&str>,
-    has_valid_closed_tool_block: bool,
-    model: &str,
-    message_id: &str,
-) -> &'static str {
-    if matches!(reason, Some("tool_calls") | Some("function_call")) && !has_valid_closed_tool_block
-    {
-        log::warn!(
-            "tool_use_downgrade reason=missing_valid_closed_tool_block finish_reason={} model={} message_id={}",
-            reason.unwrap_or_default(),
-            model,
-            message_id
-        );
-        return "end_turn";
-    }
-    openai_finish_reason(reason)
-}
-
-fn is_valid_tool_block(state: &ToolBlockState) -> bool {
-    if !state.started || state.id.is_empty() || state.name.is_empty() {
-        return false;
-    }
-    let args = state.all_arguments.trim();
-    args.is_empty() || serde_json::from_str::<Value>(args).is_ok()
 }
 
 #[cfg(test)]
