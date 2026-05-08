@@ -4,6 +4,12 @@ Date: 2026-05-08
 Repo: `cc-switch-ui`
 Scope: `cc-switch-server` + `cc-switch-lib`
 
+## Current Status (Updated: 2026-05-08)
+
+1. Phase 0 completed (baseline tests captured under `docs/test-logs/`).
+2. Phase 1 completed (proxy streaming split delivered with compatibility bridge).
+3. Active PR: `#22` (`feat/backend-modularization-phase1`).
+
 ## 1. Objectives
 
 1. Reduce oversized backend files by introducing directory-level modules.
@@ -76,9 +82,9 @@ Directory modules per domain:
 
 ## Phase 0: Baseline Stabilization
 
-- [ ] Record current test baseline for proxy + adapters.
-- [ ] Add/confirm regression tests for DeepSeek reasoning_content roundtrip.
-- [ ] Snapshot file-size baseline for top 10 largest files.
+- [x] Record current test baseline for proxy + adapters.
+- [x] Add/confirm regression tests for DeepSeek reasoning_content roundtrip.
+- [x] Snapshot file-size baseline for top 10 largest files.
 
 Verification:
 
@@ -89,10 +95,11 @@ cargo test -p cc-switch-server deepseek -- --nocapture
 
 ## Phase 1: Proxy Streaming Split (Lowest Risk First)
 
-- [ ] Create `proxy/streaming/` directory and move helpers to `common.rs`.
-- [ ] Move OpenAI Chat SSE conversion into `openai_chat.rs`.
-- [ ] Move Responses SSE conversion into `responses.rs`.
-- [ ] Keep old module path via `pub use` bridge to avoid wide touching.
+- [x] Create `proxy/streaming/` directory and move helpers to `common.rs`.
+- [x] Move OpenAI Chat SSE conversion into `openai_chat.rs`.
+- [x] Move Responses SSE conversion into `responses.rs`.
+- [x] Keep old module path via `pub use` bridge to avoid wide touching.
+- [x] Extract tool-block/finalization helpers without over-fragmenting files.
 
 Verification:
 
@@ -169,6 +176,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## 8. Start-Now Tasklist
 
-1. Execute Phase 0 baseline commands and capture outputs in `docs/test-logs/`.
-2. Execute Phase 1 streaming split as first implementation slice.
-3. Open a dedicated PR focused on Phase 1 only.
+1. Start Phase 2 (`forwarder.rs`) decomposition with no behavior changes.
+2. Keep streaming module count stable (avoid over-splitting).
+3. Continue using small, reviewable commits per boundary change.
