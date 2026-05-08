@@ -1,6 +1,9 @@
 //! OpenAI Chat SSE to Anthropic Messages SSE conversion.
 
 use super::common::{message_start, parse_sse_block, sse_event, take_sse_block};
+use super::finalization::{
+    close_text_block_if_needed, close_thinking_block_if_needed, message_stop_event,
+};
 use super::tool_blocks::{close_open_tool_blocks, guarded_openai_finish_reason, ToolBlockState};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -90,19 +93,16 @@ where
                     if sent_message_stop {
                         continue;
                     }
-                    if sent_text_start && !sent_text_stop {
-                        sent_text_stop = true;
-                        let index = text_block_index.unwrap_or(0);
-                        yield Ok(sse_event("content_block_stop", json!({
-                            "type": "content_block_stop",
-                            "index": index
-                        })));
+                    if let Some(event) = close_text_block_if_needed(
+                        sent_text_start,
+                        &mut sent_text_stop,
+                        text_block_index,
+                    ) {
+                        yield Ok(event);
                     }
-                    if let Some(index) = thinking_block_index.take() {
-                        yield Ok(sse_event("content_block_stop", json!({
-                            "type": "content_block_stop",
-                            "index": index
-                        })));
+                    if let Some(event) = close_thinking_block_if_needed(&mut thinking_block_index)
+                    {
+                        yield Ok(event);
                     }
                     for index in closed_tool_block_indices {
                         yield Ok(sse_event("content_block_stop", json!({
@@ -113,15 +113,9 @@ where
                     if !sent_message_start {
                         yield Ok(message_start(&message_id, &model));
                     }
-                    yield Ok(sse_event("message_delta", json!({
-                        "type": "message_delta",
-                        "delta": {
-                            "stop_reason": "end_turn",
-                            "stop_sequence": Value::Null
-                        },
-                        "usage": { "output_tokens": 0 }
-                    })));
-                    yield Ok(sse_event("message_stop", json!({ "type": "message_stop" })));
+                    for event in message_stop_event("end_turn", json!({ "output_tokens": 0 })) {
+                        yield Ok(event);
+                    }
                     sent_message_stop = true;
                     continue;
                 }
@@ -212,19 +206,16 @@ where
                     if sent_message_stop {
                         continue;
                     }
-                    if sent_text_start && !sent_text_stop {
-                        sent_text_stop = true;
-                        let index = text_block_index.unwrap_or(0);
-                        yield Ok(sse_event("content_block_stop", json!({
-                            "type": "content_block_stop",
-                            "index": index
-                        })));
+                    if let Some(event) = close_text_block_if_needed(
+                        sent_text_start,
+                        &mut sent_text_stop,
+                        text_block_index,
+                    ) {
+                        yield Ok(event);
                     }
-                    if let Some(index) = thinking_block_index.take() {
-                        yield Ok(sse_event("content_block_stop", json!({
-                            "type": "content_block_stop",
-                            "index": index
-                        })));
+                    if let Some(event) = close_thinking_block_if_needed(&mut thinking_block_index)
+                    {
+                        yield Ok(event);
                     }
                     let closed_tool_block_indices = close_open_tool_blocks(
                         &mut open_tool_block_indices,
@@ -247,15 +238,9 @@ where
                         &model,
                         &message_id,
                     );
-                    yield Ok(sse_event("message_delta", json!({
-                        "type": "message_delta",
-                        "delta": {
-                            "stop_reason": stop_reason,
-                            "stop_sequence": Value::Null
-                        },
-                        "usage": openai_usage(data.get("usage"))
-                    })));
-                    yield Ok(sse_event("message_stop", json!({ "type": "message_stop" })));
+                    for event in message_stop_event(stop_reason, openai_usage(data.get("usage"))) {
+                        yield Ok(event);
+                    }
                     sent_message_stop = true;
                 }
             }

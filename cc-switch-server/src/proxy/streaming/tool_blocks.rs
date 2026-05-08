@@ -19,6 +19,8 @@ pub(super) fn close_open_tool_blocks(
     message_id: &str,
     warn_reason: &str,
 ) -> Vec<u32> {
+    // Convert provider-side open tool call states into finalized Anthropic blocks.
+    // Any malformed tool payload is downgraded by logging and excluding tool-use semantics.
     let mut closed_indices = Vec::with_capacity(open_tool_block_indices.len());
     for tool_index in open_tool_block_indices.drain(..) {
         let Some(state) = tool_blocks_by_index.remove(&tool_index) else {
@@ -46,6 +48,8 @@ pub(super) fn guarded_openai_finish_reason(
     model: &str,
     message_id: &str,
 ) -> &'static str {
+    // If upstream says "tool_calls" but no valid tool block was produced,
+    // emitting tool_use would violate Anthropic stream invariants.
     if matches!(reason, Some("tool_calls") | Some("function_call")) && !has_valid_closed_tool_block
     {
         log::warn!(

@@ -1,6 +1,7 @@
 //! Streaming conversion modules.
 
 pub mod common;
+pub mod finalization;
 pub mod openai_chat;
 pub mod responses;
 pub mod tool_blocks;
