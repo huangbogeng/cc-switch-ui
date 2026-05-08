@@ -23,6 +23,20 @@
 
 ---
 
+## 📌 当前进度（2026-05-08）
+
+- 后端 crate 重命名已完成：`cc-switch-web` -> `cc-switch-server`。
+- 后端模块化重构的 Phase 0 与 Phase 1 已完成。
+- 代理流式转换链路已模块化到 `cc-switch-server/src/proxy/streaming/`：
+  - `openai_chat.rs`
+  - `responses.rs`
+  - `common.rs`
+  - `tool_blocks.rs`
+  - `finalization.rs`
+- 当前重点：推进 Phase 2（`forwarder.rs` 拆分），同时避免把文件拆得过度细碎。
+
+---
+
 ## 🚀 支持的 Provider
 
 | Provider | 类型 | 认证方式 | 说明 |
@@ -49,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/insta
 安装完成后，直接运行即可启动服务：
 
 ```bash
-cc-switch-server
+cc-switch-ui
 ```
 
 安装脚本默认把程序放在 `~/.local/share/cc-switch-server`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
