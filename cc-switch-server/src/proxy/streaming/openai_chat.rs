@@ -33,6 +33,7 @@ where
     F: Fn(OpenAIChatStreamUsage) + Send + 'static,
 {
     async_stream::stream! {
+        // SSE payload may split logical events across chunks; keep a rolling buffer.
         let mut buffer = String::new();
         let mut message_id = String::new();
         let mut model = String::new();
@@ -76,6 +77,8 @@ where
                             sent_usage = true;
                         }
                     }
+                    // OpenAI chat may end without explicit tool block stop events.
+                    // We force-close any open tool blocks to keep Anthropic event ordering valid.
                     let closed_tool_block_indices = close_open_tool_blocks(
                         &mut open_tool_block_indices,
                         &mut tool_blocks_by_index,
@@ -161,25 +164,12 @@ where
                     .and_then(|delta| delta.get("reasoning_content"))
                     .and_then(Value::as_str)
                 {
-                    if !reasoning.is_empty() {
-                        let index = if let Some(index) = thinking_block_index {
-                            index
-                        } else {
-                            let index = next_content_index;
-                            next_content_index += 1;
-                            thinking_block_index = Some(index);
-                            yield Ok(sse_event("content_block_start", json!({
-                                "type": "content_block_start",
-                                "index": index,
-                                "content_block": { "type": "thinking", "thinking": "" }
-                            })));
-                            index
-                        };
-                        yield Ok(sse_event("content_block_delta", json!({
-                            "type": "content_block_delta",
-                            "index": index,
-                            "delta": { "type": "thinking_delta", "thinking": reasoning }
-                        })));
+                    for event in handle_reasoning_delta(
+                        reasoning,
+                        &mut thinking_block_index,
+                        &mut next_content_index,
+                    ) {
+                        yield Ok(event);
                     }
                 }
 
@@ -188,24 +178,15 @@ where
                     .and_then(|delta| delta.get("content"))
                     .and_then(Value::as_str)
                 {
-                    if !sent_text_start {
-                        sent_text_start = true;
-                        sent_text_stop = false;
-                        let index = next_content_index;
-                        next_content_index += 1;
-                        text_block_index = Some(index);
-                        yield Ok(sse_event("content_block_start", json!({
-                            "type": "content_block_start",
-                            "index": index,
-                            "content_block": { "type": "text", "text": "" }
-                        })));
+                    for event in handle_text_delta(
+                        content,
+                        &mut sent_text_start,
+                        &mut sent_text_stop,
+                        &mut text_block_index,
+                        &mut next_content_index,
+                    ) {
+                        yield Ok(event);
                     }
-                    let index = text_block_index.unwrap_or(0);
-                    yield Ok(sse_event("content_block_delta", json!({
-                        "type": "content_block_delta",
-                        "index": index,
-                        "delta": { "type": "text_delta", "text": content }
-                    })));
                 }
 
                 if let Some(tool_calls) = choice
@@ -213,86 +194,16 @@ where
                     .and_then(|delta| delta.get("tool_calls"))
                     .and_then(Value::as_array)
                 {
-                    if sent_text_start && !sent_text_stop {
-                        sent_text_stop = true;
-                        let index = text_block_index.unwrap_or(0);
-                        yield Ok(sse_event("content_block_stop", json!({
-                            "type": "content_block_stop",
-                            "index": index
-                        })));
-                    }
-                    for tool_call in tool_calls {
-                        let tool_index = tool_call
-                            .get("index")
-                            .and_then(Value::as_u64)
-                            .unwrap_or(0) as u32;
-
-                        let state = tool_blocks_by_index
-                            .entry(tool_index)
-                            .or_insert_with(|| {
-                                let idx = next_content_index;
-                                next_content_index += 1;
-                                ToolBlockState {
-                                    anthropic_index: idx,
-                                    id: String::new(),
-                                    name: String::new(),
-                                    started: false,
-                                    pending_args: String::new(),
-                                    all_arguments: String::new(),
-                                }
-                            });
-
-                        if let Some(id) = tool_call.get("id").and_then(Value::as_str) {
-                            state.id = id.to_string();
-                        }
-                        if let Some(name) = tool_call
-                            .get("function")
-                            .and_then(|f| f.get("name"))
-                            .and_then(Value::as_str)
-                        {
-                            state.name = name.to_string();
-                        }
-
-                        let should_start = !state.started && !state.id.is_empty() && !state.name.is_empty();
-                        if should_start {
-                            state.started = true;
-                            let index = state.anthropic_index;
-                            yield Ok(sse_event("content_block_start", json!({
-                                "type": "content_block_start",
-                                "index": index,
-                                "content_block": {
-                                    "type": "tool_use",
-                                    "id": state.id,
-                                    "name": state.name
-                                }
-                            })));
-                            open_tool_block_indices.push(tool_index);
-                            if !state.pending_args.is_empty() {
-                                let args = std::mem::take(&mut state.pending_args);
-                                yield Ok(sse_event("content_block_delta", json!({
-                                    "type": "content_block_delta",
-                                    "index": index,
-                                    "delta": { "type": "input_json_delta", "partial_json": args }
-                                })));
-                            }
-                        }
-
-                        if let Some(arguments) = tool_call
-                            .get("function")
-                            .and_then(|f| f.get("arguments"))
-                            .and_then(Value::as_str)
-                        {
-                            state.all_arguments.push_str(arguments);
-                            if state.started {
-                                yield Ok(sse_event("content_block_delta", json!({
-                                    "type": "content_block_delta",
-                                    "index": state.anthropic_index,
-                                    "delta": { "type": "input_json_delta", "partial_json": arguments }
-                                })));
-                            } else {
-                                state.pending_args.push_str(arguments);
-                            }
-                        }
+                    for event in handle_tool_calls(
+                        tool_calls,
+                        &mut sent_text_start,
+                        &mut sent_text_stop,
+                        text_block_index,
+                        &mut next_content_index,
+                        &mut tool_blocks_by_index,
+                        &mut open_tool_block_indices,
+                    ) {
+                        yield Ok(event);
                     }
                 }
 
@@ -329,6 +240,7 @@ where
                             "index": index
                         })));
                     }
+                    // Guard tool-use stop reason to avoid emitting invalid Anthropic tool_use states.
                     let stop_reason = guarded_openai_finish_reason(
                         finish_reason,
                         valid_closed_tool_blocks > 0,
@@ -365,6 +277,183 @@ fn openai_usage(usage: Option<&Value>) -> Value {
         "input_tokens": token_usage_value(usage, &["prompt_tokens", "input_tokens"]).unwrap_or(0),
         "output_tokens": token_usage_value(usage, &["completion_tokens", "output_tokens"]).unwrap_or(0),
     })
+}
+
+fn handle_reasoning_delta(
+    reasoning: &str,
+    thinking_block_index: &mut Option<u32>,
+    next_content_index: &mut u32,
+) -> Vec<Bytes> {
+    if reasoning.is_empty() {
+        return Vec::new();
+    }
+
+    let mut events = Vec::new();
+    let index = if let Some(index) = *thinking_block_index {
+        index
+    } else {
+        let index = *next_content_index;
+        *next_content_index += 1;
+        *thinking_block_index = Some(index);
+        events.push(sse_event(
+            "content_block_start",
+            json!({
+                "type": "content_block_start",
+                "index": index,
+                "content_block": { "type": "thinking", "thinking": "" }
+            }),
+        ));
+        index
+    };
+
+    events.push(sse_event(
+        "content_block_delta",
+        json!({
+            "type": "content_block_delta",
+            "index": index,
+            "delta": { "type": "thinking_delta", "thinking": reasoning }
+        }),
+    ));
+    events
+}
+
+fn handle_text_delta(
+    content: &str,
+    sent_text_start: &mut bool,
+    sent_text_stop: &mut bool,
+    text_block_index: &mut Option<u32>,
+    next_content_index: &mut u32,
+) -> Vec<Bytes> {
+    let mut events = Vec::new();
+    if !*sent_text_start {
+        *sent_text_start = true;
+        *sent_text_stop = false;
+        let index = *next_content_index;
+        *next_content_index += 1;
+        *text_block_index = Some(index);
+        events.push(sse_event(
+            "content_block_start",
+            json!({
+                "type": "content_block_start",
+                "index": index,
+                "content_block": { "type": "text", "text": "" }
+            }),
+        ));
+    }
+
+    let index = text_block_index.unwrap_or(0);
+    events.push(sse_event(
+        "content_block_delta",
+        json!({
+            "type": "content_block_delta",
+            "index": index,
+            "delta": { "type": "text_delta", "text": content }
+        }),
+    ));
+    events
+}
+
+fn handle_tool_calls(
+    tool_calls: &[Value],
+    sent_text_start: &mut bool,
+    sent_text_stop: &mut bool,
+    text_block_index: Option<u32>,
+    next_content_index: &mut u32,
+    tool_blocks_by_index: &mut HashMap<u32, ToolBlockState>,
+    open_tool_block_indices: &mut Vec<u32>,
+) -> Vec<Bytes> {
+    let mut events = Vec::new();
+    if *sent_text_start && !*sent_text_stop {
+        *sent_text_stop = true;
+        let index = text_block_index.unwrap_or(0);
+        events.push(sse_event(
+            "content_block_stop",
+            json!({
+                "type": "content_block_stop",
+                "index": index
+            }),
+        ));
+    }
+
+    for tool_call in tool_calls {
+        let tool_index = tool_call.get("index").and_then(Value::as_u64).unwrap_or(0) as u32;
+        let state = tool_blocks_by_index.entry(tool_index).or_insert_with(|| {
+            let idx = *next_content_index;
+            *next_content_index += 1;
+            ToolBlockState {
+                anthropic_index: idx,
+                id: String::new(),
+                name: String::new(),
+                started: false,
+                pending_args: String::new(),
+                all_arguments: String::new(),
+            }
+        });
+
+        if let Some(id) = tool_call.get("id").and_then(Value::as_str) {
+            state.id = id.to_string();
+        }
+        if let Some(name) = tool_call
+            .get("function")
+            .and_then(|f| f.get("name"))
+            .and_then(Value::as_str)
+        {
+            state.name = name.to_string();
+        }
+
+        // Anthropic requires id+name at block start. Delay start until both are known.
+        let should_start = !state.started && !state.id.is_empty() && !state.name.is_empty();
+        if should_start {
+            state.started = true;
+            let index = state.anthropic_index;
+            events.push(sse_event(
+                "content_block_start",
+                json!({
+                    "type": "content_block_start",
+                    "index": index,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": state.id,
+                        "name": state.name
+                    }
+                }),
+            ));
+            open_tool_block_indices.push(tool_index);
+            if !state.pending_args.is_empty() {
+                let args = std::mem::take(&mut state.pending_args);
+                events.push(sse_event(
+                    "content_block_delta",
+                    json!({
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": { "type": "input_json_delta", "partial_json": args }
+                    }),
+                ));
+            }
+        }
+
+        if let Some(arguments) = tool_call
+            .get("function")
+            .and_then(|f| f.get("arguments"))
+            .and_then(Value::as_str)
+        {
+            state.all_arguments.push_str(arguments);
+            if state.started {
+                events.push(sse_event(
+                    "content_block_delta",
+                    json!({
+                        "type": "content_block_delta",
+                        "index": state.anthropic_index,
+                        "delta": { "type": "input_json_delta", "partial_json": arguments }
+                    }),
+                ));
+            } else {
+                state.pending_args.push_str(arguments);
+            }
+        }
+    }
+
+    events
 }
 
 fn openai_chat_stream_usage(usage: Option<&Value>, model: &str) -> Option<OpenAIChatStreamUsage> {
