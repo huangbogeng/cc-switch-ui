@@ -1,5 +1,5 @@
 [package]
-name = "cc-switch-web"
+name = "cc-switch-server"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 description = "Web Admin server for cc-switch"
 
 [[bin]]
-name = "cc-switch-web"
+name = "cc-switch-server"
 path = "src/main.rs"
 
 [dependencies]

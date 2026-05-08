@@ -10,7 +10,7 @@
 //! - `error.rs` - Error types
 //! - `registry.rs` - ProviderRegistry for adapter lookup
 //!
-//! Concrete adapter implementations are in `cc-switch-web/src/proxy/adapters/`
+//! Concrete adapter implementations are in `cc-switch-server/src/proxy/adapters/`
 
 mod adapter;
 mod error;

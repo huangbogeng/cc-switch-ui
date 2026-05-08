@@ -1,4 +1,4 @@
-//! cc-switch-web
+//! cc-switch-server
 //!
 //! Web Admin server for cc-switch running on port 5007
 
@@ -182,9 +182,9 @@ async fn main() {
         std::path::PathBuf::from(ui_dir)
     } else {
         let exe_path = std::env::current_exe()
-            .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-web"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-server"))
             .canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-web"));
+            .unwrap_or_else(|_| std::path::PathBuf::from("cc-switch-server"));
         let release_dist = exe_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))

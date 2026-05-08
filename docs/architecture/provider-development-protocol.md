@@ -11,7 +11,7 @@ It is the source of truth for:
 
 ## 1. Architecture Layers
 
-### 1.1 `cc-switch-web/src/handlers/*`
+### 1.1 `cc-switch-server/src/handlers/*`
 - Responsibility: API orchestration only.
 - Must not contain provider-specific request/response mapping logic.
 - Allowed actions:
@@ -19,7 +19,7 @@ It is the source of truth for:
   - trigger proxy lifecycle (`start/stop/status`),
   - apply live config sync.
 
-### 1.2 `cc-switch-web/src/proxy/*`
+### 1.2 `cc-switch-server/src/proxy/*`
 - Responsibility: request forwarding runtime.
 - Contains:
   - provider selection and failover,
@@ -28,7 +28,7 @@ It is the source of truth for:
   - usage recording trigger points.
 - Must remain provider-agnostic except adapter dispatch.
 
-### 1.3 `cc-switch-web/src/proxy/adapters/*`
+### 1.3 `cc-switch-server/src/proxy/adapters/*`
 - Responsibility: provider-specific differences only.
 - Required per provider:
   - auth extraction,

@@ -123,9 +123,9 @@ for provider in providers {
 UsageLogger::log_request()  ── 记录到 proxy_request_logs 表
 ```
 
-### 当前 cc-switch-web 代理架构
+### 当前 cc-switch-server 代理架构
 ```
-cc-switch-web/src/proxy/
+cc-switch-server/src/proxy/
 ├── forwarder.rs        # Forwarder（仅 Codex OAuth）
 ├── handlers.rs         # API 路由处理器
 ├── server.rs           # ProxyServer
@@ -135,7 +135,7 @@ cc-switch-web/src/proxy/
 
 ### 关键架构差异
 
-| 维度 | 原项目 cc-switch | 当前 cc-switch-web |
+| 维度 | 原项目 cc-switch | 当前 cc-switch-server |
 |------|-----------------|-------------------|
 | **Provider 支持** | 多种类型（Claude/Gemini/Codex/Copilot/OpenRouter） | 仅 Codex OAuth |
 | **认证方式** | 每种 Provider 独立 AuthStrategy | 硬编码 CodexOAuthManager |

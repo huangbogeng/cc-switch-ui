@@ -4,10 +4,10 @@
 
 - Current repo: `/home/huangbogeng/github.com/huangbogeng/cc-switch-ui`
 - Current code inspected:
-  - `cc-switch-web/src/proxy/handlers.rs`
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/types.rs`
-  - `cc-switch-web/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/handlers.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/types.rs`
+  - `cc-switch-server/src/proxy/server.rs`
   - `cc-switch-lib/src/providers/*.rs`
 - Upstream reference (reproducible):
   - Repository: `https://github.com/farion1231/cc-switch`
@@ -134,18 +134,18 @@ Key semantics to preserve:
 
 1. Missing per-request ProviderRouter selection
 - Current contract point:
-  - `cc-switch-web/src/proxy/server.rs` binds one `Provider` into `ProxyState::new(...)` at start.
-  - `cc-switch-web/src/proxy/forwarder.rs` reads `state.provider` as a single immutable route target.
+  - `cc-switch-server/src/proxy/server.rs` binds one `Provider` into `ProxyState::new(...)` at start.
+  - `cc-switch-server/src/proxy/forwarder.rs` reads `state.provider` as a single immutable route target.
 - Target contract (module/interface):
-  - Add `cc-switch-web/src/proxy/provider_router.rs` with:
+  - Add `cc-switch-server/src/proxy/provider_router.rs` with:
     - `ProviderRouter::select_providers(app_type: &str) -> Result<Vec<Provider>, ...>`
     - `ProviderRouter::allow_provider_request(...)`
     - `ProviderRouter::record_result(...)`
 - Impacted files:
-  - `cc-switch-web/src/proxy/server.rs`
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/handlers.rs`
-  - `cc-switch-web/src/proxy/provider_router.rs` (new)
+  - `cc-switch-server/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/handlers.rs`
+  - `cc-switch-server/src/proxy/provider_router.rs` (new)
 
 2. Missing retry/failover execution contract
 - Current contract point:
@@ -155,48 +155,48 @@ Key semantics to preserve:
     - `Forwarder::forward_with_retry(..., providers: Vec<Provider>) -> Result<..., ...>`
   - Keep per-provider send logic in a single-attempt internal helper.
 - Impacted files:
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/types.rs`
-  - `cc-switch-web/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/types.rs`
+  - `cc-switch-server/src/proxy/server.rs`
 
 3. Missing circuit breaker gate + state recording
 - Current contract point:
   - No breaker state object and no pre-request gating.
 - Target contract (module/interface):
-  - Add `cc-switch-web/src/proxy/circuit_breaker.rs` with:
+  - Add `cc-switch-server/src/proxy/circuit_breaker.rs` with:
     - `CircuitBreaker`, `CircuitState`, `AllowResult`
     - `allow_request`, `record_success`, `record_failure`, `release_half_open_permit`
   - Wire via `ProviderRouter` in `forwarder` request loop.
 - Impacted files:
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/circuit_breaker.rs` (new)
-  - `cc-switch-web/src/proxy/provider_router.rs` (new)
-  - `cc-switch-web/src/proxy/mod.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/circuit_breaker.rs` (new)
+  - `cc-switch-server/src/proxy/provider_router.rs` (new)
+  - `cc-switch-server/src/proxy/mod.rs`
 
 4. Missing failover switch side effect path
 - Current contract point:
   - No interface to apply logical provider switch after fallback success.
 - Target contract (module/interface):
-  - Add `cc-switch-web/src/proxy/failover_switch.rs` with manager API equivalent to:
+  - Add `cc-switch-server/src/proxy/failover_switch.rs` with manager API equivalent to:
     - `FailoverSwitchManager::try_switch(app_type, provider_id, provider_name)`
 - Impacted files:
-  - `cc-switch-web/src/proxy/forwarder.rs`
-  - `cc-switch-web/src/proxy/failover_switch.rs` (new)
+  - `cc-switch-server/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/failover_switch.rs` (new)
   - app state boundary module where provider target is persisted/emitted
 
 ### 3.2 P1 (important for behavioral parity)
 
 1. Route surface mismatch
-- Current: `cc-switch-web/src/proxy/server.rs` router only defines `/v1/*axum` and `/health`.
+- Current: `cc-switch-server/src/proxy/server.rs` router only defines `/v1/*axum` and `/health`.
 - Target: add explicit handlers/routes compatible with upstream endpoint set.
 - Concrete interfaces:
   - `handle_messages`, `handle_chat_completions`, `handle_responses`, `handle_gemini`-style split.
 - Impacted files:
-  - `cc-switch-web/src/proxy/server.rs`
-  - `cc-switch-web/src/proxy/handlers.rs`
+  - `cc-switch-server/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/handlers.rs`
 
 2. App-scoped routing config contract missing in local proxy types
-- Current: `cc-switch-web/src/proxy/types.rs::ProxyConfig` is transport-only.
+- Current: `cc-switch-server/src/proxy/types.rs::ProxyConfig` is transport-only.
 - Target: app-scope routing/failover contract fields equivalent to upstream `AppProxyConfig`:
   - `auto_failover_enabled`
   - `max_retries`
@@ -205,8 +205,8 @@ Key semantics to preserve:
   - `non_streaming_timeout`
   - circuit thresholds
 - Impacted files:
-  - `cc-switch-web/src/proxy/types.rs`
-  - `cc-switch-web/src/proxy/handlers.rs`
+  - `cc-switch-server/src/proxy/types.rs`
+  - `cc-switch-server/src/proxy/handlers.rs`
   - DB/config access wiring used by proxy path
 
 3. Adapter selection timing differs
@@ -216,8 +216,8 @@ Key semantics to preserve:
   - keep `ProviderRegistry::find_for_provider(&Provider)` as lookup primitive
   - call it inside retry path, not only startup path
 - Impacted files:
-  - `cc-switch-web/src/proxy/server.rs`
-  - `cc-switch-web/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/server.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
   - `cc-switch-lib/src/providers/registry.rs`
 
 ### 3.3 P2 (defer-able, but tracked)
@@ -225,14 +225,14 @@ Key semantics to preserve:
 1. Advanced rectifier/optimizer parity not in local baseline
 - Upstream includes dedicated modules for thinking rectifier and optimizer branches.
 - Impacted files:
-  - likely new modules under `cc-switch-web/src/proxy/` when enabled
+  - likely new modules under `cc-switch-server/src/proxy/` when enabled
 
 2. Extended status/observability fields differ
 - Upstream `types.rs::ProxyStatus` includes failover and richer runtime metrics.
-- Local `ProxyStatus` in `cc-switch-web/src/proxy/types.rs` is minimal.
+- Local `ProxyStatus` in `cc-switch-server/src/proxy/types.rs` is minimal.
 - Impacted files:
-  - `cc-switch-web/src/proxy/types.rs`
-  - `cc-switch-web/src/proxy/forwarder.rs`
+  - `cc-switch-server/src/proxy/types.rs`
+  - `cc-switch-server/src/proxy/forwarder.rs`
 
 ---
 
@@ -243,7 +243,7 @@ Phase 1 is accepted only when every AC below passes with command + assertion.
 1. AC1: request-time routing is implemented
 - Command:
 ```bash
-rg -n "select_providers\(|forward_with_retry\(" cc-switch-web/src/proxy
+rg -n "select_providers\(|forward_with_retry\(" cc-switch-server/src/proxy
 ```
 - Expected assertion:
   - output contains at least one `select_providers(` call from request path and one `forward_with_retry(` entrypoint.
@@ -251,7 +251,7 @@ rg -n "select_providers\(|forward_with_retry\(" cc-switch-web/src/proxy
 2. AC2: retry+failover loop works (provider A fail -> provider B success)
 - Command:
 ```bash
-cargo test -p cc-switch-web proxy::forwarder::tests::failover_to_next_provider_on_first_failure -- --exact
+cargo test -p cc-switch-server proxy::forwarder::tests::failover_to_next_provider_on_first_failure -- --exact
 ```
 - Expected assertion:
   - test result contains `... ok` and summary contains `1 passed; 0 failed`.
@@ -259,7 +259,7 @@ cargo test -p cc-switch-web proxy::forwarder::tests::failover_to_next_provider_o
 3. AC3: circuit breaker state transitions are enforced
 - Command:
 ```bash
-cargo test -p cc-switch-web proxy::circuit_breaker::tests::half_open_permit_is_consumed_and_released -- --exact
+cargo test -p cc-switch-server proxy::circuit_breaker::tests::half_open_permit_is_consumed_and_released -- --exact
 ```
 - Expected assertion:
   - test result contains `... ok`; failure indicates permit leak or invalid transition.
@@ -267,7 +267,7 @@ cargo test -p cc-switch-web proxy::circuit_breaker::tests::half_open_permit_is_c
 4. AC4: provider result recording is wired per attempt
 - Command:
 ```bash
-cargo test -p cc-switch-web proxy::provider_router::tests::record_result_updates_provider_health -- --exact
+cargo test -p cc-switch-server proxy::provider_router::tests::record_result_updates_provider_health -- --exact
 ```
 - Expected assertion:
   - test result contains `... ok`; test verifies success/failure updates are persisted or observable via router state.
@@ -275,7 +275,7 @@ cargo test -p cc-switch-web proxy::provider_router::tests::record_result_updates
 5. AC5: failover switch callback executes when fallback wins
 - Command:
 ```bash
-cargo test -p cc-switch-web proxy::forwarder::tests::invokes_failover_switch_on_fallback_success -- --exact
+cargo test -p cc-switch-server proxy::forwarder::tests::invokes_failover_switch_on_fallback_success -- --exact
 ```
 - Expected assertion:
   - test result contains `... ok`; test asserts switch manager mock/spying was called once with fallback provider id.
@@ -283,7 +283,7 @@ cargo test -p cc-switch-web proxy::forwarder::tests::invokes_failover_switch_on_
 6. AC6: adapter transform contracts remain intact (stream + non-stream)
 - Command:
 ```bash
-cargo test -p cc-switch-web proxy::adapters:: -- --nocapture
+cargo test -p cc-switch-server proxy::adapters:: -- --nocapture
 ```
 - Expected assertion:
   - all adapter tests pass; no regression in request/response transform behavior.
@@ -291,7 +291,7 @@ cargo test -p cc-switch-web proxy::adapters:: -- --nocapture
 7. AC7: single-provider mode has no regression
 - Command:
 ```bash
-cargo test -p cc-switch-web proxy::forwarder::tests::single_provider_no_failover_path -- --exact
+cargo test -p cc-switch-server proxy::forwarder::tests::single_provider_no_failover_path -- --exact
 ```
 - Expected assertion:
   - test result contains `... ok`; test verifies exactly one upstream attempt and no failover switch invocation.

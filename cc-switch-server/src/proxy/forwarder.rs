@@ -577,7 +577,8 @@ impl Forwarder {
             })
             .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-        let request_body = serde_json::to_vec(&transform_output.body).map_err(|_| StatusCode::BAD_REQUEST)?;
+        let request_body =
+            serde_json::to_vec(&transform_output.body).map_err(|_| StatusCode::BAD_REQUEST)?;
         let mut upstream_req = self
             .http_client
             .request(reqwest_method, &transform_output.upstream_url)
@@ -591,12 +592,20 @@ impl Forwarder {
         }
         upstream_req = copy_forward_headers(upstream_req, &headers);
         upstream_req = upstream_req.header(header::CONTENT_TYPE, "application/json");
-        let upstream_res = upstream_req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        let upstream_res = upstream_req
+            .send()
+            .await
+            .map_err(|_| StatusCode::BAD_GATEWAY)?;
         let status = StatusCode::from_u16(upstream_res.status().as_u16()).unwrap_or(StatusCode::OK);
         let mut response = Response::builder().status(status);
         response = copy_response_headers(response, upstream_res.headers());
-        let body = upstream_res.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-        Ok(response.body(Body::from(body)).expect("failed to build retry response"))
+        let body = upstream_res
+            .bytes()
+            .await
+            .map_err(|_| StatusCode::BAD_GATEWAY)?;
+        Ok(response
+            .body(Body::from(body))
+            .expect("failed to build retry response"))
     }
 }
 

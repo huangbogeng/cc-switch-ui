@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "cc-switch-lib",
-    "cc-switch-web",
+    "cc-switch-server",
 ]
 
 [workspace.package]

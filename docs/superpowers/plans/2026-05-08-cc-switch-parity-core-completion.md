@@ -13,10 +13,10 @@
 ### Task 1: Add Runtime-Safe Breaker/Failover Policy Contract Tests
 
 **Files:**
-- Modify: `cc-switch-web/src/proxy/provider_router.rs`
-- Modify: `cc-switch-web/src/proxy/circuit_breaker.rs`
-- Test: `cc-switch-web/src/proxy/provider_router.rs` (inline `#[cfg(test)]`)
-- Test: `cc-switch-web/src/proxy/circuit_breaker.rs` (inline `#[cfg(test)]`)
+- Modify: `cc-switch-server/src/proxy/provider_router.rs`
+- Modify: `cc-switch-server/src/proxy/circuit_breaker.rs`
+- Test: `cc-switch-server/src/proxy/provider_router.rs` (inline `#[cfg(test)]`)
+- Test: `cc-switch-server/src/proxy/circuit_breaker.rs` (inline `#[cfg(test)]`)
 
 - [ ] **Step 1: Write failing tests for strict failover policy**
 
@@ -59,7 +59,7 @@ fn failover_mode_returns_empty_when_all_candidates_open() {
 
 - [ ] **Step 2: Run focused router tests to confirm failures exist first**
 
-Run: `cargo test -p cc-switch-web provider_router -- --nocapture`
+Run: `cargo test -p cc-switch-server provider_router -- --nocapture`
 Expected: At least one new test fails before implementation adjustment.
 
 - [ ] **Step 3: Implement minimal policy adjustments in router/breaker**
@@ -96,13 +96,13 @@ pub fn record_failure(&mut self) {
 
 - [ ] **Step 4: Re-run module tests**
 
-Run: `cargo test -p cc-switch-web proxy::circuit_breaker::tests proxy::provider_router::tests -- --nocapture`
+Run: `cargo test -p cc-switch-server proxy::circuit_breaker::tests proxy::provider_router::tests -- --nocapture`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cc-switch-web/src/proxy/provider_router.rs cc-switch-web/src/proxy/circuit_breaker.rs
+git add cc-switch-server/src/proxy/provider_router.rs cc-switch-server/src/proxy/circuit_breaker.rs
 git commit -m "test(proxy): lock breaker and failover runtime policy contracts"
 ```
 
@@ -110,8 +110,8 @@ git commit -m "test(proxy): lock breaker and failover runtime policy contracts"
 
 **Files:**
 - Modify: `cc-switch-lib/src/database/mod.rs`
-- Modify: `cc-switch-web/src/handlers/usage.rs`
-- Modify: `cc-switch-web/src/main.rs`
+- Modify: `cc-switch-server/src/handlers/usage.rs`
+- Modify: `cc-switch-server/src/main.rs`
 - Test: `cc-switch-lib/src/database/mod.rs` (inline `#[cfg(test)]`)
 
 - [ ] **Step 1: Write failing database query tests for request logs**
@@ -184,23 +184,23 @@ pub async fn get_proxy_request_logs(
 
 - [ ] **Step 4: Run package tests and compile check**
 
-Run: `cargo test -p cc-switch-lib && cargo check -p cc-switch-web`
+Run: `cargo test -p cc-switch-lib && cargo check -p cc-switch-server`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cc-switch-lib/src/database/mod.rs cc-switch-web/src/handlers/usage.rs cc-switch-web/src/main.rs
+git add cc-switch-lib/src/database/mod.rs cc-switch-server/src/handlers/usage.rs cc-switch-server/src/main.rs
 git commit -m "feat(usage): expose proxy request-log query endpoint"
 ```
 
 ### Task 3: Wire Failover Switch Synchronization on Retry Success
 
 **Files:**
-- Modify: `cc-switch-web/src/proxy/failover_switch.rs`
-- Modify: `cc-switch-web/src/proxy/server.rs`
-- Modify: `cc-switch-web/src/proxy/forwarder.rs`
-- Test: `cc-switch-web/src/proxy/failover_switch.rs` (inline `#[cfg(test)]`)
+- Modify: `cc-switch-server/src/proxy/failover_switch.rs`
+- Modify: `cc-switch-server/src/proxy/server.rs`
+- Modify: `cc-switch-server/src/proxy/forwarder.rs`
+- Test: `cc-switch-server/src/proxy/failover_switch.rs` (inline `#[cfg(test)]`)
 
 - [ ] **Step 1: Write failing tests for dedup switch behavior**
 
@@ -222,7 +222,7 @@ async fn try_switch_deduplicates_concurrent_requests() {
 
 - [ ] **Step 2: Run focused failover switch tests**
 
-Run: `cargo test -p cc-switch-web failover_switch -- --nocapture`
+Run: `cargo test -p cc-switch-server failover_switch -- --nocapture`
 Expected: FAIL before final sync wiring if behavior is missing.
 
 - [ ] **Step 3: Implement switch trigger after retry success**
@@ -243,27 +243,27 @@ failover_switch: Arc<FailoverSwitchManager>,
 
 - [ ] **Step 4: Run proxy tests**
 
-Run: `cargo test -p cc-switch-web proxy -- --nocapture`
+Run: `cargo test -p cc-switch-server proxy -- --nocapture`
 Expected: PASS with no regression on existing streaming tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cc-switch-web/src/proxy/failover_switch.rs cc-switch-web/src/proxy/server.rs cc-switch-web/src/proxy/forwarder.rs
+git add cc-switch-server/src/proxy/failover_switch.rs cc-switch-server/src/proxy/server.rs cc-switch-server/src/proxy/forwarder.rs
 git commit -m "feat(proxy): sync failover switch state after retry success"
 ```
 
 ### Task 4: Close Provider Adapter Minimum Contract Coverage
 
 **Files:**
-- Modify: `cc-switch-web/src/proxy/adapters/claude/mod.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/claude/response.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/gemini/mod.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/gemini/response.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/copilot/mod.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/copilot/response.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/codex/request.rs`
-- Modify: `cc-switch-web/src/proxy/adapters/codex/response.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/claude/mod.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/claude/response.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/gemini/mod.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/gemini/response.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/copilot/mod.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/copilot/response.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/codex/request.rs`
+- Modify: `cc-switch-server/src/proxy/adapters/codex/response.rs`
 
 - [ ] **Step 1: Add failing test per provider for request/response contract**
 
@@ -295,7 +295,7 @@ fn non_streaming_extracts_usage() {
 
 - [ ] **Step 2: Run adapter tests to confirm baseline**
 
-Run: `cargo test -p cc-switch-web adapters -- --nocapture`
+Run: `cargo test -p cc-switch-server adapters -- --nocapture`
 Expected: New tests fail before implementation if contracts are absent.
 
 - [ ] **Step 3: Implement minimal contract-preserving code/tests**
@@ -317,13 +317,13 @@ let record = parser.from_openai_json(&body);
 
 - [ ] **Step 4: Re-run adapter + full web test suite**
 
-Run: `cargo test -p cc-switch-web adapters -- --nocapture && cargo test -p cc-switch-web`
+Run: `cargo test -p cc-switch-server adapters -- --nocapture && cargo test -p cc-switch-server`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cc-switch-web/src/proxy/adapters/claude/mod.rs cc-switch-web/src/proxy/adapters/claude/response.rs cc-switch-web/src/proxy/adapters/gemini/mod.rs cc-switch-web/src/proxy/adapters/gemini/response.rs cc-switch-web/src/proxy/adapters/copilot/mod.rs cc-switch-web/src/proxy/adapters/copilot/response.rs cc-switch-web/src/proxy/adapters/codex/request.rs cc-switch-web/src/proxy/adapters/codex/response.rs
+git add cc-switch-server/src/proxy/adapters/claude/mod.rs cc-switch-server/src/proxy/adapters/claude/response.rs cc-switch-server/src/proxy/adapters/gemini/mod.rs cc-switch-server/src/proxy/adapters/gemini/response.rs cc-switch-server/src/proxy/adapters/copilot/mod.rs cc-switch-server/src/proxy/adapters/copilot/response.rs cc-switch-server/src/proxy/adapters/codex/request.rs cc-switch-server/src/proxy/adapters/codex/response.rs
 git commit -m "test(adapters): add minimum request/response contract coverage"
 ```
 
@@ -347,12 +347,12 @@ git commit -m "test(adapters): add minimum request/response contract coverage"
 
 - [ ] **Step 2: Run formatting and static checks**
 
-Run: `cargo fmt --all -- --check && cargo check -p cc-switch-web && cargo check -p cc-switch-lib`
+Run: `cargo fmt --all -- --check && cargo check -p cc-switch-server && cargo check -p cc-switch-lib`
 Expected: PASS.
 
 - [ ] **Step 3: Run final tests**
 
-Run: `cargo test -p cc-switch-lib && cargo test -p cc-switch-web`
+Run: `cargo test -p cc-switch-lib && cargo test -p cc-switch-server`
 Expected: PASS.
 
 - [ ] **Step 4: Commit docs+verification updates**

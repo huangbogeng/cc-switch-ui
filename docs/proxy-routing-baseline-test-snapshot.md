@@ -7,7 +7,7 @@
 
 ## Exact Commands Run
 ```bash
-cargo test -p cc-switch-web 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_web.log
+cargo test -p cc-switch-server 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_web.log
 cargo test -p cc-switch-lib 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_lib.log
 ```
 
@@ -25,7 +25,7 @@ cargo test -p cc-switch-lib 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_lib.log
 ## Pass/Fail Summary by Package
 | Package | Result | Details |
 |---|---|---|
-| `cc-switch-web` | PASS | `31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
+| `cc-switch-server` | PASS | `31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
 | `cc-switch-lib` | PASS | `42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
 | `cc-switch-lib` doc-tests | PASS | `0 passed; 0 failed` |
 
@@ -34,7 +34,7 @@ cargo test -p cc-switch-lib 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_lib.log
 - No runtime/environment constraint failure observed for the two required commands.
 
 ## MiniMax / Tool-call / Streaming Related Status
-Observed in `cc-switch-web` test run:
+Observed in `cc-switch-server` test run:
 - `proxy::adapters::minimax::response::tests::converts_openai_chat_response_to_anthropic_message` -> PASS
 - `proxy::adapters::minimax::response::tests::converts_legacy_function_call_response` -> PASS
 - `proxy::adapters::minimax::request::tests::normalizes_legacy_anthropic_url_to_chat_completions` -> PASS
@@ -52,7 +52,7 @@ Archive note:
 - Historical context reference (known prior issue pattern): MiniMax stream usage accounting previously showed zero-token symptom in logs, e.g. `Streaming usage recorded: provider=minimax ... input=0, output=0`; this baseline run did not reproduce it.
 - Reproducible failure capture procedure for future regressions:
   1. Re-run package tests and keep full stdout/stderr:
-     - `cargo test -p cc-switch-web 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_web.log`
+     - `cargo test -p cc-switch-server 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_web.log`
      - `cargo test -p cc-switch-lib 2>&1 | tee /tmp/task0_2_cargo_test_cc_switch_lib.log`
   2. If a MiniMax/tool-call/streaming test fails, extract:
      - exact failing test name
@@ -83,13 +83,13 @@ Archive note:
 Follow-up verification after parity implementation:
 
 ```bash
-cargo check -p cc-switch-web
-cargo test -p cc-switch-web
+cargo check -p cc-switch-server
+cargo test -p cc-switch-server
 cargo test -p cc-switch-lib
 ```
 
 Observed result:
-- `cc-switch-web`: PASS (`50 passed; 0 failed`)
+- `cc-switch-server`: PASS (`50 passed; 0 failed`)
 - `cc-switch-lib`: PASS (`42 passed; 0 failed`)
 
 This confirms the baseline-protected areas remained green after:

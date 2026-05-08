@@ -4,8 +4,11 @@ use cc_switch_lib::providers::{ProviderError, TransformInput, TransformOutput};
 use serde_json::{json, Value};
 
 pub fn transform(input: TransformInput) -> Result<TransformOutput, ProviderError> {
-    let body = anthropic_to_openai_chat(rectify_deepseek_thinking(input.body), input.requested_stream)
-        .map_err(ProviderError::TransformFailed)?;
+    let body = anthropic_to_openai_chat(
+        rectify_deepseek_thinking(input.body),
+        input.requested_stream,
+    )
+    .map_err(ProviderError::TransformFailed)?;
 
     Ok(TransformOutput {
         body,
@@ -24,10 +27,6 @@ fn rectify_deepseek_thinking(mut body: Value) -> Value {
             if let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) {
                 let mut filtered = Vec::with_capacity(content.len());
                 for block in content.iter() {
-                    let block_type = block.get("type").and_then(Value::as_str);
-                    if matches!(block_type, Some("thinking" | "redacted_thinking")) {
-                        continue;
-                    }
                     let mut cloned = block.clone();
                     if let Some(map) = cloned.as_object_mut() {
                         map.remove("signature");
@@ -57,7 +56,10 @@ fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value
 
     if let Some(input_messages) = body.get("messages").and_then(Value::as_array) {
         for message in input_messages {
-            let role = message.get("role").and_then(Value::as_str).unwrap_or("user");
+            let role = message
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("user");
             messages.extend(convert_message(
                 role,
                 message.get("content").unwrap_or(&Value::Null),
@@ -122,7 +124,10 @@ fn text_from_content(content: &Value) -> String {
             blocks
                 .iter()
                 .filter_map(|block| match block.get("type").and_then(Value::as_str) {
-                    Some("text") => block.get("text").and_then(Value::as_str).map(str::to_string),
+                    Some("text") => block
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                     Some("tool_result") => block
                         .get("content")
                         .map(text_from_content)
@@ -149,6 +154,7 @@ fn convert_message(role: &str, content: &Value) -> Vec<Value> {
 
     let mut output = Vec::new();
     let mut content_parts: Vec<String> = Vec::new();
+    let mut reasoning_parts: Vec<String> = Vec::new();
     let mut tool_calls: Vec<Value> = Vec::new();
 
     for block in blocks {
@@ -157,6 +163,17 @@ fn convert_message(role: &str, content: &Value) -> Vec<Value> {
                 if let Some(text) = block.get("text").and_then(Value::as_str) {
                     if !text.is_empty() {
                         content_parts.push(text.to_string());
+                    }
+                }
+            }
+            Some("thinking") => {
+                if let Some(reasoning) = block
+                    .get("thinking")
+                    .and_then(Value::as_str)
+                    .or_else(|| block.get("text").and_then(Value::as_str))
+                {
+                    if !reasoning.is_empty() {
+                        reasoning_parts.push(reasoning.to_string());
                     }
                 }
             }
@@ -193,11 +210,15 @@ fn convert_message(role: &str, content: &Value) -> Vec<Value> {
     }
 
     let merged_content = content_parts.join("\n\n");
+    let merged_reasoning = reasoning_parts.join("\n\n");
     if !merged_content.is_empty() || !tool_calls.is_empty() {
         let mut msg = json!({
             "role": map_role(role),
             "content": if merged_content.is_empty() { Value::Null } else { json!(merged_content) },
         });
+        if map_role(role) == "assistant" && !merged_reasoning.is_empty() {
+            msg["reasoning_content"] = json!(merged_reasoning);
+        }
         if !tool_calls.is_empty() {
             msg["tool_calls"] = json!(tool_calls);
         }
@@ -256,6 +277,27 @@ mod tests {
         let msg = &output["messages"][0];
         assert_eq!(msg["role"], "assistant");
         assert_eq!(msg["content"], "visible");
+        assert_eq!(msg["reasoning_content"], "secret");
         assert!(msg.get("signature").is_none());
+    }
+
+    #[test]
+    fn keeps_assistant_reasoning_content_for_deepseek_thinking_mode() {
+        let input = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "step 1"},
+                    {"type": "thinking", "thinking": "step 2"},
+                    {"type": "text", "text": "final answer"}
+                ]
+            }]
+        });
+
+        let output = anthropic_to_openai_chat(rectify_deepseek_thinking(input), false).unwrap();
+        let msg = &output["messages"][0];
+        assert_eq!(msg["role"], "assistant");
+        assert_eq!(msg["content"], "final answer");
+        assert_eq!(msg["reasoning_content"], "step 1\n\nstep 2");
     }
 }

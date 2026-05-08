@@ -151,7 +151,10 @@ mod tests {
         std::fs::create_dir_all(&test_home).expect("create test home");
 
         unsafe {
-            std::env::set_var("CC_SWITCH_TEST_HOME", test_home.to_string_lossy().to_string());
+            std::env::set_var(
+                "CC_SWITCH_TEST_HOME",
+                test_home.to_string_lossy().to_string(),
+            );
         }
 
         let proxied = json!({
@@ -173,12 +176,18 @@ mod tests {
         apply_provider_to_live(&restored).expect("apply restored settings");
 
         let live = read_live_settings_raw().expect("read live settings");
-        let env = live.get("env").and_then(Value::as_object).expect("env object");
+        let env = live
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env object");
         assert_eq!(
             live.get("base_url").and_then(Value::as_str),
             Some("https://api.minimaxi.com/v1")
         );
-        assert_eq!(live.get("api_key").and_then(Value::as_str), Some("real-token"));
+        assert_eq!(
+            live.get("api_key").and_then(Value::as_str),
+            Some("real-token")
+        );
         assert_eq!(
             env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
             Some("https://api.minimaxi.com/v1")
@@ -206,7 +215,10 @@ mod tests {
         std::fs::create_dir_all(&test_home).expect("create test home");
 
         unsafe {
-            std::env::set_var("CC_SWITCH_TEST_HOME", test_home.to_string_lossy().to_string());
+            std::env::set_var(
+                "CC_SWITCH_TEST_HOME",
+                test_home.to_string_lossy().to_string(),
+            );
         }
 
         let proxied = json!({
@@ -228,7 +240,10 @@ mod tests {
         apply_provider_to_live(&restored).expect("apply restored settings");
 
         let live = read_live_settings_raw().expect("read live settings");
-        let env = live.get("env").and_then(Value::as_object).expect("env object");
+        let env = live
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env object");
         assert_eq!(
             live.get("base_url").and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
@@ -264,7 +279,10 @@ mod tests {
         let test_home = std::env::temp_dir().join(format!("cc-switch-live-test-{suffix}"));
         std::fs::create_dir_all(&test_home).expect("create test home");
         unsafe {
-            std::env::set_var("CC_SWITCH_TEST_HOME", test_home.to_string_lossy().to_string());
+            std::env::set_var(
+                "CC_SWITCH_TEST_HOME",
+                test_home.to_string_lossy().to_string(),
+            );
         }
 
         let initial = json!({
@@ -288,7 +306,10 @@ mod tests {
         apply_provider_to_live(&refreshed).expect("apply refreshed");
 
         let live = read_live_settings_raw().expect("read live settings");
-        let env = live.get("env").and_then(Value::as_object).expect("env object");
+        let env = live
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env object");
         assert_eq!(
             env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
@@ -299,8 +320,14 @@ mod tests {
         );
         assert_eq!(env.get("ANTHROPIC_AUTH_TOKEN"), None);
         assert_eq!(env.get("ANTHROPIC_DEFAULT_OPUS_MODEL"), None);
-        assert_eq!(env.get("API_TIMEOUT_MS").and_then(Value::as_str), Some("3000000"));
-        assert_eq!(live.get("model").and_then(Value::as_str), Some("deepseek-v4-pro"));
+        assert_eq!(
+            env.get("API_TIMEOUT_MS").and_then(Value::as_str),
+            Some("3000000")
+        );
+        assert_eq!(
+            live.get("model").and_then(Value::as_str),
+            Some("deepseek-v4-pro")
+        );
 
         unsafe {
             std::env::remove_var("CC_SWITCH_TEST_HOME");

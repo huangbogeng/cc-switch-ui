@@ -5,7 +5,7 @@ Build a provider-agnostic tool-call normalization pipeline that runs before prov
 
 ## Scope
 In scope:
-- Unified request-side normalization pipeline in `cc-switch-web` proxy layer
+- Unified request-side normalization pipeline in `cc-switch-server` proxy layer
 - Protocol coverage: `/v1/messages`, `/chat/completions` + `/v1/chat/completions`, `/responses` + `/v1/responses`
 - Provider coverage in first release: `minimax`, `deepseek`, `codex_oauth`, openai-compatible ChatGPT provider
 - Compat strategy: repair when safe, block only when non-repairable
@@ -37,12 +37,12 @@ Out of scope:
 - Deterministic and observable outcomes (warnings and blocked reasons logged).
 
 ## Components and Boundaries
-### New module: `cc-switch-web/src/proxy/tool_pipeline/mod.rs`
+### New module: `cc-switch-server/src/proxy/tool_pipeline/mod.rs`
 - Public entry:
   - `run_tool_pipeline(request_ctx, body) -> PipelineOutput`
 - Orchestrates stages only.
 
-### New module: `cc-switch-web/src/proxy/tool_pipeline/model.rs`
+### New module: `cc-switch-server/src/proxy/tool_pipeline/model.rs`
 - Internal normalized model:
   - `NormalizedTurn`
   - `ToolCallRef`
@@ -50,25 +50,25 @@ Out of scope:
   - `PipelineIssue` (`warning` or `error`)
 - Holds protocol-independent semantic representation.
 
-### New module: `cc-switch-web/src/proxy/tool_pipeline/normalize.rs`
+### New module: `cc-switch-server/src/proxy/tool_pipeline/normalize.rs`
 - Converts protocol payloads (`messages` / `chat` / `responses`) into normalized model.
 - Preserves sufficient metadata for reversible materialization.
 
-### New module: `cc-switch-web/src/proxy/tool_pipeline/sanitize.rs`
+### New module: `cc-switch-server/src/proxy/tool_pipeline/sanitize.rs`
 - Removes orphan `tool_result` that cannot be associated with prior tool call.
 - Drops empty `tool_call_id` results.
 - Emits warning issues with stable reason codes.
 
-### New module: `cc-switch-web/src/proxy/tool_pipeline/merge.rs`
+### New module: `cc-switch-server/src/proxy/tool_pipeline/merge.rs`
 - Merges `[tool_result, adjacent_text]` safely into one tool-result semantic unit.
 - Never rewrites ambiguous sequences.
 
-### New module: `cc-switch-web/src/proxy/tool_pipeline/validate.rs`
+### New module: `cc-switch-server/src/proxy/tool_pipeline/validate.rs`
 - Validates minimal non-repairable constraints after sanitize/merge.
 - Returns structured blocking errors for local 400 responses.
 
 ### Existing module changes
-- `cc-switch-web/src/proxy/forwarder.rs`
+- `cc-switch-server/src/proxy/forwarder.rs`
   - Invoke pipeline before adapter transform.
   - Propagate pipeline warnings/blocked outcomes to logs.
 - Provider adapters (`minimax`, `deepseek`, `codex`, `openrouter`)
