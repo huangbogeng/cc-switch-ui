@@ -34,6 +34,10 @@ where
             let bytes = match chunk {
                 Ok(bytes) => bytes,
                 Err(err) => {
+                    log::error!(
+                        "[Proxy] Upstream Responses stream chunk error: {}",
+                        err
+                    );
                     yield Err(std::io::Error::other(err.to_string()));
                     continue;
                 }
@@ -289,6 +293,10 @@ where
             let bytes = match chunk {
                 Ok(bytes) => bytes,
                 Err(err) => {
+                    log::error!(
+                        "[Proxy] Upstream OpenAI-chat stream chunk error: {}",
+                        err
+                    );
                     yield Err(std::io::Error::other(err.to_string()));
                     continue;
                 }

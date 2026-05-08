@@ -75,3 +75,26 @@ Archive note:
     - `docs/test-logs/task0_2_cargo_test_cc_switch_lib.log`
     - `docs/test-logs/task0_2_cargo_test_cc_switch_web.txt`
     - `docs/test-logs/task0_2_cargo_test_cc_switch_lib.txt`
+
+---
+
+## Post-Implementation Verification (2026-05-08)
+
+Follow-up verification after parity implementation:
+
+```bash
+cargo check -p cc-switch-web
+cargo test -p cc-switch-web
+cargo test -p cc-switch-lib
+```
+
+Observed result:
+- `cc-switch-web`: PASS (`50 passed; 0 failed`)
+- `cc-switch-lib`: PASS (`42 passed; 0 failed`)
+
+This confirms the baseline-protected areas remained green after:
+- router + retry + breaker integration
+- failover switch synchronization
+- request-log persistence/query API
+- MiniMax streaming/tool-call hardening
+- adapter contract test expansion

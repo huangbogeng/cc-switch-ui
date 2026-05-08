@@ -51,11 +51,16 @@ impl UsageParser {
     pub fn from_openai_json(&self, body: &[u8]) -> Option<UsageRecord> {
         let response: OpenAIResponse = serde_json::from_slice(body).ok()?;
         let usage = response.usage?;
+        let input_tokens = usage.prompt_tokens.or(usage.input_tokens).unwrap_or(0);
+        let output_tokens = usage
+            .completion_tokens
+            .or(usage.output_tokens)
+            .unwrap_or_else(|| usage.total_tokens.unwrap_or(0).saturating_sub(input_tokens));
         Some(UsageRecord {
             provider_id: String::new(),
             model: response.model.unwrap_or_default(),
-            input_tokens: usage.prompt_tokens,
-            output_tokens: usage.completion_tokens,
+            input_tokens,
+            output_tokens,
             cache_read_tokens: None,
             request_timestamp: chrono::Utc::now().timestamp(),
         })
@@ -94,6 +99,36 @@ struct OpenAIResponse {
 
 #[derive(Deserialize)]
 struct OpenAIUsage {
-    prompt_tokens: i64,
-    completion_tokens: i64,
+    prompt_tokens: Option<i64>,
+    completion_tokens: Option<i64>,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    total_tokens: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UsageParser;
+
+    #[test]
+    fn parses_openai_prompt_completion_usage() {
+        let body = br#"{
+          "model":"gpt-x",
+          "usage":{"prompt_tokens":12,"completion_tokens":34}
+        }"#;
+        let record = UsageParser::new().from_openai_json(body).expect("usage");
+        assert_eq!(record.input_tokens, 12);
+        assert_eq!(record.output_tokens, 34);
+    }
+
+    #[test]
+    fn parses_deepseek_input_output_usage() {
+        let body = br#"{
+          "model":"deepseek-v4-pro",
+          "usage":{"input_tokens":21,"output_tokens":55}
+        }"#;
+        let record = UsageParser::new().from_openai_json(body).expect("usage");
+        assert_eq!(record.input_tokens, 21);
+        assert_eq!(record.output_tokens, 55);
+    }
 }

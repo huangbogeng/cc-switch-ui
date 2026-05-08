@@ -75,9 +75,9 @@ export default function DashboardPage() {
     try {
       const data = await getProxyUsageSummary();
       setProxyUsage({
-        total_input_tokens: data.total_input_tokens,
-        total_output_tokens: data.total_output_tokens,
-        total_requests: data.total_requests,
+        total_input_tokens: data.totals.input_tokens,
+        total_output_tokens: data.totals.output_tokens,
+        total_requests: data.totals.request_count,
       });
     } catch (e) {
       console.error('Proxy usage error:', e);

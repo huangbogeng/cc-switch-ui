@@ -44,6 +44,8 @@ pub struct ProxyConfig {
     pub proxy_type: ProxyType,
     pub host: String,
     pub port: u16,
+    #[serde(default)]
+    pub auto_failover_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -60,6 +62,7 @@ impl Default for ProxyConfig {
             proxy_type: ProxyType::Http,
             host: String::new(),
             port: 10809,
+            auto_failover_enabled: false,
         }
     }
 }
@@ -169,6 +172,7 @@ impl Database {
             "
         )?;
         migrate_proxy_config_schema(&conn)?;
+        migrate_proxy_request_logs_schema(&conn)?;
         Ok(())
     }
 
@@ -637,6 +641,58 @@ fn migrate_proxy_config_schema(conn: &Connection) -> Result<(), AppError> {
     Ok(())
 }
 
+fn migrate_proxy_request_logs_schema(conn: &Connection) -> Result<(), AppError> {
+    let columns = table_columns(conn, "proxy_request_logs")?;
+    if columns.is_empty() {
+        // Table does not exist yet (fresh DB path); CREATE TABLE handles it.
+        return Ok(());
+    }
+
+    let has_column = |name: &str| columns.iter().any(|column| column == name);
+
+    if !has_column("request_path") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN request_path TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("request_model") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN request_model TEXT",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("status_code") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN status_code INTEGER",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("success") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN success INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    if !has_column("error_message") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN error_message TEXT",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
+
+    Ok(())
+}
+
 fn table_columns(conn: &Connection, table: &str) -> Result<Vec<String>, AppError> {
     let mut stmt = conn
         .prepare(&format!("PRAGMA table_info({table})"))
@@ -688,6 +744,7 @@ fn read_legacy_proxy_config(
             proxy_type,
             host,
             port,
+            auto_failover_enabled: false,
         })
     });
 

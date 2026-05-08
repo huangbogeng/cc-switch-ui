@@ -32,3 +32,19 @@ Please verify that you've completed the following / 请确认你已完成以下�
 - [ ] I have made corresponding changes to the documentation (if needed) / 我已经更新了相关的文档 (如果需要)
 - [ ] My changes generate no new warnings (e.g. `cargo clippy` and `pnpm lint` pass) / 我的更改没有产生新的警告
 - [ ] Any dependent changes have been merged and published / 任何依赖的更改都已经合并发布
+
+## 🧭 Provider Protocol Compliance / Provider 协议符合性
+<!-- 
+Required when this PR changes provider/proxy/usage/live-config behavior.
+当 PR 涉及 provider/proxy/usage/live-config 行为时必填。
+Reference / 参考:
+- docs/architecture/provider-development-protocol.md
+- docs/architecture/provider-checklist.md
+-->
+
+- [ ] N/A (this PR does not touch provider/proxy/usage/live-config paths)
+- [ ] Provider logic remains inside adapter boundaries (no leakage into handlers)
+- [ ] Runtime success does not depend on request-log DB writes
+- [ ] Live config consistency path is covered (`switch/start/stop` where applicable)
+- [ ] Usage parsing covers provider response format variants
+- [ ] Added/updated tests for changed provider contract behavior

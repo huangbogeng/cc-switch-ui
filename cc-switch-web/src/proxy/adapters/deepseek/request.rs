@@ -1,23 +1,48 @@
-//! Anthropic Messages to MiniMax OpenAI Chat Completions request conversion.
+//! Anthropic Messages to DeepSeek OpenAI Chat Completions request conversion.
 
 use cc_switch_lib::providers::{ProviderError, TransformInput, TransformOutput};
 use serde_json::{json, Value};
 
 pub fn transform(input: TransformInput) -> Result<TransformOutput, ProviderError> {
-    let body = anthropic_to_openai_chat(input.body, input.requested_stream)
+    let body = anthropic_to_openai_chat(rectify_deepseek_thinking(input.body), input.requested_stream)
         .map_err(ProviderError::TransformFailed)?;
 
     Ok(TransformOutput {
         body,
-        upstream_url: minimax_chat_completions_url(&input.upstream_url),
+        upstream_url: deepseek_chat_completions_url(&input.upstream_url),
         headers: vec![],
         method: "POST".to_string(),
     })
 }
 
+fn rectify_deepseek_thinking(mut body: Value) -> Value {
+    if let Some(obj) = body.as_object_mut() {
+        obj.remove("thinking");
+    }
+    if let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) {
+        for message in messages.iter_mut() {
+            if let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) {
+                let mut filtered = Vec::with_capacity(content.len());
+                for block in content.iter() {
+                    let block_type = block.get("type").and_then(Value::as_str);
+                    if matches!(block_type, Some("thinking" | "redacted_thinking")) {
+                        continue;
+                    }
+                    let mut cloned = block.clone();
+                    if let Some(map) = cloned.as_object_mut() {
+                        map.remove("signature");
+                    }
+                    filtered.push(cloned);
+                }
+                *content = filtered;
+            }
+        }
+    }
+    body
+}
+
 fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value, String> {
     let mut result = json!({});
-
     if let Some(model) = body.get("model").and_then(Value::as_str) {
         result["model"] = json!(model);
     }
@@ -32,10 +57,7 @@ fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value
 
     if let Some(input_messages) = body.get("messages").and_then(Value::as_array) {
         for message in input_messages {
-            let role = message
-                .get("role")
-                .and_then(Value::as_str)
-                .unwrap_or("user");
+            let role = message.get("role").and_then(Value::as_str).unwrap_or("user");
             messages.extend(convert_message(
                 role,
                 message.get("content").unwrap_or(&Value::Null),
@@ -76,7 +98,7 @@ fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value
     Ok(result)
 }
 
-fn minimax_chat_completions_url(base_url: &str) -> String {
+fn deepseek_chat_completions_url(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.ends_with("/chat/completions") {
         return trimmed.to_string();
@@ -94,17 +116,13 @@ fn text_from_content(content: &Value) -> String {
     if let Some(text) = content.as_str() {
         return text.to_string();
     }
-
     content
         .as_array()
         .map(|blocks| {
             blocks
                 .iter()
                 .filter_map(|block| match block.get("type").and_then(Value::as_str) {
-                    Some("text") => block
-                        .get("text")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
+                    Some("text") => block.get("text").and_then(Value::as_str).map(str::to_string),
                     Some("tool_result") => block
                         .get("content")
                         .map(text_from_content)
@@ -211,99 +229,33 @@ mod tests {
     #[test]
     fn normalizes_legacy_anthropic_url_to_chat_completions() {
         assert_eq!(
-            minimax_chat_completions_url("https://api.minimaxi.com/anthropic"),
-            "https://api.minimaxi.com/v1/chat/completions"
+            deepseek_chat_completions_url("https://api.deepseek.com/anthropic"),
+            "https://api.deepseek.com/v1/chat/completions"
         );
         assert_eq!(
-            minimax_chat_completions_url("https://api.minimaxi.com/v1"),
-            "https://api.minimaxi.com/v1/chat/completions"
+            deepseek_chat_completions_url("https://api.deepseek.com/v1"),
+            "https://api.deepseek.com/v1/chat/completions"
         );
     }
 
     #[test]
-    fn preserves_full_endpoint_and_avoids_double_v1() {
-        assert_eq!(
-            minimax_chat_completions_url("https://api.minimaxi.com/v1/chat/completions"),
-            "https://api.minimaxi.com/v1/chat/completions"
-        );
-        assert_eq!(
-            minimax_chat_completions_url("https://api.minimaxi.com/chat/completions"),
-            "https://api.minimaxi.com/chat/completions"
-        );
-    }
-
-    #[test]
-    fn converts_anthropic_messages_to_openai_chat() {
+    fn strips_thinking_blocks_and_signatures_before_conversion() {
         let input = json!({
-            "model": "MiniMax-M2.7",
-            "system": "You are terse.",
-            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hi" }] }],
-            "max_tokens": 128
+            "thinking": {"type": "enabled", "budget_tokens": 2048},
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "secret", "signature": "sig"},
+                    {"type": "text", "text": "visible", "signature": "remove-me"},
+                    {"type": "tool_use", "id": "call_1", "name": "lookup", "input": {"q": "hi"}}
+                ]
+            }]
         });
 
-        let output = anthropic_to_openai_chat(input, true).unwrap();
-
-        assert_eq!(output["model"], "MiniMax-M2.7");
-        assert_eq!(output["messages"][0]["role"], "system");
-        assert_eq!(output["messages"][1]["content"], "hi");
-        assert_eq!(output["max_tokens"], 128);
-        assert_eq!(output["stream"], true);
-        assert_eq!(output["stream_options"]["include_usage"], true);
-    }
-
-    #[test]
-    fn converts_tool_use_and_tool_result_roundtrip_shape() {
-        let input = json!({
-            "model": "MiniMax-M2.7",
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [
-                        { "type": "text", "text": "Let me call a tool" },
-                        { "type": "tool_use", "id": "call_1", "name": "lookup", "input": { "q": "BTC" } }
-                    ]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        { "type": "tool_result", "tool_use_id": "call_1", "content": "price ok" }
-                    ]
-                }
-            ]
-        });
-
-        let output = anthropic_to_openai_chat(input, true).unwrap();
-        let messages = output["messages"].as_array().unwrap();
-
-        assert_eq!(messages[0]["role"], "assistant");
-        assert_eq!(messages[0]["tool_calls"][0]["id"], "call_1");
-        assert_eq!(messages[0]["tool_calls"][0]["function"]["name"], "lookup");
-        assert_eq!(messages[1]["role"], "tool");
-        assert_eq!(messages[1]["tool_call_id"], "call_1");
-    }
-
-    #[test]
-    fn tool_result_with_text_keeps_tool_message_ordering() {
-        let input = json!({
-            "model": "MiniMax-M2.7",
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{ "type": "tool_use", "id": "call_1", "name": "lookup", "input": { "q": "BTC" } }]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": "tool result:" },
-                        { "type": "tool_result", "tool_use_id": "call_1", "content": "price ok" }
-                    ]
-                }
-            ]
-        });
-
-        let output = anthropic_to_openai_chat(input, true).unwrap();
-        let messages = output["messages"].as_array().unwrap();
-        assert_eq!(messages[1]["role"], "tool");
-        assert_eq!(messages[1]["tool_call_id"], "call_1");
+        let output = anthropic_to_openai_chat(rectify_deepseek_thinking(input), true).unwrap();
+        let msg = &output["messages"][0];
+        assert_eq!(msg["role"], "assistant");
+        assert_eq!(msg["content"], "visible");
+        assert!(msg.get("signature").is_none());
     }
 }

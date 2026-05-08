@@ -2,13 +2,14 @@
 //!
 //! For DeepSeek API with Bearer token auth and OpenAI-compatible format.
 
+mod request;
 mod response;
 
 use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
-    TransformOutput, UsageParseResult,
+    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, StreamingResponseFormat,
+    TransformInput, TransformOutput, UsageParseResult,
 };
 
 /// Adapter for DeepSeek API (Bearer token auth, OpenAI format)
@@ -36,6 +37,7 @@ impl ProviderAdapter for DeepSeekAdapter {
         provider: &Provider,
         _account_id: Option<&str>,
     ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
+        let env = provider.settings_config.get("env");
         let token_result = provider
             .settings_config
             .get("authToken")
@@ -44,6 +46,14 @@ impl ProviderAdapter for DeepSeekAdapter {
                 provider
                     .settings_config
                     .get("apiKey")
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                env.and_then(|v| v.get("ANTHROPIC_AUTH_TOKEN"))
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                env.and_then(|v| v.get("ANTHROPIC_API_KEY"))
                     .and_then(|v| v.as_str())
             })
             .map(str::to_string);
@@ -57,12 +67,7 @@ impl ProviderAdapter for DeepSeekAdapter {
     }
 
     fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
-        Ok(TransformOutput {
-            body: input.body,
-            upstream_url: input.upstream_url,
-            headers: vec![],
-            method: "POST".to_string(),
-        })
+        request::transform(input)
     }
 
     fn transform_response(
@@ -73,6 +78,10 @@ impl ProviderAdapter for DeepSeekAdapter {
         response::transform(body, is_streaming)
     }
 
+    fn streaming_response_format(&self) -> StreamingResponseFormat {
+        StreamingResponseFormat::OpenAIChat
+    }
+
     fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {
         provider
             .settings_config
@@ -80,5 +89,14 @@ impl ProviderAdapter for DeepSeekAdapter {
             .and_then(|v| v.as_str())
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string)
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("env")
+                    .and_then(|v| v.get("ANTHROPIC_BASE_URL"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                    .map(str::to_string)
+            })
     }
 }

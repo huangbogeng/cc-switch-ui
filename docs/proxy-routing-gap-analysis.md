@@ -310,3 +310,23 @@ Note:
 5. Expand route surface only after P0 routing semantics are stable.
 
 This ordering enforces the prior decision: **strictly align with upstream routing semantics first (ProviderRouter + retry + circuit breaker + failover switch)**.
+
+---
+
+## Completion Update (2026-05-08)
+
+- Request path now uses `router.select_providers -> forward_with_retry` at runtime.
+- Circuit breaker key is scoped as `app_type:provider_id`.
+- Failover switch synchronization is triggered after fallback success.
+- Request-level observability is available via:
+  - DB table: `proxy_request_logs`
+  - API: `GET /api/usage/request-logs`
+- Streaming/tool-call bridge behavior is hardened for MiniMax:
+  - valid tool block keeps `tool_use`
+  - invalid tool block downgrades to `end_turn`
+  - duplicate finish/[DONE] does not duplicate `message_stop`
+- Adapter minimum request/response contract tests are added for:
+  - Claude
+  - Gemini
+  - Copilot
+  - Codex
