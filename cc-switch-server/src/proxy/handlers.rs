@@ -93,7 +93,10 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .into_response();
     }
     if let Err(msg) = ensure_live_base_url_is_proxy(state.proxy_listen_port) {
-        log::error!("[ProxyAPI] proxy_start live settings verification failed: {}", msg);
+        log::error!(
+            "[ProxyAPI] proxy_start live settings verification failed: {}",
+            msg
+        );
         return Json(serde_json::json!({
             "success": false,
             "error": format!("Live settings mismatch after proxy start: {}", msg)

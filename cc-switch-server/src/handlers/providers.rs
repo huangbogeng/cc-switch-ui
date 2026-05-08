@@ -37,10 +37,17 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
 }
 
 pub async fn get_current_provider(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    log::debug!("[Providers] get_current_provider requested app_type={}", APP_TYPE);
+    log::debug!(
+        "[Providers] get_current_provider requested app_type={}",
+        APP_TYPE
+    );
     match state.db.get_current_provider_id(APP_TYPE) {
         Ok(id) => {
-            log::debug!("[Providers] get_current_provider success app_type={} current_provider_id={:?}", APP_TYPE, id);
+            log::debug!(
+                "[Providers] get_current_provider success app_type={} current_provider_id={:?}",
+                APP_TYPE,
+                id
+            );
             Json(serde_json::json!({ "current_provider_id": id })).into_response()
         }
         Err(e) => {

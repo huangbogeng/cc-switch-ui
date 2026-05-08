@@ -118,10 +118,7 @@ impl ProxyServer {
     }
 }
 
-fn build_proxy_router(
-    forwarder: Arc<Forwarder>,
-    runtime_state: Arc<ProxyRuntimeState>,
-) -> Router {
+fn build_proxy_router(forwarder: Arc<Forwarder>, runtime_state: Arc<ProxyRuntimeState>) -> Router {
     Router::new()
         .route("/v1/*axum", get(handle_proxy).post(handle_proxy))
         .route("/chat/completions", post(handle_proxy))
@@ -275,7 +272,10 @@ mod tests {
     #[test]
     fn proxy_accepts_openai_chat_paths() {
         let _app: Router<()> = Router::new()
-            .route("/chat/completions", post(|| async { axum::http::StatusCode::OK }))
+            .route(
+                "/chat/completions",
+                post(|| async { axum::http::StatusCode::OK }),
+            )
             .route(
                 "/v1/chat/completions",
                 post(|| async { axum::http::StatusCode::OK }),
@@ -286,6 +286,9 @@ mod tests {
     fn proxy_accepts_responses_paths() {
         let _app: Router<()> = Router::new()
             .route("/responses", post(|| async { axum::http::StatusCode::OK }))
-            .route("/v1/responses", post(|| async { axum::http::StatusCode::OK }));
+            .route(
+                "/v1/responses",
+                post(|| async { axum::http::StatusCode::OK }),
+            );
     }
 }

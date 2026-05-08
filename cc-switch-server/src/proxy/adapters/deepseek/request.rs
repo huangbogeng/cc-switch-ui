@@ -4,8 +4,11 @@ use cc_switch_lib::providers::{ProviderError, TransformInput, TransformOutput};
 use serde_json::{json, Value};
 
 pub fn transform(input: TransformInput) -> Result<TransformOutput, ProviderError> {
-    let body = anthropic_to_openai_chat(rectify_deepseek_thinking(input.body), input.requested_stream)
-        .map_err(ProviderError::TransformFailed)?;
+    let body = anthropic_to_openai_chat(
+        rectify_deepseek_thinking(input.body),
+        input.requested_stream,
+    )
+    .map_err(ProviderError::TransformFailed)?;
 
     Ok(TransformOutput {
         body,
@@ -53,7 +56,10 @@ fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value
 
     if let Some(input_messages) = body.get("messages").and_then(Value::as_array) {
         for message in input_messages {
-            let role = message.get("role").and_then(Value::as_str).unwrap_or("user");
+            let role = message
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("user");
             messages.extend(convert_message(
                 role,
                 message.get("content").unwrap_or(&Value::Null),
@@ -118,7 +124,10 @@ fn text_from_content(content: &Value) -> String {
             blocks
                 .iter()
                 .filter_map(|block| match block.get("type").and_then(Value::as_str) {
-                    Some("text") => block.get("text").and_then(Value::as_str).map(str::to_string),
+                    Some("text") => block
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                     Some("tool_result") => block
                         .get("content")
                         .map(text_from_content)
