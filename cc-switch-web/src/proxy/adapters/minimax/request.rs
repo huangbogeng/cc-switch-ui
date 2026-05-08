@@ -78,7 +78,7 @@ fn anthropic_to_openai_chat(body: Value, requested_stream: bool) -> Result<Value
 
 fn minimax_chat_completions_url(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
-    if trimmed.ends_with("/v1/chat/completions") {
+    if trimmed.ends_with("/chat/completions") {
         return trimmed.to_string();
     }
     if let Some(prefix) = trimmed.strip_suffix("/anthropic") {
@@ -216,6 +216,18 @@ mod tests {
         assert_eq!(
             minimax_chat_completions_url("https://api.minimaxi.com/v1"),
             "https://api.minimaxi.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn preserves_full_endpoint_and_avoids_double_v1() {
+        assert_eq!(
+            minimax_chat_completions_url("https://api.minimaxi.com/v1/chat/completions"),
+            "https://api.minimaxi.com/v1/chat/completions"
+        );
+        assert_eq!(
+            minimax_chat_completions_url("https://api.minimaxi.com/chat/completions"),
+            "https://api.minimaxi.com/chat/completions"
         );
     }
 

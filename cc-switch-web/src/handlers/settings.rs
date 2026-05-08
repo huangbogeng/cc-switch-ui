@@ -15,6 +15,7 @@ pub struct ProxyConfigResponse {
     proxy_type: String,
     host: String,
     port: u16,
+    auto_failover_enabled: bool,
 }
 
 impl From<&ProxyConfig> for ProxyConfigResponse {
@@ -27,6 +28,7 @@ impl From<&ProxyConfig> for ProxyConfigResponse {
             },
             host: config.host.clone(),
             port: config.port,
+            auto_failover_enabled: config.auto_failover_enabled,
         }
     }
 }
@@ -38,6 +40,8 @@ pub struct ProxyConfigRequest {
     proxy_type: String,
     host: String,
     port: u16,
+    #[serde(default, alias = "autoFailoverEnabled")]
+    auto_failover_enabled: bool,
 }
 
 pub async fn get_proxy_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -47,7 +51,8 @@ pub async fn get_proxy_config(State(state): State<Arc<AppState>>) -> impl IntoRe
             "enabled": false,
             "proxy_type": "http",
             "host": "",
-            "port": 10809
+            "port": 10809,
+            "auto_failover_enabled": false
         }))
         .into_response(),
         Err(e) => {
@@ -76,6 +81,7 @@ pub async fn set_proxy_config(
         proxy_type,
         host: payload.host,
         port: payload.port,
+        auto_failover_enabled: payload.auto_failover_enabled,
     };
 
     if let Err(e) = state.db.set_proxy_config(&config) {

@@ -3,9 +3,15 @@
 use super::adapters::create_registry;
 use super::failover_switch::FailoverSwitchManager;
 use super::forwarder::{ForwardResult, Forwarder, ProxyState};
-use super::provider_router::ProviderRouter;
+use super::provider_router::{ProviderRouter, SelectProvidersError};
 use super::types::ProxyConfig;
-use axum::{body::Body, extract::Request, response::Response, routing::get, Router};
+use axum::{
+    body::Body,
+    extract::Request,
+    response::Response,
+    routing::{get, post},
+    Router,
+};
 use cc_switch_lib::database::Database;
 use cc_switch_lib::providers::ProviderRegistry;
 use std::net::SocketAddr;
@@ -69,11 +75,7 @@ impl ProxyServer {
         });
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
-        let app = Router::new()
-            .route("/v1/*axum", get(handle_proxy).post(handle_proxy))
-            .route("/health", get(|| async { "ok" }))
-            .with_state((forwarder.clone(), runtime_state))
-            .layer(TraceLayer::new_for_http());
+        let app = build_proxy_router(forwarder.clone(), runtime_state);
 
         let listener = TcpListener::bind(self.config.listen_addr)
             .await
@@ -116,6 +118,21 @@ impl ProxyServer {
     }
 }
 
+fn build_proxy_router(
+    forwarder: Arc<Forwarder>,
+    runtime_state: Arc<ProxyRuntimeState>,
+) -> Router {
+    Router::new()
+        .route("/v1/*axum", get(handle_proxy).post(handle_proxy))
+        .route("/chat/completions", post(handle_proxy))
+        .route("/v1/chat/completions", post(handle_proxy))
+        .route("/responses", post(handle_proxy))
+        .route("/v1/responses", post(handle_proxy))
+        .route("/health", get(|| async { "ok" }))
+        .with_state((forwarder, runtime_state))
+        .layer(TraceLayer::new_for_http())
+}
+
 /// Handle proxy requests
 async fn handle_proxy(
     axum::extract::State((forwarder, runtime_state)): axum::extract::State<(
@@ -145,16 +162,32 @@ async fn handle_proxy(
         }
     };
 
-    let auto_failover_enabled = current_provider
-        .meta
-        .get("auto_failover_enabled")
-        .or_else(|| current_provider.meta.get("autoFailoverEnabled"))
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false);
-    let provider_candidates = {
+    let auto_failover_enabled = runtime_state
+        .db
+        .get_proxy_config()
+        .ok()
+        .flatten()
+        .map(|cfg| cfg.auto_failover_enabled)
+        .unwrap_or_else(|| {
+            current_provider
+                .meta
+                .get("auto_failover_enabled")
+                .or_else(|| current_provider.meta.get("autoFailoverEnabled"))
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+        });
+    let provider_candidates = match {
         let mut router = runtime_state.provider_router.write().await;
         router.set_auto_failover_enabled(auto_failover_enabled);
         router.select_providers(&runtime_state.app_type, &current_provider, &all_providers)
+    } {
+        Ok(candidates) => candidates,
+        Err(SelectProvidersError::AllCandidatesCircuitOpen) => {
+            return Response::builder()
+                .status(axum::http::StatusCode::SERVICE_UNAVAILABLE)
+                .body(Body::empty())
+                .unwrap();
+        }
     };
 
     let proxy_states = provider_candidates
@@ -232,4 +265,27 @@ fn provider_codex_account_id(provider: &cc_switch_lib::database::Provider) -> Op
         .and_then(|value| value.get("accountId"))
         .and_then(|value| value.as_str())
         .map(|value| value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::routing::post;
+    use axum::Router;
+
+    #[test]
+    fn proxy_accepts_openai_chat_paths() {
+        let _app: Router<()> = Router::new()
+            .route("/chat/completions", post(|| async { axum::http::StatusCode::OK }))
+            .route(
+                "/v1/chat/completions",
+                post(|| async { axum::http::StatusCode::OK }),
+            );
+    }
+
+    #[test]
+    fn proxy_accepts_responses_paths() {
+        let _app: Router<()> = Router::new()
+            .route("/responses", post(|| async { axum::http::StatusCode::OK }))
+            .route("/v1/responses", post(|| async { axum::http::StatusCode::OK }));
+    }
 }

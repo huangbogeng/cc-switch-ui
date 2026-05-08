@@ -8,6 +8,11 @@ pub struct ProviderRouter {
     breakers: HashMap<String, CircuitBreaker>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectProvidersError {
+    AllCandidatesCircuitOpen,
+}
+
 impl ProviderRouter {
     pub fn new(auto_failover_enabled: bool) -> Self {
         Self {
@@ -25,7 +30,7 @@ impl ProviderRouter {
         app_type: &str,
         current_provider: &Provider,
         providers: &HashMap<String, Provider>,
-    ) -> Vec<Provider> {
+    ) -> Result<Vec<Provider>, SelectProvidersError> {
         let mut candidates = if self.auto_failover_enabled {
             let queue = queue_order(providers);
             if queue.is_empty() {
@@ -47,12 +52,12 @@ impl ProviderRouter {
             // When queue mode is enabled with configured candidates,
             // do not bypass open breakers by force-falling back.
             if self.auto_failover_enabled && !queue_order(providers).is_empty() {
-                return Vec::new();
+                return Err(SelectProvidersError::AllCandidatesCircuitOpen);
             }
-            return vec![current_provider.clone()];
+            return Ok(vec![current_provider.clone()]);
         }
 
-        candidates
+        Ok(candidates)
     }
 
     pub fn record_success(&mut self, app_type: &str, provider_id: &str) {
@@ -119,7 +124,9 @@ mod tests {
         providers.insert("queued-1".to_string(), provider("queued-1", true, Some(1)));
 
         let mut router = ProviderRouter::new(false);
-        let result = router.select_providers("claude", &current, &providers);
+        let result = router
+            .select_providers("claude", &current, &providers)
+            .unwrap();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "current");
@@ -138,7 +145,9 @@ mod tests {
         );
 
         let mut router = ProviderRouter::new(true);
-        let result = router.select_providers("claude", &current, &providers);
+        let result = router
+            .select_providers("claude", &current, &providers)
+            .unwrap();
         let ids: Vec<_> = result.into_iter().map(|provider| provider.id).collect();
 
         assert_eq!(ids, vec!["queued-1", "current", "queued-2"]);
@@ -152,7 +161,9 @@ mod tests {
         providers.insert("other".to_string(), provider("other", false, Some(1)));
 
         let mut router = ProviderRouter::new(true);
-        let result = router.select_providers("claude", &current, &providers);
+        let result = router
+            .select_providers("claude", &current, &providers)
+            .unwrap();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "current");
@@ -171,7 +182,9 @@ mod tests {
         router.record_failure("claude", "current");
         router.record_failure("claude", "current");
 
-        let result = router.select_providers("claude", &current, &providers);
+        let result = router
+            .select_providers("claude", &current, &providers)
+            .unwrap();
         let ids: Vec<_> = result.into_iter().map(|provider| provider.id).collect();
         assert_eq!(ids, vec!["fallback"]);
     }
@@ -188,9 +201,14 @@ mod tests {
         router.record_failure("claude", "shared");
 
         let claude_result = router.select_providers("claude", &current, &providers);
-        assert!(claude_result.is_empty());
+        assert!(matches!(
+            claude_result,
+            Err(SelectProvidersError::AllCandidatesCircuitOpen)
+        ));
 
-        let codex_result = router.select_providers("codex", &current, &providers);
+        let codex_result = router
+            .select_providers("codex", &current, &providers)
+            .unwrap();
         assert_eq!(codex_result.len(), 1);
         assert_eq!(codex_result[0].id, "shared");
     }
@@ -211,6 +229,9 @@ mod tests {
         }
 
         let result = router.select_providers("claude", &current, &providers);
-        assert!(result.is_empty());
+        assert!(matches!(
+            result,
+            Err(SelectProvidersError::AllCandidatesCircuitOpen)
+        ));
     }
 }

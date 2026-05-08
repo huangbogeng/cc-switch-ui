@@ -44,6 +44,8 @@ pub struct ProxyConfig {
     pub proxy_type: ProxyType,
     pub host: String,
     pub port: u16,
+    #[serde(default)]
+    pub auto_failover_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -60,6 +62,7 @@ impl Default for ProxyConfig {
             proxy_type: ProxyType::Http,
             host: String::new(),
             port: 10809,
+            auto_failover_enabled: false,
         }
     }
 }
@@ -688,6 +691,7 @@ fn read_legacy_proxy_config(
             proxy_type,
             host,
             port,
+            auto_failover_enabled: false,
         })
     });
 
