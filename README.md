@@ -49,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/insta
 After installation, simply run:
 
 ```bash
-cc-switch-server
+cc-switch-ui
 ```
 
 The installer places the application under `~/.local/share/cc-switch-server` by default. User data stays in `~/.cc-switch`, including the SQLite database.
