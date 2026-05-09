@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BarChart3, Check, CheckCircle2, ChevronDown, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap } from 'lucide-react';
 import type { CodexAccount, CopilotAccount, CopilotUsageResponse, Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,10 +31,32 @@ interface ProxyStatus {
 export function CurrentProviderCard({
   loading,
   provider,
+  usage24h,
+  routeRuntime,
+  routeError,
 }: {
   loading: boolean;
   provider: Provider | null;
+  usage24h: {
+    requestCount: number;
+    inputTokens: number;
+    outputTokens: number;
+  } | null;
+  routeRuntime: {
+    running: boolean;
+    listenAddr: string | null;
+    activeTargetProviderId: string | null;
+  } | null;
+  routeError?: string;
 }) {
+  const formatCompact = (value: number) => {
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+    return value.toString();
+  };
+
+  const isCurrentTarget = !!provider && routeRuntime?.activeTargetProviderId === provider.id;
+
   return (
     <Card className="overflow-hidden relative group border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
@@ -52,26 +74,74 @@ export function CurrentProviderCard({
             <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
           </div>
         ) : provider ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div className="flex items-center gap-5">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] relative overflow-hidden">
-                <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
-                <span className="relative z-10 text-xl font-bold text-primary drop-shadow-sm">{providerInitial(provider)}</span>
+          <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] relative overflow-hidden">
+                  <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+                  <span className="relative z-10 text-xl font-bold text-primary drop-shadow-sm">{providerInitial(provider)}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-xl font-bold tracking-tight text-foreground">{provider.name}</div>
+                  <div className="truncate text-sm font-medium text-muted-foreground mt-0.5">
+                    {provider.websiteUrl || 'Custom Provider'}
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <div className="truncate text-xl font-bold tracking-tight text-foreground">{provider.name}</div>
-                <div className="truncate text-sm font-medium text-muted-foreground mt-0.5">
-                  {provider.websiteUrl || 'Custom Provider'}
+              <Badge variant="success" className="justify-self-start sm:justify-self-end gap-1.5 py-1 px-3 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                Active
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">24h Requests</div>
+                <div className="mt-1 font-mono text-base font-bold text-foreground tabular-nums">
+                  {usage24h ? formatCompact(usage24h.requestCount) : '-'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">24h Input</div>
+                <div className="mt-1 font-mono text-base font-bold text-primary tabular-nums">
+                  {usage24h ? formatCompact(usage24h.inputTokens) : '-'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">24h Output</div>
+                <div className="mt-1 font-mono text-base font-bold text-amber-500 tabular-nums">
+                  {usage24h ? formatCompact(usage24h.outputTokens) : '-'}
                 </div>
               </div>
             </div>
-            <Badge variant="success" className="justify-self-start sm:justify-self-end gap-1.5 py-1 px-3 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              Active
-            </Badge>
+
+            <div className="grid grid-cols-1 gap-2 rounded-xl border border-white/5 bg-black/20 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Local Route</span>
+                <span className={`text-xs font-semibold ${routeRuntime?.running ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                  {routeRuntime?.running ? 'Running' : 'Stopped'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Current Target</span>
+                <span className={`text-xs font-semibold ${isCurrentTarget ? 'text-primary' : 'text-muted-foreground'}`}>
+                  {isCurrentTarget ? 'This Provider' : 'Different Provider'}
+                </span>
+              </div>
+              {routeRuntime?.listenAddr && (
+                <div className="truncate text-[11px] font-mono text-muted-foreground/80">
+                  {routeRuntime.listenAddr}
+                </div>
+              )}
+              {routeError && (
+                <div className="truncate text-[11px] text-destructive">
+                  {routeError}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="py-8 flex flex-col items-center justify-center text-center text-muted-foreground bg-white/[0.02] rounded-xl border border-dashed border-white/10">
@@ -426,57 +496,6 @@ function UsageMeter({
         indicatorClassName={quota.unlimited ? 'bg-emerald-500' : undefined}
       />
     </div>
-  );
-}
-
-export function ProxyUsageCard({
-  totalInputTokens,
-  totalOutputTokens,
-  totalRequests,
-}: {
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  totalRequests: number;
-}) {
-  const formatNum = (n: number) => {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return n.toString();
-  };
-
-  return (
-    <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
-      <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-        <CardTitle className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
-            <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
-              <BarChart3 className="h-4 w-4 text-violet-500" />
-            </div>
-            <span>Route Usage</span>
-          </div>
-          <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-white/5 border-white/10">
-            {totalRequests > 0 ? `${totalRequests} reqs` : 'No data'}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-5">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">Input</div>
-            <div className="font-mono text-lg font-bold tabular-nums text-primary">{formatNum(totalInputTokens)}</div>
-            <div className="text-[10px] text-muted-foreground/70">tokens</div>
-          </div>
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">Output</div>
-            <div className="font-mono text-lg font-bold tabular-nums text-amber-500">{formatNum(totalOutputTokens)}</div>
-            <div className="text-[10px] text-muted-foreground/70">tokens</div>
-          </div>
-        </div>
-        {totalRequests === 0 && (
-          <p className="text-center text-[11px] text-muted-foreground/70 py-2">Start local route to track usage</p>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
   listProviders,
@@ -37,7 +37,7 @@ export default function ProvidersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
-  const [formData, setFormData] = useState<ProviderFormData>(emptyProviderForm);
+  const [draftFormData, setDraftFormData] = useState<ProviderFormData>(emptyProviderForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
@@ -152,7 +152,7 @@ export default function ProvidersPage() {
     setFormError('');
     setSelectedPreset(preset);
     setEditingId(null);
-    setFormData(formFromPreset(preset));
+    setDraftFormData(formFromPreset(preset));
     setShowForm(true);
   };
 
@@ -160,7 +160,7 @@ export default function ProvidersPage() {
     setFormError('');
     setSelectedPreset(null);
     setEditingId(null);
-    setFormData(emptyProviderForm);
+    setDraftFormData(emptyProviderForm);
     setShowForm(true);
   };
 
@@ -168,7 +168,7 @@ export default function ProvidersPage() {
     setFormError('');
     setEditingId(provider.id);
     setSelectedPreset(null);
-    setFormData(formFromProvider(provider));
+    setDraftFormData(formFromProvider(provider));
     setShowForm(true);
   };
 
@@ -182,8 +182,7 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (formData: ProviderFormData) => {
     setSaving(true);
     setError('');
     setFormError('');
@@ -273,17 +272,14 @@ export default function ProvidersPage() {
       )}
 
       <ProviderFormDialog
+        key={`${editingId ?? 'new'}:${selectedPreset?.id ?? 'custom'}:${draftFormData.id}:${showForm ? 'open' : 'closed'}`}
         open={showForm}
         editingId={editingId}
         selectedPreset={selectedPreset}
-        formData={formData}
+        initialFormData={draftFormData}
         saving={saving}
         error={formError}
         codexAccounts={codexAccounts}
-        onChange={(next) => {
-          setFormData(next);
-          if (formError) setFormError('');
-        }}
         onPresetSelect={handlePresetSelect}
         onCancel={() => {
           setShowForm(false);

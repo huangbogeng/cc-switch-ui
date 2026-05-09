@@ -4,6 +4,7 @@ import {
   listProviders, switchProvider, getCurrentProviderId,
   getProxyStatus, startProxy, stopProxy, setProxyTarget,
   getProxyUsageSummary,
+  type ProxyUsageSummaryResponse,
   type Provider,
 } from '../api';
 import type { CopilotUsageResponse } from '../api';
@@ -12,7 +13,6 @@ import {
   CurrentProviderCard,
   ProviderGrid,
   ProxyCard,
-  ProxyUsageCard,
   UsageCard,
 } from '@/components/dashboard/DashboardPanels';
 import { sortProviders } from '@/lib/provider';
@@ -24,11 +24,7 @@ export default function DashboardPage() {
 
   const [usage, setUsage] = useState<CopilotUsageResponse | null>(null);
 
-  const [proxyUsage, setProxyUsage] = useState<{
-    total_input_tokens: number;
-    total_output_tokens: number;
-    total_requests: number;
-  } | null>(null);
+  const [proxyUsage, setProxyUsage] = useState<ProxyUsageSummaryResponse | null>(null);
 
   const [proxyStatus, setProxyStatus] = useState<{
     running: boolean;
@@ -74,11 +70,7 @@ export default function DashboardPage() {
   const loadProxyUsage = useCallback(async () => {
     try {
       const data = await getProxyUsageSummary();
-      setProxyUsage({
-        total_input_tokens: data.totals.input_tokens,
-        total_output_tokens: data.totals.output_tokens,
-        total_requests: data.totals.request_count,
-      });
+      setProxyUsage(data);
     } catch (e) {
       console.error('Proxy usage error:', e);
     }
@@ -158,7 +150,35 @@ export default function DashboardPage() {
       )}
       <div className="space-y-8">
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <CurrentProviderCard loading={loadingProviders} provider={currentProvider} />
+          <CurrentProviderCard
+            loading={loadingProviders}
+            provider={currentProvider}
+            usage24h={
+              currentProvider
+                ? (() => {
+                    const byProvider = (proxyUsage?.providers || []).find(
+                      (item) => item.provider_id === currentProvider.id,
+                    );
+                    if (!byProvider) return null;
+                    return {
+                      requestCount: byProvider.request_count,
+                      inputTokens: byProvider.input_tokens,
+                      outputTokens: byProvider.output_tokens,
+                    };
+                  })()
+                : null
+            }
+            routeRuntime={
+              proxyStatus
+                ? {
+                    running: proxyStatus.running,
+                    listenAddr: proxyStatus.listen_addr,
+                    activeTargetProviderId: proxyStatus.active_target_provider_id,
+                  }
+                : null
+            }
+            routeError={proxyError || undefined}
+          />
           <ProxyCard
             status={proxyStatus}
             targetProviders={providerList}
@@ -167,13 +187,6 @@ export default function DashboardPage() {
             onTargetChange={handleRouteTargetChange}
           />
           {usage && <UsageCard usage={usage} />}
-          {proxyUsage && proxyUsage.total_requests > 0 && (
-            <ProxyUsageCard
-              totalInputTokens={proxyUsage.total_input_tokens}
-              totalOutputTokens={proxyUsage.total_output_tokens}
-              totalRequests={proxyUsage.total_requests}
-            />
-          )}
         </div>
 
         <ProviderGrid

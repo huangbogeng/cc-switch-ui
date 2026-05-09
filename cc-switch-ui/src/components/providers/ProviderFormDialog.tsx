@@ -1,9 +1,10 @@
-import type { FormEvent, ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ProviderPreset } from '@/config/providerPresets';
 import { PresetSelector } from './PresetSelector';
@@ -14,29 +15,29 @@ interface ProviderFormDialogProps {
   open: boolean;
   editingId: string | null;
   selectedPreset: ProviderPreset | null;
-  formData: ProviderFormData;
+  initialFormData: ProviderFormData;
   saving: boolean;
   error?: string;
   codexAccounts?: CodexAccount[];
-  onChange: (formData: ProviderFormData) => void;
   onPresetSelect: (preset: ProviderPreset) => void;
   onCancel: () => void;
-  onSubmit: (event: FormEvent) => void;
+  onSubmit: (formData: ProviderFormData) => void;
 }
 
 export function ProviderFormDialog({
   open,
   editingId,
   selectedPreset,
-  formData,
+  initialFormData,
   saving,
   error,
   codexAccounts = [],
-  onChange,
   onPresetSelect,
   onCancel,
   onSubmit,
 }: ProviderFormDialogProps) {
+  const [formData, setFormData] = useState<ProviderFormData>(initialFormData);
+
   if (!open) return null;
 
   const usesOAuthProxy = formData.authMode === 'oauth_proxy';
@@ -44,9 +45,9 @@ export function ProviderFormDialog({
   const showEndpoint = !usesOAuthProxy || !!formData.baseUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm">
-      <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
-        <CardContent className="p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
+      <Card className="w-full max-w-2xl overflow-hidden [contain:layout_paint]">
+        <CardContent className="max-h-[90vh] overflow-y-auto overscroll-contain p-6 [scrollbar-gutter:stable] [will-change:scroll-position]">
           <div className="mb-5">
             <h2 className="text-xl font-semibold leading-7 text-foreground">
               {editingId ? 'Edit Provider' : selectedPreset ? `Add ${selectedPreset.name}` : 'Add Custom Provider'}
@@ -86,7 +87,14 @@ export function ProviderFormDialog({
             </div>
           )}
 
-          <form onSubmit={onSubmit} className="space-y-5" noValidate>
+          <form
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              onSubmit(formData);
+            }}
+            className="space-y-5"
+            noValidate
+          >
             {error && (
               <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive">
                 {error}
@@ -100,7 +108,7 @@ export function ProviderFormDialog({
                   <Input
                     id="provider-id"
                     value={formData.id}
-                    onChange={(e) => onChange({ ...formData, id: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                     disabled={!!editingId}
                   />
                 </div>
@@ -109,7 +117,7 @@ export function ProviderFormDialog({
                   <Input
                     id="provider-name"
                     value={formData.name}
-                    onChange={(e) => onChange({ ...formData, name: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
               </div>
@@ -121,7 +129,7 @@ export function ProviderFormDialog({
                     id="website-url"
                     placeholder="Optional provider website"
                     value={formData.websiteUrl}
-                    onChange={(e) => onChange({ ...formData, websiteUrl: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, websiteUrl: e.target.value })}
                   />
                 </div>
               )}
@@ -136,7 +144,7 @@ export function ProviderFormDialog({
                       id="api-key"
                       type="password"
                       value={formData.apiKey}
-                      onChange={(e) => onChange({ ...formData, apiKey: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
@@ -144,7 +152,7 @@ export function ProviderFormDialog({
                     <Select
                       id="api-key-field"
                       value={formData.apiKeyField}
-                      onChange={(value) => onChange({ ...formData, apiKeyField: value as ApiKeyField })}
+                      onChange={(e) => setFormData({ ...formData, apiKeyField: e.target.value as ApiKeyField })}
                     >
                       <option value="ANTHROPIC_AUTH_TOKEN">AUTH_TOKEN</option>
                       <option value="ANTHROPIC_API_KEY">API_KEY</option>
@@ -161,7 +169,7 @@ export function ProviderFormDialog({
                     <Select
                       id="codex-account"
                       value={formData.codexAccountId}
-                      onChange={(value) => onChange({ ...formData, codexAccountId: value })}
+                      onChange={(e) => setFormData({ ...formData, codexAccountId: e.target.value })}
                     >
                       <option value="">Default account</option>
                       {codexAccounts.map((account) => (
@@ -183,14 +191,14 @@ export function ProviderFormDialog({
                     id="base-url"
                     placeholder="https://api.example.com/anthropic"
                     value={formData.baseUrl}
-                    onChange={(e) => onChange({ ...formData, baseUrl: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
                   />
                 </div>
                 <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={formData.isFullUrl}
-                    onChange={(e) => onChange({ ...formData, isFullUrl: e.target.checked })}
+                    onChange={(e) => setFormData({ ...formData, isFullUrl: e.target.checked })}
                     className="h-4 w-4 rounded border-input accent-primary"
                   />
                   Treat Base URL as a full request URL
@@ -204,25 +212,25 @@ export function ProviderFormDialog({
                   id="model-main"
                   label="Main"
                   value={formData.model}
-                  onChange={(value) => onChange({ ...formData, model: value })}
+                  onChange={(value) => setFormData({ ...formData, model: value })}
                 />
                 <ModelInput
                   id="model-haiku"
                   label="Haiku"
                   value={formData.haikuModel}
-                  onChange={(value) => onChange({ ...formData, haikuModel: value })}
+                  onChange={(value) => setFormData({ ...formData, haikuModel: value })}
                 />
                 <ModelInput
                   id="model-sonnet"
                   label="Sonnet"
                   value={formData.sonnetModel}
-                  onChange={(value) => onChange({ ...formData, sonnetModel: value })}
+                  onChange={(value) => setFormData({ ...formData, sonnetModel: value })}
                 />
                 <ModelInput
                   id="model-opus"
                   label="Opus"
                   value={formData.opusModel}
-                  onChange={(value) => onChange({ ...formData, opusModel: value })}
+                  onChange={(value) => setFormData({ ...formData, opusModel: value })}
                 />
               </div>
               <Button
@@ -231,7 +239,7 @@ export function ProviderFormDialog({
                 variant="outline"
                 onClick={() => {
                   const value = formData.model || formData.sonnetModel || formData.opusModel || formData.haikuModel;
-                  onChange({
+                  setFormData({
                     ...formData,
                     model: value,
                     haikuModel: value,
@@ -255,7 +263,7 @@ export function ProviderFormDialog({
                   <Select
                     id="api-format"
                     value={formData.apiFormat}
-                    onChange={(value) => onChange({ ...formData, apiFormat: value as ApiFormat })}
+                    onChange={(e) => setFormData({ ...formData, apiFormat: e.target.value as ApiFormat })}
                   >
                     <option value="anthropic">Anthropic Messages</option>
                     <option value="openai_chat">OpenAI Chat</option>
@@ -269,7 +277,7 @@ export function ProviderFormDialog({
                     id="api-timeout"
                     inputMode="numeric"
                     value={formData.apiTimeoutMs}
-                    onChange={(e) => onChange({ ...formData, apiTimeoutMs: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, apiTimeoutMs: e.target.value })}
                     placeholder="3000000"
                   />
                 </div>
@@ -280,7 +288,7 @@ export function ProviderFormDialog({
                 <Input
                   id="prompt-cache-key"
                   value={formData.promptCacheKey}
-                  onChange={(e) => onChange({ ...formData, promptCacheKey: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, promptCacheKey: e.target.value })}
                   placeholder="Optional, for OpenAI Responses-compatible providers"
                 />
               </div>
@@ -290,7 +298,7 @@ export function ProviderFormDialog({
                   <input
                     type="checkbox"
                     checked={formData.codexFastMode}
-                    onChange={(e) => onChange({ ...formData, codexFastMode: e.target.checked })}
+                    onChange={(e) => setFormData({ ...formData, codexFastMode: e.target.checked })}
                     className="h-4 w-4 rounded border-input accent-primary"
                   />
                   Codex FAST mode
@@ -301,7 +309,9 @@ export function ProviderFormDialog({
                 <input
                   type="checkbox"
                   checked={formData.disableNonessentialTraffic}
-                  onChange={(e) => onChange({ ...formData, disableNonessentialTraffic: e.target.checked })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, disableNonessentialTraffic: e.target.checked })
+                  }
                   className="h-4 w-4 rounded border-input accent-primary"
                 />
                 Disable Claude Code nonessential traffic
@@ -314,7 +324,7 @@ export function ProviderFormDialog({
               <Textarea
                 id="notes"
                 value={formData.notes}
-                onChange={(e) => onChange({ ...formData, notes: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="Optional"
               />
             </div>
@@ -359,28 +369,5 @@ function ModelInput({
       <Label htmlFor={id}>{label}</Label>
       <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
-  );
-}
-
-function Select({
-  id,
-  value,
-  onChange,
-  children,
-}: {
-  id: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <select
-      id={id}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-10 w-full rounded-xl border border-input bg-white/[0.04] px-3 text-sm leading-5 text-foreground shadow-inner shadow-black/10 outline-none transition focus:border-primary/70 focus:ring-4 focus:ring-primary/15"
-    >
-      {children}
-    </select>
   );
 }
