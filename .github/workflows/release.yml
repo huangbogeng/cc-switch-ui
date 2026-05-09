@@ -24,20 +24,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            binary_name: cc-switch-web
-            asset_name: cc-switch-web-linux-x86_64
+            binary_name: cc-switch-ui
+            asset_name: cc-switch-ui-linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary_name: cc-switch-web
-            asset_name: cc-switch-web-macos-x86_64
+            binary_name: cc-switch-ui
+            asset_name: cc-switch-ui-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary_name: cc-switch-web
-            asset_name: cc-switch-web-macos-aarch64
+            binary_name: cc-switch-ui
+            asset_name: cc-switch-ui-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary_name: cc-switch-web.exe
-            asset_name: cc-switch-web-windows-x86_64.exe
+            binary_name: cc-switch-ui.exe
+            asset_name: cc-switch-ui-windows-x86_64.exe
 
     steps:
       - name: Checkout Code
@@ -71,8 +71,8 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Backend (Rust)
-        run: cargo build --release --package cc-switch-web --target ${{ matrix.target }}
+      - name: Build CLI (Rust)
+        run: cargo build --release --package cc-switch-cli --target ${{ matrix.target }}
 
       - name: Verify Linux Static Binary
         if: matrix.os == 'ubuntu-latest'
@@ -89,20 +89,20 @@ jobs:
       - name: Prepare Release Asset
         shell: bash
         run: |
-          mkdir -p release_assets/cc-switch-web/dist
+          mkdir -p release_assets/cc-switch-ui/dist
           
-          # 复制前端 dist 和后端二进制文件到临时目录
-          cp -r cc-switch-ui/dist/* release_assets/cc-switch-web/dist/
-          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} release_assets/cc-switch-web/
+          # 复制前端 dist 和 CLI 二进制文件到临时目录
+          cp -r cc-switch-ui/dist/* release_assets/cc-switch-ui/dist/
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} release_assets/cc-switch-ui/
           
           cd release_assets
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Windows 打包为 zip
-            7z a ../${{ matrix.asset_name }}.zip cc-switch-web
+            7z a ../${{ matrix.asset_name }}.zip cc-switch-ui
             echo "ASSET_FILE=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
           else
             # Linux 和 macOS 打包为 tar.gz
-            tar -czf ../${{ matrix.asset_name }}.tar.gz cc-switch-web
+            tar -czf ../${{ matrix.asset_name }}.tar.gz cc-switch-ui
             echo "ASSET_FILE=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
           fi
           cd ..
@@ -122,7 +122,7 @@ jobs:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: cc-switch-web-*
+          pattern: cc-switch-ui-*
           path: release_assets
           merge-multiple: true
 

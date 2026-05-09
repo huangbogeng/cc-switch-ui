@@ -52,18 +52,40 @@ curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/insta
 cc-switch-ui
 ```
 
-安装脚本默认把程序放在 `~/.local/share/cc-switch-server`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
+安装脚本默认把程序放在 `~/.local/share/cc-switch-ui`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
+
+### CLI 命令
+
+`cc-switch-ui start` 会在一个进程里同时启动后端服务，并托管前端静态资源（`/ui`，生产模式）。
+
+```bash
+# 默认启动：0.0.0.0:5007，代理端口 15721
+cc-switch-ui start
+
+# 自定义监听地址和代理端口
+cc-switch-ui start --host 127.0.0.1 --port 5007 --proxy-port 15721
+
+# 健康检查
+cc-switch-ui status
+
+# 查看版本
+cc-switch-ui version
+
+# 诊断安装/PATH/权限问题
+cc-switch-ui doctor
+```
 
 ### 源码编译
 
 如果你更倾向于从源码编译：
 
 ```bash
-# 编译
-cargo build --release
+# 先构建前端静态资源（生产模式 /ui 必需）
+cd cc-switch-ui && npm ci && npm run build && cd ..
 
-# 运行服务
-cargo run --bin cc-switch-server
+# 编译并启动 CLI 入口
+cargo build --release
+cargo run -p cc-switch-cli -- start
 ```
 
 ### 访问 Web UI
@@ -176,7 +198,7 @@ pnpm lint       # 运行 ESLint 检查
 ### 后端 (Rust + Axum)
 
 ```bash
-cargo run --bin cc-switch-server  # 运行 API 服务器
+cargo run -p cc-switch-server     # 直接运行后端服务器
 cargo fmt && cargo clippy      # 代码格式化和 Lint 检查
 cargo test                     # 运行测试
 ```
