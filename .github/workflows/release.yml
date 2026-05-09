@@ -90,11 +90,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p release_assets/cc-switch-ui/dist
-          
+
           # 复制前端 dist 和 CLI 二进制文件到临时目录
           cp -r cc-switch-ui/dist/* release_assets/cc-switch-ui/dist/
           cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} release_assets/cc-switch-ui/
-          
+
           cd release_assets
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Windows 打包为 zip

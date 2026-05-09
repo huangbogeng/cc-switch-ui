@@ -54,15 +54,12 @@ fi
 
 # 4. Extract and Install
 echo "-> Extracting to $INSTALL_DIR..."
-# Ensure the directory exists
 mkdir -p "$INSTALL_DIR"
 
-# Extract directly into INSTALL_DIR.
 # The tarball contains a 'cc-switch-ui' folder, so we strip 1 component.
 tar -xzf /tmp/$FILENAME -C "$INSTALL_DIR" --strip-components=1
 rm -f /tmp/$FILENAME
 
-# Ensure it's executable
 chmod +x "$INSTALL_DIR/cc-switch-ui"
 # Preferred project-name command + backward-compatible aliases
 ln -sf "$INSTALL_DIR/cc-switch-ui" "$INSTALL_DIR/cc-switch-server"
@@ -71,7 +68,6 @@ ln -sf "$INSTALL_DIR/cc-switch-ui" "$INSTALL_DIR/cc-switch-web"
 # 5. Add to PATH
 SHELL_FILES=()
 
-# 检测常用的 Shell 配置文件
 if [ -f "$HOME/.zshrc" ] || [ -n "$ZSH_VERSION" ]; then
   SHELL_FILES+=("$HOME/.zshrc")
 fi
@@ -84,9 +80,8 @@ fi
 
 echo "-> Configuring PATH for your shells..."
 for RC_FILE in "${SHELL_FILES[@]}"; do
-  # 如果文件不存在，自动创建一个空文件
   touch "$RC_FILE" 2>/dev/null || true
-  
+
   if ! grep -q "export PATH=.*$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
     echo "" >> "$RC_FILE"
     echo "# Added by CC Switch UI Installer" >> "$RC_FILE"

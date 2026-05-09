@@ -20,7 +20,7 @@
 | 文件 | 行数 | 问题描述 |
 |------|------|----------|
 | `cc-switch-lib/src/oauth/copilot/mod.rs` | **1003** | 整个 CopilotAuthManager 塞在一个文件：设备码流程、token 刷新、多账号管理、迁移逻辑全在一起 |
-| `cc-switch-server/src/proxy/streaming_responses.rs` | **924** | 多个独立的流式转换管道混在一起：Responses→Anthropic、Chat→Anthropic 等多个函数 |
+| `cc-switch-server/src/proxy/streaming_responses.rs` | **已拆分** | 已改为兼容导出层，核心逻辑迁移至 `proxy/streaming/{openai_chat,responses,common,tool_blocks,finalization}.rs` |
 
 ### 中等
 
@@ -82,9 +82,10 @@
    - 抽出 `refresh.rs`
    - `mod.rs` 降至 ~300-400 行
 
-2. **拆分 `proxy/streaming_responses.rs`（924行）** — 按流式格式拆分
-   - `streaming_responses.rs` — OpenAI Responses SSE → Anthropic
-   - `streaming_chat.rs` — OpenAI Chat SSE → Anthropic
+2. **`proxy/streaming_responses.rs` 拆分已完成**（当前为兼容导出层）
+   - `streaming/openai_chat.rs` — OpenAI Chat SSE → Anthropic
+   - `streaming/responses.rs` — OpenAI Responses SSE → Anthropic
+   - `streaming/common.rs` / `tool_blocks.rs` / `finalization.rs` — 共享状态与收口逻辑
 
 3. **拆分 `oauth/codex/mod.rs`（650行）** — 与 copilot 同模式
 
