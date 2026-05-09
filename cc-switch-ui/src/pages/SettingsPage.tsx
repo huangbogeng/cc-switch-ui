@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
   deleteProxyConfig,
@@ -228,16 +229,15 @@ export default function SettingsPage() {
                   <div className="grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)_120px]">
                     <div className="space-y-2.5">
                       <Label htmlFor="outbound-proxy-type" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Type</Label>
-                      <select
+                      <Select
                         id="outbound-proxy-type"
                         value={outboundProxy.proxy_type}
                         onChange={(e) => setOutboundProxy({ ...outboundProxy, proxy_type: e.target.value })}
                         disabled={!outboundProxy.enabled}
-                        className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 outline-none"
                       >
                         <option value="http">HTTP</option>
                         <option value="socks5">SOCKS5</option>
-                      </select>
+                      </Select>
                     </div>
                     <div className="space-y-2.5">
                       <Label htmlFor="outbound-proxy-host" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Host</Label>
