@@ -2,11 +2,11 @@
 set -e
 
 REPO="huangbogeng/cc-switch-ui"
-INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.local/share/cc-switch-server}"
+INSTALL_DIR="${CC_SWITCH_INSTALL_DIR:-$HOME/.local/share/cc-switch-ui}"
 DATA_DIR="$HOME/.cc-switch"
 
 echo "=========================================="
-echo "    Installing CC Switch Server"
+echo "    Installing CC Switch UI"
 echo "=========================================="
 
 # 1. Fetch the latest release version
@@ -43,7 +43,7 @@ case "$PLATFORM-$ARCH" in
 esac
 
 # 3. Download the tarball
-FILENAME="cc-switch-server-$DEST.tar.gz"
+FILENAME="cc-switch-ui-$DEST.tar.gz"
 URL="https://github.com/$REPO/releases/download/$VERSION/$FILENAME"
 
 echo "-> Downloading $URL..."
@@ -54,24 +54,20 @@ fi
 
 # 4. Extract and Install
 echo "-> Extracting to $INSTALL_DIR..."
-# Ensure the directory exists
 mkdir -p "$INSTALL_DIR"
 
-# Extract directly into INSTALL_DIR. 
-# The tarball contains a 'cc-switch-server' folder, so we strip 1 component.
+# The tarball contains a 'cc-switch-ui' folder, so we strip 1 component.
 tar -xzf /tmp/$FILENAME -C "$INSTALL_DIR" --strip-components=1
 rm -f /tmp/$FILENAME
 
-# Ensure it's executable
-chmod +x "$INSTALL_DIR/cc-switch-server"
+chmod +x "$INSTALL_DIR/cc-switch-ui"
 # Preferred project-name command + backward-compatible aliases
-ln -sf "$INSTALL_DIR/cc-switch-server" "$INSTALL_DIR/cc-switch-ui"
-ln -sf "$INSTALL_DIR/cc-switch-server" "$INSTALL_DIR/cc-switch-web"
+ln -sf "$INSTALL_DIR/cc-switch-ui" "$INSTALL_DIR/cc-switch-server"
+ln -sf "$INSTALL_DIR/cc-switch-ui" "$INSTALL_DIR/cc-switch-web"
 
 # 5. Add to PATH
 SHELL_FILES=()
 
-# 检测常用的 Shell 配置文件
 if [ -f "$HOME/.zshrc" ] || [ -n "$ZSH_VERSION" ]; then
   SHELL_FILES+=("$HOME/.zshrc")
 fi
@@ -84,12 +80,11 @@ fi
 
 echo "-> Configuring PATH for your shells..."
 for RC_FILE in "${SHELL_FILES[@]}"; do
-  # 如果文件不存在，自动创建一个空文件
   touch "$RC_FILE" 2>/dev/null || true
-  
+
   if ! grep -q "export PATH=.*$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
     echo "" >> "$RC_FILE"
-    echo "# Added by CC Switch Server Installer" >> "$RC_FILE"
+    echo "# Added by CC Switch UI Installer" >> "$RC_FILE"
     echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$RC_FILE"
     echo "  ✅ Added to $RC_FILE"
   else
@@ -98,7 +93,7 @@ for RC_FILE in "${SHELL_FILES[@]}"; do
 done
 
 echo ""
-echo "🎉 CC Switch Server has been successfully installed!"
+echo "🎉 CC Switch UI has been successfully installed!"
 echo "Install directory: $INSTALL_DIR"
 echo "Data directory: $DATA_DIR"
 echo ""

@@ -66,18 +66,40 @@ After installation, simply run:
 cc-switch-ui
 ```
 
-The installer places the application under `~/.local/share/cc-switch-server` by default. User data stays in `~/.cc-switch`, including the SQLite database.
+The installer places the application under `~/.local/share/cc-switch-ui` by default. User data stays in `~/.cc-switch`, including the SQLite database.
+
+### CLI Commands
+
+`cc-switch-ui start` launches the backend server and serves frontend static assets (`/ui`) in one process (production mode).
+
+```bash
+# Start with defaults: 0.0.0.0:5007, proxy 15721
+cc-switch-ui start
+
+# Custom bind/proxy ports
+cc-switch-ui start --host 127.0.0.1 --port 5007 --proxy-port 15721
+
+# Health check
+cc-switch-ui status
+
+# Show version
+cc-switch-ui version
+
+# Diagnose installation/path/permission issues
+cc-switch-ui doctor
+```
 
 ### Build from Source
 
 If you prefer to build from source:
 
 ```bash
-# Build the release binary
-cargo build --release
+# Build frontend assets first (required for /ui in production mode)
+cd cc-switch-ui && npm ci && npm run build && cd ..
 
-# Run the server
-cargo run --bin cc-switch-server
+# Build and run CLI entrypoint
+cargo build --release
+cargo run -p cc-switch-cli -- start
 ```
 
 ### 2. Access the Web UI
@@ -190,7 +212,7 @@ pnpm lint       # Run ESLint checks
 ### Backend (Rust + Axum)
 
 ```bash
-cargo run --bin cc-switch-server  # Run the API server
+cargo run -p cc-switch-server     # Run backend server directly
 cargo fmt && cargo clippy      # Formatting and linting
 cargo test                     # Run tests
 ```

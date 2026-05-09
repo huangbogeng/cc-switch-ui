@@ -1,0 +1,25 @@
+[package]
+name = "cc-switch-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CLI for managing cc-switch-ui service"
+
+[[bin]]
+name = "cc-switch-ui"
+path = "src/main.rs"
+
+[dependencies]
+cc-switch-lib = { path = "../cc-switch-lib" }
+cc-switch-server = { path = "../cc-switch-server" }
+clap.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+env_logger.workspace = true
+log.workspace = true
+dirs.workspace = true
