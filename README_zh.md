@@ -1,6 +1,6 @@
-# CC Switch Web
+# CC Switch UI
 
-**管理 Claude Code 的 Provider 配置从未如此简单。**
+**让 Claude Code 的 Provider 配置管理更简单。**
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
@@ -143,7 +143,7 @@ Claude Code 将会立即开始使用你新选中的 Provider。
 
 ## 🏗 技术架构
 
-CC Switch Web 采用纯 Web 架构，前后端分离设计：
+CC Switch UI 采用纯 Web 架构，前后端分离设计：
 
 ```mermaid
 graph TD
@@ -236,7 +236,7 @@ cc-switch-lib/         # 共享核心库 (Rust)
 
 本项目是优秀开源项目 [cc-switch](https://github.com/farion1231/cc-switch) 的分支。主要区别如下：
 
-| 特性 | cc-switch (原版) | CC Switch Web (本项目) |
+| 特性 | cc-switch (原版) | CC Switch UI (本项目) |
 |------|-----------------|----------------------|
 | **部署方式** | Tauri 桌面应用 | 纯 Web 服务 |
 | **系统托盘** | 支持 | 不支持 |

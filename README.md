@@ -1,4 +1,4 @@
-# CC Switch Web
+# CC Switch UI
 
 **Managing Claude Code Provider configurations has never been easier.**
 
@@ -54,7 +54,7 @@ Configuring API Providers for Claude Code traditionally requires manually editin
 
 ### Easy Installation (Linux & macOS)
 
-The easiest way to install CC Switch Web is using our installation script:
+The easiest way to install CC Switch UI is using our installation script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/install.sh | bash
@@ -143,7 +143,7 @@ Claude Code will immediately start using the new Provider you selected.
 
 ## 🏗 Architecture
 
-CC Switch Web is a pure Web architecture variant, separating the React frontend and Rust backend:
+CC Switch UI is a pure Web architecture variant, separating the React frontend and Rust backend:
 
 ```mermaid
 graph TD
@@ -236,7 +236,7 @@ cc-switch-lib/         # Shared core library (Rust)
 
 This project is a fork of the excellent [cc-switch](https://github.com/farion1231/cc-switch). Here are the main differences:
 
-| Feature | cc-switch (Original) | CC Switch Web (This Project) |
+| Feature | cc-switch (Original) | CC Switch UI (This Project) |
 |---------|----------------------|------------------------------|
 | **Deployment** | Tauri Desktop App | Pure Web Service |
 | **System Tray** | Supported | Not Supported |
