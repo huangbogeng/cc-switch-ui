@@ -8,10 +8,11 @@ use axum::{
     Json,
 };
 use cc_switch_lib::database::Provider;
+use cc_switch_lib::providers::AppType;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-const APP_TYPE: &str = "claude";
+const APP_TYPE: &str = "claude_code";
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
 
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -37,11 +38,12 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
 }
 
 pub async fn get_current_provider(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
     log::debug!(
         "[Providers] get_current_provider requested app_type={}",
         APP_TYPE
     );
-    match state.db.get_current_provider_id(APP_TYPE) {
+    match cc_switch_lib::settings::get_effective_current_provider(&state.db, &app_type_enum) {
         Ok(id) => {
             log::debug!(
                 "[Providers] get_current_provider success app_type={} current_provider_id={:?}",
@@ -168,64 +170,168 @@ pub async fn switch_provider(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     log::info!("[Providers] switch_provider requested id={}", id);
-    // Get provider
-    let provider_result = state.db.get_provider(&id, APP_TYPE);
-    let provider = match provider_result {
+
+    let app_type = APP_TYPE;
+
+    // 1. Get provider
+    let provider = match state.db.get_provider(&id, app_type) {
         Ok(Some(p)) => p,
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Provider not found"})),
             )
-                .into_response()
+                .into_response();
         }
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response()
-        }
-    };
-
-    // Apply to live config. Codex OAuth providers must point Claude Code at
-    // the local proxy; the proxy then injects real OAuth credentials upstream.
-    let live_settings = settings_for_live(&provider, state.proxy_listen_port, true);
-    let apply_result = cc_switch_lib::live::apply_provider_to_live(&live_settings);
-    if let Err(err) = apply_result {
-        log::error!("Failed to apply provider to live config: {}", err);
-        let err_msg = format!("Failed to apply config: {}", err);
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": err_msg})),
-        )
-            .into_response();
-    }
-
-    // Update current provider and local route target in database.
-    match state.db.set_current_provider(&id, APP_TYPE) {
-        Ok(()) => {}
-        Err(e) => {
-            log::error!("Failed to switch provider: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": e.to_string()})),
             )
                 .into_response();
         }
+    };
+
+    // 2. Determine takeover state
+    let backup = state.db.get_live_backup(app_type).ok().flatten();
+    let live_taken_over = cc_switch_lib::live::detect_takeover_in_live_config();
+    let proxy_running = {
+        let guard = state.proxy_server.read().await;
+        match guard.as_ref() {
+            Some(server) => server.is_running().await,
+            None => false,
+        }
+    };
+
+    let should_hot_switch = (backup.is_some() || live_taken_over) && proxy_running;
+    let mut warnings: Vec<String> = Vec::new();
+
+    if should_hot_switch {
+        // Path A: Hot-switch (proxy takeover mode)
+        log::info!(
+            "[Providers] switch_provider id={} path=hot_switch",
+            id
+        );
+
+        // Block switching to official providers
+        let provider_type = provider
+            .meta
+            .get("providerType")
+            .and_then(Value::as_str);
+        if provider_type == Some("official") || provider_type == Some("Official") {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "Cannot switch to official provider while proxy takeover is active"
+                })),
+            )
+                .into_response();
+        }
+
+        // Just update the proxy target — live config already points at proxy
+        let guard = state.proxy_server.read().await;
+        if let Some(proxy) = guard.as_ref() {
+            if let Err(e) = proxy.hot_switch_provider(&state.db, &id).await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        // Path B: Normal switch (with backfill)
+        log::info!(
+            "[Providers] switch_provider id={} path=normal",
+            id
+        );
+
+        // (a) Backfill: save current live config to old provider's DB record
+        let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
+        let current_id = cc_switch_lib::settings::get_current_provider(&app_type_enum);
+        if let Some(ref old_id) = current_id {
+            if old_id != &id {
+                match cc_switch_lib::live::backfill_current_live_config() {
+                    Ok(backfill_settings) => {
+                        match state.db.get_provider(old_id, app_type) {
+                            Ok(Some(mut old_provider)) => {
+                                old_provider.settings_config = backfill_settings;
+                                if let Err(e) =
+                                    state.db.save_provider(app_type, &old_provider)
+                                {
+                                    warnings.push(format!(
+                                        "Backfill warning: failed to save old provider config: {}",
+                                        e
+                                    ));
+                                }
+                            }
+                            Ok(None) => { /* old provider was deleted */ }
+                            Err(e) => {
+                                warnings.push(format!(
+                                    "Backfill warning: failed to read old provider: {}",
+                                    e
+                                ));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warnings.push(format!(
+                            "Backfill warning: failed to read live config: {}",
+                            e
+                        ));
+                    }
+                }
+            }
+        }
+
+        // (b) Set device-level current provider
+        if let Err(e) =
+            cc_switch_lib::settings::set_current_provider(&app_type_enum, Some(&id))
+        {
+            warnings.push(format!("Failed to save device setting: {}", e));
+        }
+
+        // (c) Set DB is_current
+        if let Err(e) = state.db.set_current_provider(&id, app_type) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": format!("Failed to set current provider: {}", e)
+                })),
+            )
+                .into_response();
+        }
+
+        // (d) Write live config (with sanitize, optional proxy routing)
+        let use_proxy = proxy_running;
+        let live_settings = settings_for_live(&provider, state.proxy_listen_port, use_proxy);
+        if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": format!("Failed to apply config: {}", e)
+                })),
+            )
+                .into_response();
+        }
+
+        // (e) Update proxy target DB record
+        if let Err(e) = state.db.set_proxy_target_provider_id(&id) {
+            warnings.push(format!("Failed to update proxy target: {}", e));
+        }
     }
 
-    // Also update route target so the local route follows the current provider.
-    if let Err(e) = state.db.set_proxy_target_provider_id(&id) {
-        log::warn!("Failed to update route target: {}", e);
-        // Non-fatal - continue with provider switch
-    }
     log::info!(
-        "[Providers] switch_provider success id={} proxy_target_updated=true",
-        id
+        "[Providers] switch_provider success id={} warnings={}",
+        id,
+        warnings.len()
     );
 
-    Json(serde_json::json!({ "success": true })).into_response()
+    Json(serde_json::json!({
+        "success": true,
+        "warnings": warnings
+    }))
+    .into_response()
 }
 
 pub(crate) fn settings_for_live(provider: &Provider, proxy_port: u16, use_proxy: bool) -> Value {

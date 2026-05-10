@@ -360,8 +360,10 @@ fn current_live_base_url() -> Option<String> {
     let path = cc_switch_lib::live::get_live_settings_path();
     let raw = std::fs::read_to_string(path).ok()?;
     let value: Value = serde_json::from_str(&raw).ok()?;
+    // Provider settings are stored under "env" in the live config
     value
-        .get("base_url")
+        .get("env")
+        .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
         .and_then(Value::as_str)
         .map(str::to_string)
 }

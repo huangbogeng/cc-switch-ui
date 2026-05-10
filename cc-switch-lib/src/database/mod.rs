@@ -165,6 +165,13 @@ impl Database {
                 created_at INTEGER NOT NULL DEFAULT (unixepoch())
             );
 
+            CREATE TABLE IF NOT EXISTS proxy_live_backup (
+                app_type TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                original_config TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_records(provider_id);
             CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(request_timestamp);
             CREATE INDEX IF NOT EXISTS idx_proxy_request_logs_app_type_created_at
@@ -173,6 +180,7 @@ impl Database {
         )?;
         migrate_proxy_config_schema(&conn)?;
         migrate_proxy_request_logs_schema(&conn)?;
+        run_schema_migrations(&conn)?;
         Ok(())
     }
 
@@ -434,6 +442,59 @@ impl Database {
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
+
+    /// Get live backup record for an app type.
+    pub fn get_live_backup(&self, app_type: &str) -> Result<Option<LiveBackup>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT app_type, provider_id, original_config, created_at
+             FROM proxy_live_backup WHERE app_type = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![app_type], |row| {
+            Ok(LiveBackup {
+                app_type: row.get(0)?,
+                provider_id: row.get(1)?,
+                original_config: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(|e| AppError::Database(e.to_string()))?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Save or update live backup record.
+    pub fn save_live_backup(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+        original_config: &str,
+    ) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO proxy_live_backup (app_type, provider_id, original_config)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(app_type) DO UPDATE SET
+                provider_id = excluded.provider_id,
+                original_config = excluded.original_config,
+                created_at = datetime('now')",
+            params![app_type, provider_id, original_config],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Delete live backup record.
+    pub fn delete_live_backup(&self, app_type: &str) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "DELETE FROM proxy_live_backup WHERE app_type = ?1",
+            params![app_type],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
 }
 
 /// Usage record for database storage
@@ -468,6 +529,15 @@ pub struct ProxyRequestLogEntry {
     pub success: bool,
     pub error_message: Option<String>,
     pub created_at: i64,
+}
+
+/// Live backup record for proxy takeover detection/restore
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveBackup {
+    pub app_type: String,
+    pub provider_id: String,
+    pub original_config: String,
+    pub created_at: String,
 }
 
 impl Database {
@@ -753,6 +823,33 @@ fn read_legacy_proxy_config(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(AppError::Database(e.to_string())),
     }
+}
+
+/// Current schema version for PRAGMA user_version-based migration tracking.
+const SCHEMA_VERSION: u32 = 1;
+
+/// Run schema migrations based on PRAGMA user_version.
+///
+/// New migrations should be added as conditional blocks:
+/// ```ignore
+/// if current_version < 2 {
+///     // v2 migration steps
+/// }
+/// ```
+fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
+    let current_version: u32 =
+        conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+
+    if current_version >= SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    // v1: proxy_live_backup table — created in create_tables() with IF NOT EXISTS,
+    // so existing databases pick it up on next startup automatically.
+    // No additional migration steps needed.
+
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    Ok(())
 }
 
 /// Usage summary by provider

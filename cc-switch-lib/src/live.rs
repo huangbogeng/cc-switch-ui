@@ -13,13 +13,67 @@ pub fn get_live_settings_path() -> PathBuf {
     get_claude_settings_path()
 }
 
-/// Read current Claude settings from disk as raw JSON
+/// Remove internal-only fields before writing to Claude Code's live config.
+///
+/// These fields are used internally by cc-switch for routing and should never
+/// appear in the Claude Code settings.json that the user or Claude reads.
+pub fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
+    let mut v = settings.clone();
+    if let Some(obj) = v.as_object_mut() {
+        obj.remove("api_format");
+        obj.remove("apiFormat");
+        obj.remove("openrouter_compat_mode");
+        obj.remove("openrouterCompatMode");
+        obj.remove("provider_type");
+        obj.remove("providerType");
+    }
+    v
+}
+
+/// Read current live settings from disk as raw JSON
 fn read_live_settings_raw() -> Result<Value, AppError> {
     let path = get_claude_settings_path();
     if !path.exists() {
         return Ok(Value::Object(serde_json::Map::new()));
     }
     read_json_file(&path)
+}
+
+/// Check whether the live config is currently pointing at the local proxy.
+///
+/// Returns `true` if the live config has `ANTHROPIC_AUTH_TOKEN = "PROXY_MANAGED"`
+/// and `ANTHROPIC_BASE_URL` points to `127.0.0.1` — meaning the proxy has taken
+/// over and is responsible for routing API requests.
+///
+/// Checks inside the `env` object where provider settings are stored.
+pub fn detect_takeover_in_live_config() -> bool {
+    let settings = match read_live_settings_raw() {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let env = settings.get("env").and_then(Value::as_object);
+    let auth_token = env
+        .and_then(|e| e.get("ANTHROPIC_AUTH_TOKEN"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let base_url = env
+        .and_then(|e| e.get("ANTHROPIC_BASE_URL"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    auth_token == "PROXY_MANAGED" && base_url.starts_with("http://127.0.0.1:")
+}
+
+/// Read current live settings and sanitize them for backfill storage.
+///
+/// This captures the user's current live config (which may include direct edits
+/// to the Claude settings file) and prepares it to be saved as a provider's
+/// settings_config. Without this backfill, user customizations made directly
+/// in the live file would be lost on the next switch.
+///
+/// Returns the sanitized settings ready to store in a provider's DB record.
+pub fn backfill_current_live_config() -> Result<Value, AppError> {
+    let live_settings = read_live_settings_raw()?;
+    Ok(sanitize_claude_settings_for_live(&live_settings))
 }
 
 /// Write Claude settings to disk (atomic write)
@@ -30,95 +84,14 @@ fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
 
 /// Apply provider settings to live Claude config
 ///
-/// We only update specific fields:
-/// - `api_key` (from ANTHROPIC_AUTH_TOKEN in env)
-/// - `base_url` (from ANTHROPIC_BASE_URL in env)
-/// - `env` (merged from provider's settings_config.env)
+/// Writes the provider's full settings_config to the Claude settings file,
+/// replacing any existing content. This matches cc-switch's behavior —
+/// the provider config IS the live config (minus sanitized internal fields).
 ///
-/// Other existing fields (hooks, enabledPlugins, etc.) are preserved.
+/// For proxy mode, callers should use `settings_for_live` first to rewrite
+/// the env for proxy routing before calling this function.
 pub fn apply_provider_to_live(settings_config: &serde_json::Value) -> Result<(), AppError> {
-    let mut settings = read_live_settings_raw()?;
-
-    // Get provider's env object
-    let provider_env = settings_config
-        .get("env")
-        .and_then(|v| v.as_object())
-        .cloned()
-        .unwrap_or_default();
-
-    // Ensure settings is an object
-    if !settings.is_object() {
-        settings = Value::Object(serde_json::Map::new());
-    }
-
-    // Get or create env object
-    let env_obj = if let Some(Value::Object(ref mut m)) = settings.get_mut("env") {
-        m.clone()
-    } else {
-        serde_json::Map::new()
-    };
-
-    // Merge provider env into a new map
-    let mut merged_env: serde_json::Map<String, Value> = env_obj;
-
-    // Hard refresh provider-related keys to avoid cross-provider residue.
-    // Keep unrelated env entries (plugins/hook/runtime settings), but remove
-    // all ANTHROPIC_* keys before writing provider-specific values.
-    let stale_keys: Vec<String> = merged_env
-        .keys()
-        .filter(|k| k.starts_with("ANTHROPIC_"))
-        .cloned()
-        .collect();
-    for key in stale_keys {
-        merged_env.remove(&key);
-    }
-
-    for (key, value) in &provider_env {
-        // Skip empty template values
-        if let Some(s) = value.as_str() {
-            if !s.is_empty() {
-                merged_env.insert(key.clone(), value.clone());
-            }
-        } else {
-            merged_env.insert(key.clone(), value.clone());
-        }
-    }
-
-    // Keep auth env mutually exclusive to avoid Claude auth conflict warnings.
-    // If provider explicitly sets one auth style, drop the other stale key from previous providers.
-    let has_auth_token = provider_env
-        .get("ANTHROPIC_AUTH_TOKEN")
-        .and_then(Value::as_str)
-        .is_some_and(|s| !s.is_empty());
-    let has_api_key = provider_env
-        .get("ANTHROPIC_API_KEY")
-        .and_then(Value::as_str)
-        .is_some_and(|s| !s.is_empty());
-    if has_auth_token {
-        merged_env.remove("ANTHROPIC_API_KEY");
-    } else if has_api_key {
-        merged_env.remove("ANTHROPIC_AUTH_TOKEN");
-    }
-
-    // Update settings with merged env
-    if let Some(ref mut settings_map) = settings.as_object_mut() {
-        settings_map.insert("env".to_string(), Value::Object(merged_env));
-
-        // Update top-level api_key and base_url from provider env
-        if let Some(v) = provider_env.get("ANTHROPIC_BASE_URL") {
-            settings_map.insert("base_url".to_string(), v.clone());
-        }
-        if let Some(v) = provider_env
-            .get("ANTHROPIC_AUTH_TOKEN")
-            .or_else(|| provider_env.get("ANTHROPIC_API_KEY"))
-        {
-            settings_map.insert("api_key".to_string(), v.clone());
-        }
-        if let Some(v) = provider_env.get("ANTHROPIC_MODEL") {
-            settings_map.insert("model".to_string(), v.clone());
-        }
-    }
-
+    let settings = sanitize_claude_settings_for_live(settings_config);
     write_live_settings_raw(&settings)?;
     log::info!(
         "Applied provider settings to live Claude config at {:?}",
@@ -139,64 +112,23 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    #[test]
-    fn apply_provider_to_live_restores_direct_settings_after_proxy_settings() {
-        let _guard = env_lock().lock().expect("env lock");
-
+    fn setup_test_home() -> std::path::PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time")
             .as_nanos();
         let test_home = std::env::temp_dir().join(format!("cc-switch-live-test-{suffix}"));
         std::fs::create_dir_all(&test_home).expect("create test home");
-
         unsafe {
             std::env::set_var(
                 "CC_SWITCH_TEST_HOME",
                 test_home.to_string_lossy().to_string(),
             );
         }
+        test_home
+    }
 
-        let proxied = json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721",
-                "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
-                "ANTHROPIC_MODEL": "MiniMax-M2.7"
-            }
-        });
-        apply_provider_to_live(&proxied).expect("apply proxied settings");
-
-        let restored = json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/v1",
-                "ANTHROPIC_AUTH_TOKEN": "real-token",
-                "ANTHROPIC_MODEL": "MiniMax-M2.7"
-            }
-        });
-        apply_provider_to_live(&restored).expect("apply restored settings");
-
-        let live = read_live_settings_raw().expect("read live settings");
-        let env = live
-            .get("env")
-            .and_then(Value::as_object)
-            .expect("env object");
-        assert_eq!(
-            live.get("base_url").and_then(Value::as_str),
-            Some("https://api.minimaxi.com/v1")
-        );
-        assert_eq!(
-            live.get("api_key").and_then(Value::as_str),
-            Some("real-token")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
-            Some("https://api.minimaxi.com/v1")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
-            Some("real-token")
-        );
-
+    fn cleanup(test_home: std::path::PathBuf) {
         unsafe {
             std::env::remove_var("CC_SWITCH_TEST_HOME");
         }
@@ -204,134 +136,92 @@ mod tests {
     }
 
     #[test]
-    fn apply_provider_to_live_restores_deepseek_api_key_after_proxy_settings() {
+    fn apply_provider_to_live_writes_env_directly() {
         let _guard = env_lock().lock().expect("env lock");
+        let test_home = setup_test_home();
 
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time")
-            .as_nanos();
-        let test_home = std::env::temp_dir().join(format!("cc-switch-live-test-{suffix}"));
-        std::fs::create_dir_all(&test_home).expect("create test home");
-
-        unsafe {
-            std::env::set_var(
-                "CC_SWITCH_TEST_HOME",
-                test_home.to_string_lossy().to_string(),
-            );
-        }
-
-        let proxied = json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721",
-                "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
-                "ANTHROPIC_MODEL": "deepseek-v4-pro"
-            }
-        });
-        apply_provider_to_live(&proxied).expect("apply proxied settings");
-
-        let restored = json!({
+        let settings = json!({
             "env": {
                 "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
-                "ANTHROPIC_API_KEY": "deepseek-real-key",
+                "ANTHROPIC_API_KEY": "sk-test-key",
                 "ANTHROPIC_MODEL": "deepseek-v4-pro"
             }
         });
-        apply_provider_to_live(&restored).expect("apply restored settings");
+        apply_provider_to_live(&settings).expect("apply settings");
 
         let live = read_live_settings_raw().expect("read live settings");
-        let env = live
-            .get("env")
-            .and_then(Value::as_object)
-            .expect("env object");
+        // No top-level fields extracted from env
+        assert_eq!(live.get("base_url"), None);
+        assert_eq!(live.get("api_key"), None);
+        // Env content matches input
         assert_eq!(
-            live.get("base_url").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
         assert_eq!(
-            live.get("api_key").and_then(Value::as_str),
-            Some("deepseek-real-key")
+            live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("sk-test-key")
         );
-        assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
-            Some("https://api.deepseek.com/anthropic")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
-            Some("deepseek-real-key")
-        );
-        assert_eq!(env.get("ANTHROPIC_AUTH_TOKEN"), None);
 
-        unsafe {
-            std::env::remove_var("CC_SWITCH_TEST_HOME");
-        }
-        let _ = std::fs::remove_dir_all(test_home);
+        cleanup(test_home);
     }
 
     #[test]
-    fn apply_provider_to_live_replaces_stale_anthropic_keys_and_model() {
+    fn apply_provider_to_live_strips_internal_fields() {
         let _guard = env_lock().lock().expect("env lock");
+        let test_home = setup_test_home();
 
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time")
-            .as_nanos();
-        let test_home = std::env::temp_dir().join(format!("cc-switch-live-test-{suffix}"));
-        std::fs::create_dir_all(&test_home).expect("create test home");
-        unsafe {
-            std::env::set_var(
-                "CC_SWITCH_TEST_HOME",
-                test_home.to_string_lossy().to_string(),
-            );
-        }
-
-        let initial = json!({
+        let settings = json!({
             "env": {
-                "ANTHROPIC_BASE_URL": "https://old.example.com",
-                "ANTHROPIC_AUTH_TOKEN": "old-token",
-                "ANTHROPIC_DEFAULT_OPUS_MODEL": "old-opus",
-                "API_TIMEOUT_MS": "3000000"
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+                "ANTHROPIC_API_KEY": "sk-test-key"
             },
-            "model": "old-model"
+            "api_format": "openai_chat",
+            "openrouter_compat_mode": true,
+            "keep_this_field": "should survive"
         });
-        apply_provider_to_live(&initial).expect("apply initial");
-
-        let refreshed = json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
-                "ANTHROPIC_API_KEY": "new-key",
-                "ANTHROPIC_MODEL": "deepseek-v4-pro"
-            }
-        });
-        apply_provider_to_live(&refreshed).expect("apply refreshed");
+        apply_provider_to_live(&settings).expect("apply settings");
 
         let live = read_live_settings_raw().expect("read live settings");
-        let env = live
-            .get("env")
-            .and_then(Value::as_object)
-            .expect("env object");
+        assert_eq!(live.get("api_format"), None);
+        assert_eq!(live.get("openrouter_compat_mode"), None);
         assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
-            Some("https://api.deepseek.com/anthropic")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
-            Some("new-key")
-        );
-        assert_eq!(env.get("ANTHROPIC_AUTH_TOKEN"), None);
-        assert_eq!(env.get("ANTHROPIC_DEFAULT_OPUS_MODEL"), None);
-        assert_eq!(
-            env.get("API_TIMEOUT_MS").and_then(Value::as_str),
-            Some("3000000")
-        );
-        assert_eq!(
-            live.get("model").and_then(Value::as_str),
-            Some("deepseek-v4-pro")
+            live.get("keep_this_field").and_then(Value::as_str),
+            Some("should survive")
         );
 
-        unsafe {
-            std::env::remove_var("CC_SWITCH_TEST_HOME");
-        }
-        let _ = std::fs::remove_dir_all(test_home);
+        cleanup(test_home);
+    }
+
+    #[test]
+    fn apply_provider_to_live_replaces_file_completely() {
+        let _guard = env_lock().lock().expect("env lock");
+        let test_home = setup_test_home();
+
+        let first = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721",
+                "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED"
+            }
+        });
+        apply_provider_to_live(&first).expect("apply first");
+
+        let second = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+                "ANTHROPIC_API_KEY": "real-key"
+            }
+        });
+        apply_provider_to_live(&second).expect("apply second");
+
+        let live = read_live_settings_raw().expect("read live settings");
+        // Second write completely replaced the first — no residue
+        assert_eq!(live.get("ANTHROPIC_AUTH_TOKEN"), None);
+        assert_eq!(
+            live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("real-key")
+        );
+
+        cleanup(test_home);
     }
 }

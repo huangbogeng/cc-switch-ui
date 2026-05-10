@@ -13,6 +13,7 @@ use axum::{
     Router,
 };
 use cc_switch_lib::database::Database;
+use cc_switch_lib::error::AppError;
 use cc_switch_lib::providers::ProviderRegistry;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -114,6 +115,27 @@ impl ProxyServer {
         }
 
         log::info!("[Proxy] Server stopped");
+        Ok(())
+    }
+
+    /// Check whether the proxy server is currently running.
+    pub async fn is_running(&self) -> bool {
+        self.server_task.read().await.is_some()
+    }
+
+    /// Hot-switch the proxy's active target provider.
+    ///
+    /// Updates the database route target so subsequent requests are forwarded
+    /// to the new provider. This is the core of proxy takeover mode — the live
+    /// config already points at the proxy (127.0.0.1:15721), so we only need
+    /// to change which provider the proxy routes to.
+    pub async fn hot_switch_provider(
+        &self,
+        db: &Database,
+        provider_id: &str,
+    ) -> Result<(), AppError> {
+        db.set_proxy_target_provider_id(provider_id)?;
+        log::info!("[Proxy] Hot-switched target provider to '{}'", provider_id);
         Ok(())
     }
 }
