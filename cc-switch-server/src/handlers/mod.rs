@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod copilot_oauth;
+pub mod mcp;
 pub mod oauth;
 pub mod providers;
 pub mod settings;
+pub mod skills;
 pub mod usage;

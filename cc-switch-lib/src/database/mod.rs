@@ -172,6 +172,29 @@ impl Database {
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS mcp_servers (
+                id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                server_spec TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (id, app_type)
+            );
+
+            CREATE TABLE IF NOT EXISTS skills (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                directory TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                installed_at INTEGER NOT NULL DEFAULT 0,
+                repo_owner TEXT,
+                repo_name TEXT,
+                repo_branch TEXT,
+                readme_url TEXT
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_records(provider_id);
             CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(request_timestamp);
             CREATE INDEX IF NOT EXISTS idx_proxy_request_logs_app_type_created_at
@@ -494,6 +517,246 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
+    }
+}
+
+/// MCP server record for database storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerRecord {
+    pub id: String,
+    pub name: String,
+    pub server_spec: serde_json::Value,
+    pub app_type: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool { true }
+
+impl Database {
+    /// Get all MCP servers for an app type
+    pub fn get_all_mcp_servers(
+        &self,
+        app_type: &str,
+    ) -> Result<Vec<McpServerRecord>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, server_spec, app_type, enabled
+             FROM mcp_servers WHERE app_type = ?1",
+        )?;
+        let rows = stmt.query_map(params![app_type], |row| {
+            let spec_str: String = row.get(2)?;
+            Ok(McpServerRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                server_spec: serde_json::from_str(&spec_str).unwrap_or(serde_json::Value::Null),
+                app_type: row.get(3)?,
+                enabled: row.get::<_, i32>(4)? != 0,
+            })
+        })?;
+        let mut result = Vec::new();
+        for r in rows {
+            result.push(r.map_err(|e| AppError::Database(e.to_string()))?);
+        }
+        Ok(result)
+    }
+
+    /// Get enabled MCP servers for an app type (for sync to live config)
+    pub fn get_enabled_mcp_servers(
+        &self,
+        app_type: &str,
+    ) -> Result<Vec<McpServerRecord>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, server_spec, app_type, enabled
+             FROM mcp_servers WHERE app_type = ?1 AND enabled = 1",
+        )?;
+        let rows = stmt.query_map(params![app_type], |row| {
+            let spec_str: String = row.get(2)?;
+            Ok(McpServerRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                server_spec: serde_json::from_str(&spec_str).unwrap_or(serde_json::Value::Null),
+                app_type: row.get(3)?,
+                enabled: row.get::<_, i32>(4)? != 0,
+            })
+        })?;
+        let mut result = Vec::new();
+        for r in rows {
+            result.push(r.map_err(|e| AppError::Database(e.to_string()))?);
+        }
+        Ok(result)
+    }
+
+    /// Save (upsert) an MCP server
+    pub fn save_mcp_server(
+        &self,
+        server: &McpServerRecord,
+    ) -> Result<(), AppError> {
+        let conn = self.conn();
+        let spec_str = serde_json::to_string(&server.server_spec)
+            .map_err(|e| AppError::JsonSerialize { source: e })?;
+        conn.execute(
+            "INSERT INTO mcp_servers (id, name, server_spec, app_type, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id, app_type) DO UPDATE SET
+                name = excluded.name,
+                server_spec = excluded.server_spec,
+                enabled = excluded.enabled",
+            params![
+                server.id,
+                server.name,
+                spec_str,
+                server.app_type,
+                server.enabled as i32,
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Delete an MCP server
+    pub fn delete_mcp_server(&self, id: &str, app_type: &str) -> Result<bool, AppError> {
+        let conn = self.conn();
+        let affected = conn
+            .execute(
+                "DELETE FROM mcp_servers WHERE id = ?1 AND app_type = ?2",
+                params![id, app_type],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(affected > 0)
+    }
+}
+
+/// Skill record for database storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillRecord {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub directory: String,
+    pub app_type: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub installed_at: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub readme_url: Option<String>,
+}
+
+impl Database {
+    /// Get all enabled skills for an app type (for sync to live dir)
+    pub fn get_enabled_skills(&self, app_type: &str) -> Result<Vec<SkillRecord>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, directory, app_type, enabled,
+                    installed_at, repo_owner, repo_name, repo_branch, readme_url
+             FROM skills WHERE app_type = ?1 AND enabled = 1",
+        )?;
+        let rows = stmt.query_map(params![app_type], |row| {
+            Ok(SkillRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                directory: row.get(3)?,
+                app_type: row.get(4)?,
+                enabled: row.get::<_, i32>(5)? != 0,
+                installed_at: row.get(6)?,
+                repo_owner: row.get(7)?,
+                repo_name: row.get(8)?,
+                repo_branch: row.get(9)?,
+                readme_url: row.get(10)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for r in rows {
+            result.push(r.map_err(|e| AppError::Database(e.to_string()))?);
+        }
+        Ok(result)
+    }
+
+    /// Get all skills for an app type (including disabled, for management UI)
+    pub fn get_all_skills(&self, app_type: &str) -> Result<Vec<SkillRecord>, AppError> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, directory, app_type, enabled,
+                    installed_at, repo_owner, repo_name, repo_branch, readme_url
+             FROM skills WHERE app_type = ?1",
+        )?;
+        let rows = stmt.query_map(params![app_type], |row| {
+            Ok(SkillRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                directory: row.get(3)?,
+                app_type: row.get(4)?,
+                enabled: row.get::<_, i32>(5)? != 0,
+                installed_at: row.get(6)?,
+                repo_owner: row.get(7)?,
+                repo_name: row.get(8)?,
+                repo_branch: row.get(9)?,
+                readme_url: row.get(10)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for r in rows {
+            result.push(r.map_err(|e| AppError::Database(e.to_string()))?);
+        }
+        Ok(result)
+    }
+
+    /// Save (upsert) a skill
+    pub fn save_skill(&self, skill: &SkillRecord) -> Result<(), AppError> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO skills (id, name, description, directory, app_type, enabled,
+                installed_at, repo_owner, repo_name, repo_branch, readme_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                directory = excluded.directory,
+                app_type = excluded.app_type,
+                enabled = excluded.enabled,
+                installed_at = excluded.installed_at,
+                repo_owner = excluded.repo_owner,
+                repo_name = excluded.repo_name,
+                repo_branch = excluded.repo_branch,
+                readme_url = excluded.readme_url",
+            params![
+                skill.id,
+                skill.name,
+                skill.description,
+                skill.directory,
+                skill.app_type,
+                skill.enabled as i32,
+                skill.installed_at,
+                skill.repo_owner,
+                skill.repo_name,
+                skill.repo_branch,
+                skill.readme_url,
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Delete a skill by id
+    pub fn delete_skill(&self, id: &str) -> Result<bool, AppError> {
+        let conn = self.conn();
+        let affected = conn
+            .execute("DELETE FROM skills WHERE id = ?1", params![id])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(affected > 0)
     }
 }
 
