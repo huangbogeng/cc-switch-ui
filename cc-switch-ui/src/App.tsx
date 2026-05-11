@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProvidersPage from './pages/ProvidersPage';
 import SettingsPage from './pages/SettingsPage';
 import OAuthPage from './pages/OAuthPage';
 import UsagePage from './pages/UsagePage';
+import McpPage from './pages/McpPage';
+import SkillsPage from './pages/SkillsPage';
 import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-type Page = 'dashboard' | 'providers' | 'oauth' | 'settings' | 'usage';
+type Page = 'dashboard' | 'providers' | 'mcp' | 'skills' | 'oauth' | 'usage' | 'settings';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
 
 export default function App() {
@@ -30,6 +32,8 @@ export default function App() {
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', description: 'Live status', icon: LayoutDashboard },
     { id: 'providers', label: 'Providers', description: 'Model routes', icon: Users },
+    { id: 'mcp', label: 'MCP', description: 'Server configs', icon: Server },
+    { id: 'skills', label: 'Skills', description: 'CLI extensions', icon: Package },
     { id: 'oauth', label: 'OAuth', description: 'Accounts', icon: Key },
     { id: 'usage', label: 'Usage', description: 'Request stats', icon: BarChart3 },
     { id: 'settings', label: 'Settings', description: 'Preferences', icon: Settings },
@@ -104,6 +108,8 @@ export default function App() {
           <div className="mx-auto w-full max-w-[1200px] animate-in fade-in slide-in-from-bottom-4 duration-500">
             {currentPage === 'dashboard' && <DashboardPage />}
             {currentPage === 'providers' && <ProvidersPage />}
+            {currentPage === 'mcp' && <McpPage />}
+            {currentPage === 'skills' && <SkillsPage />}
             {currentPage === 'oauth' && <OAuthPage />}
             {currentPage === 'usage' && <UsagePage />}
             {currentPage === 'settings' && <SettingsPage />}

@@ -327,3 +327,85 @@ export interface ProxyUsageSummaryResponse {
 export async function getProxyUsageSummary() {
   return api<ProxyUsageSummaryResponse>('/usage/summary');
 }
+
+// MCP Servers
+export interface McpServer {
+  id: string;
+  name: string;
+  serverSpec: unknown;
+  appType: string;
+  enabled: boolean;
+}
+
+export async function listMcpServers() {
+  return api<{ servers: McpServer[] }>('/mcp/servers');
+}
+
+export async function saveMcpServer(server: McpServer) {
+  return api<{ success: boolean }>('/mcp/servers', {
+    method: 'POST',
+    body: JSON.stringify(server),
+  });
+}
+
+export async function deleteMcpServer(id: string) {
+  return api<{ success: boolean }>(`/mcp/servers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function syncMcpServers() {
+  return api<{ success: boolean }>('/mcp/servers/sync', { method: 'POST' });
+}
+
+export async function importMcpServers() {
+  return api<{ success: boolean; imported: number }>('/mcp/servers/import', { method: 'POST' });
+}
+
+export async function toggleMcpServer(id: string) {
+  return api<{ success: boolean; enabled: boolean }>(`/mcp/servers/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
+}
+
+// Skills
+export interface Skill {
+  id: string;
+  name: string;
+  description?: string;
+  directory: string;
+  appType: string;
+  enabled: boolean;
+  installedAt: number;
+  repoOwner?: string;
+  repoName?: string;
+  repoBranch?: string;
+  readmeUrl?: string;
+}
+
+export async function listSkills() {
+  return api<{ skills: Skill[] }>('/skills');
+}
+
+export async function saveSkill(skill: Skill) {
+  return api<{ success: boolean }>('/skills', {
+    method: 'POST',
+    body: JSON.stringify(skill),
+  });
+}
+
+export async function deleteSkill(id: string) {
+  return api<{ success: boolean }>(`/skills/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function syncSkills() {
+  return api<{ success: boolean }>('/skills/sync', { method: 'POST' });
+}
+
+export async function importSkills() {
+  return api<{ success: boolean; imported: number }>('/skills/import', { method: 'POST' });
+}
+
+export async function toggleSkill(id: string) {
+  return api<{ success: boolean; enabled: boolean }>(`/skills/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
+}

@@ -28,7 +28,7 @@ use cc_switch_lib::database::Database;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::oauth::copilot::CopilotAuthManager;
 
-use handlers::{auth, copilot_oauth, oauth, providers, settings, usage};
+use handlers::{auth, copilot_oauth, mcp, oauth, providers, settings, skills, usage};
 use state::AppState;
 
 #[derive(Debug, Clone)]
@@ -350,6 +350,30 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             "/api/providers/:id/switch",
             post(providers::switch_provider),
         )
+        .route("/api/mcp/servers", get(mcp::list_mcp_servers))
+        .route("/api/mcp/servers", post(mcp::save_mcp_server))
+        .route("/api/mcp/servers/import", post(mcp::import_mcp_servers))
+        .route(
+            "/api/mcp/servers/sync",
+            post(mcp::sync_mcp_servers),
+        )
+        .route(
+            "/api/mcp/servers/:id/toggle",
+            post(mcp::toggle_mcp_server),
+        )
+        .route(
+            "/api/mcp/servers/:id",
+            delete(mcp::delete_mcp_server),
+        )
+        .route("/api/skills", get(skills::list_skills))
+        .route("/api/skills", post(skills::save_skill))
+        .route("/api/skills/import", post(skills::import_skills))
+        .route("/api/skills/sync", post(skills::sync_skills))
+        .route(
+            "/api/skills/:id/toggle",
+            post(skills::toggle_skill),
+        )
+        .route("/api/skills/:id", delete(skills::delete_skill))
         .route("/api/usage/summary", get(usage::get_usage_summary))
         .route(
             "/api/usage/request-logs",
