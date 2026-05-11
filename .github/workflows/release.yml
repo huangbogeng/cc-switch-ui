@@ -68,19 +68,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      - name: Install Windows Build Dependencies (zstd)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          if (!(Get-Command zstd -ErrorAction SilentlyContinue)) {
-            choco install zstandard --no-progress -y --version=1.5.6
-          }
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
       - name: Build CLI (Rust)
         run: cargo build --release --package cc-switch-cli --target ${{ matrix.target }}
 
