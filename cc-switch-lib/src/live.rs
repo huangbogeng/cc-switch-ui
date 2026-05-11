@@ -26,6 +26,9 @@ pub fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
         obj.remove("openrouterCompatMode");
         obj.remove("provider_type");
         obj.remove("providerType");
+        // Cross-module fields that should never leak into provider config
+        obj.remove("mcpServers");
+        obj.remove("hasCompletedOnboarding");
     }
     v
 }
@@ -82,17 +85,24 @@ fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
     write_json_file(&path, settings)
 }
 
-/// Apply provider settings to live Claude config
+/// Apply provider settings to live Claude config (merge mode).
 ///
-/// Writes the provider's full settings_config to the Claude settings file,
-/// replacing any existing content. This matches cc-switch's behavior —
-/// the provider config IS the live config (minus sanitized internal fields).
+/// Reads the current `~/.claude/settings.json`, updates only the `env`
+/// field with the provider's configuration, and writes back.
+/// Other fields (project-level config, Claude Code settings, etc.) are
+/// preserved. This avoids data loss when multiple modules share the file.
 ///
 /// For proxy mode, callers should use `settings_for_live` first to rewrite
 /// the env for proxy routing before calling this function.
 pub fn apply_provider_to_live(settings_config: &serde_json::Value) -> Result<(), AppError> {
     let settings = sanitize_claude_settings_for_live(settings_config);
-    write_live_settings_raw(&settings)?;
+    let mut current = read_live_settings_raw()?;
+    if let Some(current_obj) = current.as_object_mut() {
+        if let Some(env) = settings.get("env") {
+            current_obj.insert("env".into(), env.clone());
+        }
+    }
+    write_live_settings_raw(&current)?;
     log::info!(
         "Applied provider settings to live Claude config at {:?}",
         get_live_settings_path()
@@ -110,6 +120,10 @@ mod tests {
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn acquire_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        env_lock().lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn setup_test_home() -> std::path::PathBuf {
@@ -137,7 +151,7 @@ mod tests {
 
     #[test]
     fn apply_provider_to_live_writes_env_directly() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = acquire_env_lock();
         let test_home = setup_test_home();
 
         let settings = json!({
@@ -168,8 +182,14 @@ mod tests {
 
     #[test]
     fn apply_provider_to_live_strips_internal_fields() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = acquire_env_lock();
         let test_home = setup_test_home();
+
+        // Pre-write a file with a field that should survive merge
+        let existing = json!({
+            "keep_this_field": "should survive"
+        });
+        write_live_settings_raw(&existing).expect("pre-write existing");
 
         let settings = json!({
             "env": {
@@ -177,27 +197,41 @@ mod tests {
                 "ANTHROPIC_API_KEY": "sk-test-key"
             },
             "api_format": "openai_chat",
-            "openrouter_compat_mode": true,
-            "keep_this_field": "should survive"
+            "openrouter_compat_mode": true
         });
         apply_provider_to_live(&settings).expect("apply settings");
 
         let live = read_live_settings_raw().expect("read live settings");
+        // Internal fields from input are sanitized — not in the output
         assert_eq!(live.get("api_format"), None);
         assert_eq!(live.get("openrouter_compat_mode"), None);
+        // Non-env fields from existing file survive the merge
         assert_eq!(
             live.get("keep_this_field").and_then(Value::as_str),
             Some("should survive")
+        );
+        // Env content matches input
+        assert_eq!(
+            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://api.deepseek.com/anthropic")
         );
 
         cleanup(test_home);
     }
 
     #[test]
-    fn apply_provider_to_live_replaces_file_completely() {
-        let _guard = env_lock().lock().expect("env lock");
+    fn apply_provider_to_live_merges_env_only() {
+        let _guard = acquire_env_lock();
         let test_home = setup_test_home();
 
+        // Pre-write a file with non-env root fields that must survive
+        let prewrite = json!({
+            "project": "my-project",
+            "theme": "dark"
+        });
+        write_live_settings_raw(&prewrite).expect("pre-write existing");
+
+        // First write: adds env, should preserve project/theme
         let first = json!({
             "env": {
                 "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721",
@@ -206,6 +240,7 @@ mod tests {
         });
         apply_provider_to_live(&first).expect("apply first");
 
+        // Second write: only env changes, project/theme should survive
         let second = json!({
             "env": {
                 "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
@@ -215,12 +250,26 @@ mod tests {
         apply_provider_to_live(&second).expect("apply second");
 
         let live = read_live_settings_raw().expect("read live settings");
-        // Second write completely replaced the first — no residue
-        assert_eq!(live.get("ANTHROPIC_AUTH_TOKEN"), None);
+        // project and theme from pre-write must survive
+        assert_eq!(
+            live.get("project").and_then(Value::as_str),
+            Some("my-project")
+        );
+        assert_eq!(
+            live.get("theme").and_then(Value::as_str),
+            Some("dark")
+        );
+        // Env is replaced by second write
+        assert_eq!(
+            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://api.deepseek.com/anthropic")
+        );
         assert_eq!(
             live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
             Some("real-key")
         );
+        // PROXY_MANAGED from first write env is gone (env was replaced)
+        assert_eq!(live.pointer("/env/ANTHROPIC_AUTH_TOKEN"), None);
 
         cleanup(test_home);
     }
