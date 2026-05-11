@@ -5,7 +5,6 @@
 use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::error::AppError;
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Get the path to the live Claude settings file

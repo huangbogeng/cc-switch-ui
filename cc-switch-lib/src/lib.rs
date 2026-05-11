@@ -4,8 +4,6 @@
 //! - Database persistence
 //! - OAuth authentication
 
-#![allow(unused)]
-
 pub mod app_store;
 pub mod config;
 pub mod database;

@@ -374,6 +374,7 @@ export interface Skill {
   directory: string;
   appType: string;
   enabled: boolean;
+  collection?: string;
   installedAt: number;
   repoOwner?: string;
   repoName?: string;

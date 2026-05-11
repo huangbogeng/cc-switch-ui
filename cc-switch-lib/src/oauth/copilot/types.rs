@@ -348,7 +348,7 @@ pub struct CopilotAuthStatus {
 
 /// 账号数据（内部存储结构）
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct GitHubAccountData {
+pub(crate) struct GitHubAccountData {
     /// GitHub OAuth Token
     ///
     /// 安全说明：为了复用登录状态，本地会持久化该令牌。
@@ -365,7 +365,7 @@ pub(super) struct GitHubAccountData {
 
 /// 持久化存储结构（v3 多账号 + 默认账号格式）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub(super) struct CopilotAuthStore {
+pub(crate) struct CopilotAuthStore {
     /// 存储格式版本（3 = 多账号 + 默认账号格式）
     #[serde(default)]
     pub version: u32,

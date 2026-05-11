@@ -26,12 +26,12 @@ use crate::oauth::copilot::{GitHubAccount, GitHubDeviceCodeResponse};
 use crate::oauth::{new_http_client, new_http_client_with_proxy};
 
 mod storage;
-mod types;
+pub(crate) mod types;
 
 pub use types::{CodexOAuthError, CodexOAuthStatus};
 
 use types::{
-    compute_expires_at_ms, extract_identity_from_tokens, parse_interval, parse_jwt_claims,
+    compute_expires_at_ms, extract_identity_from_tokens, parse_interval,
     CachedAccessToken, CodexAccountData, DeviceCodeResponse, DevicePollSuccess, OAuthTokenResponse,
     PendingDeviceCode, CODEX_CLIENT_ID, CODEX_USER_AGENT, DEVICE_AUTH_TOKEN_URL,
     DEVICE_AUTH_USERCODE_URL, DEVICE_CODE_DEFAULT_EXPIRES_IN, DEVICE_REDIRECT_URI,
@@ -97,11 +97,6 @@ impl CodexOAuthManager {
                 log::error!("[CodexOAuth] 更新 HTTP client 失败: {}", e);
             }
         }
-    }
-
-    /// Get HTTP client for making requests
-    async fn get_http_client(&self) -> Arc<RwLock<Client>> {
-        Arc::clone(&self.http_client)
     }
 
     // ==================== 设备码流程 ====================

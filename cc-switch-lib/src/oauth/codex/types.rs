@@ -110,7 +110,7 @@ pub(super) struct OAuthTokenResponse {
 
 /// 解析后的 JWT claims（仅关心 chatgpt_account_id 等字段）
 #[derive(Debug, Clone, Default, Deserialize)]
-pub(super) struct IdTokenClaims {
+pub(crate) struct IdTokenClaims {
     #[serde(default)]
     pub chatgpt_account_id: Option<String>,
     #[serde(default)]
@@ -122,13 +122,13 @@ pub(super) struct IdTokenClaims {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub(super) struct OrgClaim {
+pub(crate) struct OrgClaim {
     #[serde(default)]
     pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub(super) struct OpenAiAuthClaim {
+pub(crate) struct OpenAiAuthClaim {
     #[serde(default)]
     pub chatgpt_account_id: Option<String>,
 }
@@ -226,7 +226,7 @@ pub(super) fn compute_expires_at_ms(expires_in: Option<i64>) -> i64 {
 }
 
 /// 解析 JWT 中的 claims
-pub(super) fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
+pub(crate) fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return None;

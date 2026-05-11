@@ -3,9 +3,6 @@
 use crate::database::UsageRecord;
 use bytes::Bytes;
 
-/// Result type for provider operations
-pub type ProviderResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
 /// Authentication strategy used to build upstream request headers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthStrategy {
