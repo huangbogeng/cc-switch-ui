@@ -16,37 +16,37 @@
 
 **CC Switch Web 让这一切都在浏览器中轻松完成：**
 
-- **一键切换 Provider：** 无需手动编辑配置，一键即可切换不同的模型供应商。
-- **内置丰富预设：** 内置 6 种常用 Provider 预设（MiniMax、SiliconFlow、DeepSeek、OpenRouter、Gemini Native、Codex）。
+- **一键切换 Provider：** 无需手动编辑配置，一键即可在 50+ 模型供应商之间切换。
+- **内置丰富预设：** 50+ 种 Provider 预设（DeepSeek、OpenAI、Anthropic、Google、Copilot、Codex、MiniMax 等）。
 - **双重认证支持：** 支持 API Key 和 OAuth 两种认证方式。
 - **实时配置同步：** 切换配置后自动写入 Claude Code 本地配置文件，立即生效。
 
 ---
 
-## 📌 当前进度（2026-05-08）
+## 📌 当前进度（2026-05-11）
 
-- 后端 crate 重命名已完成：`cc-switch-web` -> `cc-switch-server`。
-- 后端模块化重构的 Phase 0 与 Phase 1 已完成。
-- 代理流式转换链路已模块化到 `cc-switch-server/src/proxy/streaming/`：
-  - `openai_chat.rs`
-  - `responses.rs`
-  - `common.rs`
-  - `tool_blocks.rs`
-  - `finalization.rs`
+- **核心功能已全部完成**：Provider（50+ 预设）、MCP 服务器、Skills、代理、OAuth、用量追踪。
+- 后端数据库模块已按领域拆分（`providers`、`mcp`、`skills`、`proxy`、`usage`、`migrations`、`types`）。
+- 代理流式转换链路已模块化到 `cc-switch-server/src/proxy/streaming/`。
 - 当前重点：推进 Phase 2（`forwarder.rs` 拆分），同时避免把文件拆得过度细碎。
 
 ---
 
 ## 🚀 支持的 Provider
 
+50+ 个 Provider 预设，包括：
+
 | Provider | 类型 | 认证方式 | 说明 |
 |----------|------|---------|------|
-| **MiniMax** | 国内官方 | API Key | MiniMax M2.7 模型 |
+| **Anthropic** | 官方 | API Key | Claude Opus, Sonnet, Haiku 系列 |
+| **OpenAI** | 官方 | API Key | GPT 系列、o 系列模型 |
+| **DeepSeek** | 官方 | API Key | DeepSeek V4、R1 模型 |
+| **Google Gemini** | 官方 | API Key | Gemini 2.5、2.0 模型 |
+| **Copilot** | GitHub | OAuth | 通过 GitHub Copilot 使用 GPT/Claude |
+| **Codex** | OpenAI | OAuth | ChatGPT Plus/Pro 订阅 |
+| **MiniMax** | 官方 | API Key | M2.7 及其他模型 |
 | **SiliconFlow** | 聚合平台 | API Key | 支持多种模型 |
-| **DeepSeek** | 国内官方 | API Key | DeepSeek V4 模型 |
-| **OpenRouter** | 聚合平台 | API Key | 100+ 模型可选 |
-| **Gemini Native**| Google | API Key | Gemini 原生 API |
-| **Codex** | OpenAI | OAuth | 通过本地代理转发 |
+| **OpenRouter** | 聚合平台 | API Key | 200+ 模型可选 |
 
 ---
 
@@ -122,21 +122,37 @@ Claude Code 将会立即开始使用你新选中的 Provider。
 ## ✨ 功能特性
 
 ### 🔌 Provider 管理
-- 内置 6 种 Provider 预设，快速上手。
+- 50+ 内置 Provider 预设，快速上手。
 - 支持自定义 Provider 配置。
 - 一键无缝切换，配置实时生效。
+- 故障转移队列和熔断器。
 
 ### 🔑 OAuth 认证
-- **Codex**：通过本地代理服务器安全转发 OAuth 请求。
-- **GitHub Copilot**：OAuth 认证（*开发中*）。
+- **Codex**：设备码 OAuth 流程，支持 ChatGPT Plus/Pro 订阅。
+- **GitHub Copilot**：设备码 OAuth 流程，支持多账号和 GHES。
+- Codex 和 Copilot 均支持多账号管理。
+
+### 🛠 MCP 服务器
+- 完整 CRUD 管理，支持 JSON 编辑器。
+- 同步到 `~/.claude.json`，保留其他根字段。
+- 从现有 Claude Code 配置导入。
+- 每个服务器独立启用/禁用。
+
+### 📦 Skills
+- Claude Code Skills 的完整 CRUD 管理。
+- 从 SSOT（`~/.cc-switch/skills/`）同步到 `~/.claude/skills/`。
+- 从 `~/.claude/skills/` 和 `~/.claude/plugins/` 导入。
+- 按集合（collection）分组，支持启用/禁用。
 
 ### 🌐 本地代理服务器
-- 内置本地代理服务，专门处理 Codex 请求转发。
-- 支持 HTTP 和 SOCKS5 代理配置。
-- 自动处理流式响应格式转换。
+- HTTP 代理，监听端口 15721（可配置）。
+- Provider 适配器链，请求/响应格式转换。
+- 每个 Provider 独立熔断器，故障转移队列。
+- 流式响应转换（Anthropic ↔ OpenAI 格式互转）。
 
 ### ⚡ Live Config (实时配置)
-- 在你切换 Provider 时，自动将配置写入 Claude Code。
+- 切换 Provider 时自动将配置写入 Claude Code。
+- 仅合并 env 字段，保留 `settings.json` 中的其他配置。
 - 彻底告别手动编辑配置文件的烦恼。
 
 ---
@@ -164,8 +180,9 @@ graph TD
     
     subgraph CC_Switch_Lib ["cc-switch-lib (Rust Core)"]
         DB[("🗄️ SQLite 数据库<br/>rusqlite")]:::library
-        LiveConfig["⚡ 实时配置同步<br/>文件监听"]:::library
+        LiveConfig["⚡ 实时配置同步<br/>文件写入"]:::library
         OAuthCore["🔑 OAuth 核心逻辑<br/>令牌管理"]:::library
+        McpSkills["🛠 MCP & Skills<br/>CRUD + 同步"]:::library
     end
     
     ClaudeCode["🤖 Claude Code<br/>CLI 工具"]:::ext
@@ -177,10 +194,11 @@ graph TD
     
     API -.-> DB
     API -.-> LiveConfig
+    API -.-> McpSkills
     OAuth -.-> OAuthCore
     Proxy -.-> OAuthCore
     
-    LiveConfig -- "覆盖 config.json" --> ClaudeCode
+    LiveConfig -- "写入 settings.json" --> ClaudeCode
     ClaudeCode -- "发送提示词" --> Proxy
     Proxy -- "转发请求" --> ProviderAPI
 ```
@@ -221,13 +239,29 @@ cargo test                     # 运行测试
 
 ```text
 cc-switch-ui/          # React 前端工作区
-cc-switch-server/         # Axum HTTP 服务器 (Rust)
+  └── src/
+      ├── api/         # API 客户端层
+      ├── components/  # 可复用 UI 组件
+      └── pages/       # Dashboard, Providers, MCP, Skills 等
+cc-switch-server/      # Axum HTTP 服务器 (Rust)
+  └── src/
+      ├── handlers/    # REST API 处理函数 (providers, mcp, skills 等)
+      └── proxy/       # HTTP 代理服务器及流式转换
 cc-switch-lib/         # 共享核心库 (Rust)
   └── src/
-      ├── database/    # 基于 rusqlite 的 SQLite 持久化
+      ├── database/    # SQLite 持久化（已模块化）
+      │   ├── types.rs
+      │   ├── providers.rs
+      │   ├── mcp.rs
+      │   ├── skills.rs
+      │   ├── proxy.rs
+      │   ├── usage.rs
+      │   └── migrations.rs
       ├── oauth/       # OAuth 认证逻辑 (Codex + Copilot)
+      ├── mcp.rs       # MCP 同步逻辑
+      ├── skills.rs    # Skills 同步 + 导入逻辑
       ├── config.rs    # 配置管理模块
-      └── live.rs      # 实时配置同步逻辑
+      └── live.rs      # Live Config 同步到 settings.json
 ```
 
 ---
@@ -240,9 +274,11 @@ cc-switch-lib/         # 共享核心库 (Rust)
 |------|-----------------|----------------------|
 | **部署方式** | Tauri 桌面应用 | 纯 Web 服务 |
 | **系统托盘** | 支持 | 不支持 |
-| **MCP 管理** | 支持 | *规划中* |
+| **MCP 管理** | 支持 | 支持 |
+| **Skills 管理** | 不支持 | 支持 |
 | **云同步**   | 支持 | 不支持 |
-| **核心定位** | 全功能集合 | 聚焦于轻量级 Provider 管理 |
+| **多账号 OAuth** | 不支持 | 支持 |
+| **核心定位** | 全功能集合 | 无头服务器，专为 Claude Code CLI 设计 |
 
 ---
 

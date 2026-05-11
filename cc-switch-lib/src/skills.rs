@@ -235,6 +235,54 @@ fn scan_for_skills(
     Ok(())
 }
 
+/// Derive a human-readable collection name from a skill's source directory path.
+///
+/// Convention: skill dirs live under `<plugin>/skills/<name>/` or
+/// `<plugin>/<version>/skills/<name>/` (cached plugins).  We extract the
+/// plugin segment and convert it to display form (e.g. "superpowers" →
+/// "Superpowers", "rust-skills" → "Rust Skills").
+///
+/// Skills that don't live under a named plugin (e.g. standalone skills in
+/// `~/.claude/skills/`) get the collection "Other".
+fn derive_collection(source_dir: &Path) -> String {
+    // Walk up looking for a parent named "skills"
+    for ancestor in source_dir.ancestors() {
+        if ancestor.file_name().map_or(false, |n| n == "skills") {
+            // The parent of "skills" is the plugin dir (or a version dir for cached plugins)
+            if let Some(parent) = ancestor.parent() {
+                let plugin_name = parent.file_name().map(|n| n.to_string_lossy().to_string());
+                if let Some(ref name) = plugin_name {
+                    // Skip version-like directory (e.g. "5.1.0"), go one more level up
+                    if name.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                        if let Some(grandparent) = parent.parent() {
+                            if let Some(gp_name) = grandparent.file_name() {
+                                return fmt_collection_name(&gp_name.to_string_lossy());
+                            }
+                        }
+                    } else {
+                        return fmt_collection_name(name);
+                    }
+                }
+            }
+            break;
+        }
+    }
+    "Other".to_string()
+}
+
+fn fmt_collection_name(raw: &str) -> String {
+    raw.split('-')
+        .map(|word| {
+            let mut c = word.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().to_string() + c.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Import a skill from a source directory, copying it to SSOT and creating a DB record.
 fn import_skill_from_dir(
     db: &Database,
@@ -258,6 +306,8 @@ fn import_skill_from_dir(
         copy_dir_recursive(source_dir, &ssot_dest)?;
     }
 
+    let collection = derive_collection(source_dir);
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -270,6 +320,7 @@ fn import_skill_from_dir(
         directory: dir_name.to_string(),
         app_type: app_type.to_string(),
         enabled: true,
+        collection: Some(collection),
         installed_at: now,
         repo_owner: None,
         repo_name: None,
@@ -290,11 +341,19 @@ fn import_skill_from_dir(
 ///
 /// Each found skill is copied to the SSOT (`~/.cc-switch/skills/<dir>/`)
 /// and a database record is created. Skills already in the DB are skipped.
-/// Returns the count of newly imported skills.
+/// Existing skills with a missing collection field get backfilled.
+/// Returns the count of newly imported + backfilled skills.
 pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppError> {
-    let existing = db.get_enabled_skills(app_type)?;
+    let all_existing = db.get_all_skills(app_type)?;
     let mut existing_dirs: std::collections::HashSet<String> =
-        existing.iter().map(|s| s.directory.clone()).collect();
+        all_existing.iter().map(|s| s.directory.clone()).collect();
+
+    // Track skills that already exist but need collection backfill
+    let needs_backfill: std::collections::HashSet<String> = all_existing
+        .iter()
+        .filter(|s| s.collection.is_none())
+        .map(|s| s.directory.clone())
+        .collect();
 
     let mut imported = 0;
 
@@ -311,6 +370,19 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
             }
             let dir_name = entry.file_name().to_string_lossy().to_string();
             if dir_name.starts_with('.') || existing_dirs.contains(&dir_name) {
+                // Still backfill collection if missing
+                if needs_backfill.contains(&dir_name) {
+                    let coll = derive_collection(&path);
+                    if !coll.is_empty() {
+                        db.get_all_skills(app_type).ok().and_then(|skills| {
+                            skills.into_iter().find(|s| s.directory == dir_name)
+                        }).map(|mut s| {
+                            s.collection = Some(coll);
+                            let _ = db.save_skill(&s);
+                            imported += 1;
+                        });
+                    }
+                }
                 continue;
             }
             if !path.join("SKILL.md").exists() {
@@ -326,6 +398,19 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
     let plugin_skills = find_plugin_skills()?;
     for (skill_dir, dir_name) in &plugin_skills {
         if existing_dirs.contains(dir_name) {
+            // Still backfill collection if missing
+            if needs_backfill.contains(dir_name) {
+                let coll = derive_collection(skill_dir);
+                if !coll.is_empty() {
+                    db.get_all_skills(app_type).ok().and_then(|skills| {
+                        skills.into_iter().find(|s| s.directory == *dir_name)
+                    }).map(|mut s| {
+                        s.collection = Some(coll);
+                        let _ = db.save_skill(&s);
+                        imported += 1;
+                    });
+                }
+            }
             continue;
         }
         imported += import_skill_from_dir(db, app_type, skill_dir, dir_name)?;
@@ -333,7 +418,7 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
     }
 
     log::info!(
-        "Skills import complete: {} new skills imported for app_type={}",
+        "Skills import complete: {} new or backfilled skills for app_type={}",
         imported,
         app_type
     );

@@ -315,17 +315,7 @@ pub async fn switch_provider(
                 .into_response();
         }
 
-        // (e) Sync MCP servers to ~/.claude.json
-        if let Err(e) = cc_switch_lib::mcp::sync_enabled_to_claude(&state.db, app_type) {
-            warnings.push(format!("MCP sync warning: {}", e));
-        }
-
-        // (f) Sync skills to ~/.claude/skills/
-        if let Err(e) = cc_switch_lib::skills::sync_enabled_to_claude(&state.db, app_type) {
-            warnings.push(format!("Skills sync warning: {}", e));
-        }
-
-        // (g) Update proxy target DB record
+        // (e) Update proxy target DB record
         if let Err(e) = state.db.set_proxy_target_provider_id(&id) {
             warnings.push(format!("Failed to update proxy target: {}", e));
         }

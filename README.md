@@ -16,37 +16,37 @@ Configuring API Providers for Claude Code traditionally requires manually editin
 
 **CC Switch Web allows you to manage all of this effortlessly within your browser:**
 
-- **One-click Provider Switching:** Instantly switch between different model providers without ever touching a config file.
-- **Built-in Presets:** Comes with 6 pre-configured popular providers (MiniMax, SiliconFlow, DeepSeek, OpenRouter, Gemini Native, Codex).
+- **One-click Provider Switching:** Instantly switch between 50+ model providers without ever touching a config file.
+- **Built-in Presets:** 50+ pre-configured providers (DeepSeek, OpenAI, Anthropic, Google, Copilot, Codex, MiniMax, etc.).
 - **Dual Authentication Support:** Supports both API Key and OAuth authentication flows.
 - **Real-time Live Sync:** Changes are immediately synchronized with your local Claude Code configuration and take effect instantly.
 
 ---
 
-## 📌 Project Status (2026-05-08)
+## 📌 Project Status (2026-05-11)
 
-- Backend crate rename completed: `cc-switch-web` -> `cc-switch-server`.
-- Backend modularization Phase 0 and Phase 1 completed.
-- Proxy streaming pipeline is now modularized under `cc-switch-server/src/proxy/streaming/`:
-  - `openai_chat.rs`
-  - `responses.rs`
-  - `common.rs`
-  - `tool_blocks.rs`
-  - `finalization.rs`
+- **All core features complete**: Providers (50+ presets), MCP Servers, Skills, Proxy, OAuth, Usage tracking.
+- Backend database module modularized into domain sub-modules (`providers`, `mcp`, `skills`, `proxy`, `usage`, `migrations`, `types`).
+- Proxy streaming pipeline modularized under `cc-switch-server/src/proxy/streaming/`.
 - Current focus: Phase 2 (`forwarder.rs` decomposition) while avoiding over-fragmented files.
 
 ---
 
 ## 🚀 Supported Providers
 
+50+ providers with presets, including:
+
 | Provider | Type | Auth Method | Description |
 |----------|------|-------------|-------------|
-| **MiniMax** | Official | API Key | MiniMax M2.7 Model |
-| **SiliconFlow** | Aggregator | API Key | Supports various models |
-| **DeepSeek** | Official | API Key | DeepSeek V4 Model |
-| **OpenRouter** | Aggregator | API Key | 100+ Models available |
-| **Gemini Native**| Google | API Key | Native Gemini API |
-| **Codex** | OpenAI | OAuth | Proxied via local server |
+| **Anthropic** | Official | API Key | Claude Opus, Sonnet, Haiku models |
+| **OpenAI** | Official | API Key | GPT series, o-series models |
+| **DeepSeek** | Official | API Key | DeepSeek V4, R1 models |
+| **Google Gemini** | Official | API Key | Gemini 2.5, 2.0 models |
+| **Copilot** | GitHub | OAuth | GPT, Claude via GitHub Copilot |
+| **Codex** | OpenAI | OAuth | ChatGPT Plus/Pro subscription |
+| **MiniMax** | Official | API Key | M2.7 and other models |
+| **SiliconFlow** | Aggregator | API Key | Various models |
+| **OpenRouter** | Aggregator | API Key | 200+ Models available |
 
 ---
 
@@ -122,21 +122,37 @@ Claude Code will immediately start using the new Provider you selected.
 ## ✨ Features
 
 ### 🔌 Provider Management
-- 6 built-in Provider presets for quick setup.
+- 50+ built-in Provider presets for quick setup.
 - Support for custom Provider configurations.
 - One-click switching with real-time configuration sync.
+- Failover queue with circuit breaker.
 
 ### 🔑 OAuth Authentication
-- **Codex**: Forward OAuth requests securely via the local proxy.
-- **GitHub Copilot**: OAuth authentication *(Currently in development)*.
+- **Codex**: Device code OAuth flow for ChatGPT Plus/Pro subscription.
+- **GitHub Copilot**: Device code OAuth flow with multi-account and GHES support.
+- Multi-account management for both Codex and Copilot.
+
+### 🛠 MCP Servers
+- Full CRUD management for MCP servers with JSON editor.
+- Sync to `~/.claude.json` preserving other root fields.
+- Import from existing Claude Code config.
+- Enable/disable toggle per server.
+
+### 📦 Skills
+- Full CRUD management for Claude Code skills.
+- Sync from SSOT (`~/.cc-switch/skills/`) to `~/.claude/skills/`.
+- Import from `~/.claude/skills/` and `~/.claude/plugins/`.
+- Collection grouping and enable/disable toggle.
 
 ### 🌐 Local Proxy Server
-- Built-in local proxy service to handle Codex requests.
-- Supports both HTTP and SOCKS5 proxy configurations.
-- Handles streaming response format conversions seamlessly.
+- HTTP proxy on port 15721 (configurable).
+- Provider adapter chain with request/response format conversion.
+- Circuit breaker per provider, failover queue.
+- Streaming response transformation (Anthropic ↔ OpenAI formats).
 
 ### ⚡ Live Config
 - Automatically writes configurations directly to Claude Code when switching Providers.
+- Merge-only env updates preserve other settings in `settings.json`.
 - Completely eliminates the need to manually edit config files.
 
 ---
@@ -164,8 +180,9 @@ graph TD
     
     subgraph CC_Switch_Lib ["cc-switch-lib (Rust Core)"]
         DB[("🗄️ SQLite DB<br/>rusqlite")]:::library
-        LiveConfig["⚡ Live Config<br/>File Watcher"]:::library
+        LiveConfig["⚡ Live Config<br/>File Sync"]:::library
         OAuthCore["🔑 OAuth Core<br/>Token Mgt"]:::library
+        McpSkills["🛠 MCP & Skills<br/>CRUD + Sync"]:::library
     end
     
     ClaudeCode["🤖 Claude Code<br/>CLI Tool"]:::ext
@@ -177,10 +194,11 @@ graph TD
     
     API -.-> DB
     API -.-> LiveConfig
+    API -.-> McpSkills
     OAuth -.-> OAuthCore
     Proxy -.-> OAuthCore
     
-    LiveConfig -- "Writes config.json" --> ClaudeCode
+    LiveConfig -- "Writes settings.json" --> ClaudeCode
     ClaudeCode -- "Sends Prompts" --> Proxy
     Proxy -- "Forwards Requests" --> ProviderAPI
 ```
@@ -221,13 +239,29 @@ cargo test                     # Run tests
 
 ```text
 cc-switch-ui/          # React frontend workspace
-cc-switch-server/         # Axum HTTP server (Rust)
+  └── src/
+      ├── api/         # API client layer
+      ├── components/  # Reusable UI components
+      └── pages/       # Dashboard, Providers, MCP, Skills, etc.
+cc-switch-server/      # Axum HTTP server (Rust)
+  └── src/
+      ├── handlers/    # REST API handlers (providers, mcp, skills, etc.)
+      └── proxy/       # HTTP proxy server with streaming conversion
 cc-switch-lib/         # Shared core library (Rust)
   └── src/
-      ├── database/    # SQLite persistence via rusqlite
+      ├── database/    # SQLite persistence (modularized)
+      │   ├── types.rs
+      │   ├── providers.rs
+      │   ├── mcp.rs
+      │   ├── skills.rs
+      │   ├── proxy.rs
+      │   ├── usage.rs
+      │   └── migrations.rs
       ├── oauth/       # OAuth handling (Codex + Copilot)
+      ├── mcp.rs       # MCP sync logic
+      ├── skills.rs    # Skills sync + import logic
       ├── config.rs    # Configuration management
-      └── live.rs      # Live Config synchronization
+      └── live.rs      # Live Config sync to settings.json
 ```
 
 ---
@@ -240,9 +274,11 @@ This project is a fork of the excellent [cc-switch](https://github.com/farion123
 |---------|----------------------|------------------------------|
 | **Deployment** | Tauri Desktop App | Pure Web Service |
 | **System Tray** | Supported | Not Supported |
-| **MCP Management**| Supported | *Planned* |
+| **MCP Management**| Supported | Supported |
+| **Skills Management**| Not Supported | Supported |
 | **Cloud Sync** | Supported | Not Supported |
-| **Core Focus** | Full feature set | Focused on Provider Management |
+| **Multi-Account OAuth**| Not Supported | Supported |
+| **Core Focus** | Full feature set | Headless server for Claude Code CLI |
 
 ---
 
