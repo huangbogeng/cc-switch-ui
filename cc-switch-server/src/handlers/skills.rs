@@ -82,13 +82,26 @@ pub async fn delete_skill(
 
 pub async fn sync_skills(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     log::info!("[Skills] Manual sync requested");
-    match cc_switch_lib::skills::sync_enabled_to_claude(&state.db, APP_TYPE) {
-        Ok(()) => Json(json!({ "success": true })).into_response(),
-        Err(e) => {
+    let state = state.clone();
+    match tokio::task::spawn_blocking(move || {
+        cc_switch_lib::skills::sync_enabled_to_claude(&state.db, APP_TYPE)
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(json!({ "success": true })).into_response(),
+        Ok(Err(e)) => {
             log::error!("Failed to sync skills: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            log::error!("Skills sync task panicked: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Internal error"})),
             )
                 .into_response()
         }
@@ -97,13 +110,26 @@ pub async fn sync_skills(State(state): State<Arc<AppState>>) -> impl IntoRespons
 
 pub async fn import_skills(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     log::info!("[Skills] Import from Claude Code skills/plugins requested");
-    match cc_switch_lib::skills::import_from_claude(&state.db, APP_TYPE) {
-        Ok(count) => Json(json!({ "success": true, "imported": count })).into_response(),
-        Err(e) => {
+    let state = state.clone();
+    match tokio::task::spawn_blocking(move || {
+        cc_switch_lib::skills::import_from_claude(&state.db, APP_TYPE)
+    })
+    .await
+    {
+        Ok(Ok(count)) => Json(json!({ "success": true, "imported": count })).into_response(),
+        Ok(Err(e)) => {
             log::error!("Failed to import skills: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            log::error!("Skills import task panicked: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Internal error"})),
             )
                 .into_response()
         }

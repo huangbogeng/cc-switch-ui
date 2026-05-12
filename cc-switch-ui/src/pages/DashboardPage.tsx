@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  getCopilotUsage,
   listProviders, switchProvider, getCurrentProviderId,
   getProxyStatus, startProxy, stopProxy, setProxyTarget,
-  getProxyUsageSummary,
-  type ProxyUsageSummaryResponse,
   type Provider,
 } from '../api';
-import type { CopilotUsageResponse } from '../api';
 import { PageHeader } from '@/components/PageHeader';
 import {
   CurrentProviderCard,
@@ -16,86 +12,98 @@ import {
   UsageCard,
 } from '@/components/dashboard/DashboardPanels';
 import { sortProviders } from '@/lib/provider';
+import { useUsageSummary, useCopilotUsage } from '@/lib/useUsage';
+import { cacheGet, cacheSet } from '@/lib/fetchCache';
+
+interface DashboardProxyStatus {
+  running: boolean;
+  listen_addr: string | null;
+  upstream_url: string;
+  http_proxy_url: string | null;
+  active_target_provider_id: string | null;
+  active_target_provider_name: string | null;
+}
+
+const CACHE_KEY = 'dashboard';
 
 export default function DashboardPage() {
-  const [currentProviderId, setCurrentProviderId] = useState<string | null>(null);
-  const [providers, setProviders] = useState<Record<string, Provider>>({});
-  const [loadingProviders, setLoadingProviders] = useState(true);
+  const cached = cacheGet<{
+    providers: Record<string, Provider>;
+    currentProviderId: string | null;
+    proxyStatus: DashboardProxyStatus | null;
+  }>(CACHE_KEY);
 
-  const [usage, setUsage] = useState<CopilotUsageResponse | null>(null);
-
-  const [proxyUsage, setProxyUsage] = useState<ProxyUsageSummaryResponse | null>(null);
-
-  const [proxyStatus, setProxyStatus] = useState<{
-    running: boolean;
-    listen_addr: string | null;
-    upstream_url: string;
-    http_proxy_url: string | null;
-    active_target_provider_id: string | null;
-    active_target_provider_name: string | null;
-  } | null>(null);
+  const [currentProviderId, setCurrentProviderId] = useState<string | null>(
+    cached?.currentProviderId ?? null,
+  );
+  const [providers, setProviders] = useState<Record<string, Provider>>(
+    cached?.providers ?? {},
+  );
+  const [loadingProviders, setLoadingProviders] = useState(!cached);
+  const [proxyStatus, setProxyStatus] = useState<DashboardProxyStatus | null>(
+    cached?.proxyStatus ?? null,
+  );
   const [proxyError, setProxyError] = useState('');
 
-  const loadUsage = useCallback(async () => {
-    try {
-      const data = await getCopilotUsage();
-      setUsage(data);
-    } catch {
-      // Silently fail - user may not be authenticated
-    }
-  }, []);
+  const { data: usage } = useCopilotUsage();
+  const { data: proxyUsage } = useUsageSummary(30_000);
 
-  const loadProviders = useCallback(async () => {
+  const loadProviders = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await listProviders();
+      const data = await listProviders({ signal });
       setProviders(data.providers);
-      const current = await getCurrentProviderId().catch(() => ({ current_provider_id: null }));
+      const current = await getCurrentProviderId({ signal }).catch(
+        () => ({ current_provider_id: null }),
+      );
       setCurrentProviderId(current.current_provider_id);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Providers error:', e);
     } finally {
-      setLoadingProviders(false);
+      if (!signal?.aborted) setLoadingProviders(false);
     }
   }, []);
 
-  const loadProxyStatus = useCallback(async () => {
+  const loadProxyStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      const status = await getProxyStatus();
+      const status = await getProxyStatus({ signal });
       setProxyStatus(status);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Proxy status error:', e);
     }
   }, []);
 
-  const loadProxyUsage = useCallback(async () => {
-    try {
-      const data = await getProxyUsageSummary();
-      setProxyUsage(data);
-    } catch (e) {
-      console.error('Proxy usage error:', e);
-    }
-  }, []);
-
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (signal?: AbortSignal) => {
     await Promise.all([
-      loadUsage(),
-      loadProviders(),
-      loadProxyStatus(),
-      loadProxyUsage(),
+      loadProviders(signal),
+      loadProxyStatus(signal),
     ]);
-  }, [loadUsage, loadProviders, loadProxyStatus, loadProxyUsage]);
+  }, [loadProviders, loadProxyStatus]);
 
   useEffect(() => {
-    Promise.resolve().then(loadAll);
-    const interval = setInterval(loadAll, 5000);
-    return () => clearInterval(interval);
+    const ctrl = new AbortController();
+
+    Promise.resolve().then(() => loadAll(ctrl.signal));
+    const interval = setInterval(() => loadAll(ctrl.signal), 5000);
+
+    return () => {
+      ctrl.abort();
+      clearInterval(interval);
+    };
   }, [loadAll]);
+
+  // Update cache when data changes after initial load
+  useEffect(() => {
+    if (!loadingProviders) {
+      cacheSet(CACHE_KEY, { providers, currentProviderId, proxyStatus });
+    }
+  }, [providers, currentProviderId, proxyStatus, loadingProviders]);
 
   const handleSwitchProvider = async (id: string) => {
     try {
       await switchProvider(id);
       setCurrentProviderId(id);
-      // If local route is running, restart it for the new provider.
       if (proxyStatus?.running) {
         await stopProxy();
         await startProxy();
@@ -156,15 +164,26 @@ export default function DashboardPage() {
             usage24h={
               currentProvider
                 ? (() => {
+                    // Proxy mode: match by provider_id
                     const byProvider = (proxyUsage?.providers || []).find(
                       (item) => item.provider_id === currentProvider.id,
                     );
-                    if (!byProvider) return null;
-                    return {
-                      requestCount: byProvider.request_count,
-                      inputTokens: byProvider.input_tokens,
-                      outputTokens: byProvider.output_tokens,
-                    };
+                    if (byProvider) {
+                      return {
+                        requestCount: byProvider.request_count,
+                        inputTokens: byProvider.input_tokens,
+                        outputTokens: byProvider.output_tokens,
+                      };
+                    }
+                    // Direct mode: show total session usage
+                    if (proxyUsage?.totals && proxyUsage.totals.request_count > 0) {
+                      return {
+                        requestCount: proxyUsage.totals.request_count,
+                        inputTokens: proxyUsage.totals.input_tokens,
+                        outputTokens: proxyUsage.totals.output_tokens,
+                      };
+                    }
+                    return null;
                   })()
                 : null
             }

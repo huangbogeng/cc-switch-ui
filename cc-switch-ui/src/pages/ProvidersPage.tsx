@@ -28,11 +28,20 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { sortProviders } from '@/lib/provider';
+import { cacheGet, cacheSet } from '@/lib/fetchCache';
 
 export default function ProvidersPage() {
-  const [providers, setProviders] = useState<Record<string, Provider>>({});
-  const [currentProviderId, setCurrentProviderId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = cacheGet<{
+    providers: Record<string, Provider>;
+    currentProviderId: string | null;
+  }>('providers');
+  const [providers, setProviders] = useState<Record<string, Provider>>(
+    cached?.providers ?? {},
+  );
+  const [currentProviderId, setCurrentProviderId] = useState<string | null>(
+    cached?.currentProviderId ?? null,
+  );
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,64 +59,77 @@ export default function ProvidersPage() {
 
   const providerList = sortProviders(providers);
 
-  const applyProviders = async () => {
+  const applyProviders = async (signal?: AbortSignal) => {
     try {
       const [providerData, currentData] = await Promise.all([
-        listProviders(),
-        getCurrentProviderId().catch(() => ({ current_provider_id: null })),
+        listProviders({ signal }),
+        getCurrentProviderId({ signal }).catch(() => ({ current_provider_id: null })),
       ]);
       setProviders(providerData.providers);
       setCurrentProviderId(currentData.current_provider_id);
+      cacheSet('providers', {
+        providers: providerData.providers,
+        currentProviderId: currentData.current_provider_id,
+      });
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
-  const loadProxyStatus = useCallback(async () => {
+  const loadProxyStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      const status = await getProxyStatus();
+      const status = await getProxyStatus({ signal });
       setProxyStatus(status);
-    } catch {
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       setProxyStatus(null);
     }
   }, []);
 
   useEffect(() => {
-    let active = true;
+    const ctrl = new AbortController();
 
     Promise.all([
-      listProviders(),
-      getCurrentProviderId().catch(() => ({ current_provider_id: null })),
+      listProviders({ signal: ctrl.signal }),
+      getCurrentProviderId({ signal: ctrl.signal }).catch(() => ({ current_provider_id: null })),
     ])
       .then(([providerData, currentData]) => {
-        if (!active) return;
+        if (ctrl.signal.aborted) return;
         setProviders(providerData.providers);
         setCurrentProviderId(currentData.current_provider_id);
+        cacheSet('providers', {
+          providers: providerData.providers,
+          currentProviderId: currentData.current_provider_id,
+        });
       })
       .catch((e) => {
-        if (!active) return;
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        if (ctrl.signal.aborted) return;
         setError(e instanceof Error ? e.message : 'Failed to load');
       })
       .finally(() => {
-        if (!active) return;
+        if (ctrl.signal.aborted) return;
         setLoading(false);
       });
 
-    return () => {
-      active = false;
-    };
+    return () => ctrl.abort();
   }, []);
 
   useEffect(() => {
-    getCodexOAuthStatus()
+    const ctrl = new AbortController();
+    getCodexOAuthStatus({ signal: ctrl.signal })
       .then((status) => setCodexAccounts(status.accounts))
       .catch(() => setCodexAccounts([]));
+    return () => ctrl.abort();
   }, []);
 
   useEffect(() => {
-    Promise.resolve().then(loadProxyStatus);
+    const ctrl = new AbortController();
+    Promise.resolve().then(() => loadProxyStatus(ctrl.signal));
+    return () => ctrl.abort();
   }, [loadProxyStatus]);
 
   const handleStartProxy = async (providerId: string) => {

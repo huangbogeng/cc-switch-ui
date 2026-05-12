@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { cacheGet, cacheSet } from '@/lib/fetchCache';
 
 function emptyForm(): McpServer {
   return {
@@ -29,8 +30,9 @@ function emptyForm(): McpServer {
 }
 
 export default function McpPage() {
-  const [servers, setServers] = useState<McpServer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = cacheGet<McpServer[]>('mcp-servers');
+  const [servers, setServers] = useState<McpServer[]>(cached ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
@@ -38,18 +40,24 @@ export default function McpPage() {
   const [formError, setFormError] = useState('');
   const [specText, setSpecText] = useState('');
 
-  const loadServers = useCallback(async () => {
+  const loadServers = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await listMcpServers();
+      const data = await listMcpServers({ signal });
       setServers(data.servers);
+      cacheSet('mcp-servers', data.servers);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadServers(); }, [loadServers]);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    loadServers(ctrl.signal);
+    return () => ctrl.abort();
+  }, [loadServers]);
 
   const handleSave = async () => {
     setSaving(true);

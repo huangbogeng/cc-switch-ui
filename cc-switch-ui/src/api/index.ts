@@ -57,8 +57,8 @@ export interface CodexOAuthStatus {
   accounts: CodexAccount[];
 }
 
-export async function getCodexOAuthStatus() {
-  return api<CodexOAuthStatus>('/codex/oauth/status');
+export async function getCodexOAuthStatus(options?: RequestInit) {
+  return api<CodexOAuthStatus>('/codex/oauth/status', options);
 }
 
 export async function startCodexOAuth() {
@@ -116,12 +116,12 @@ export interface CopilotUsageResponse {
   endpoints?: { api: string; telemetry?: string };
 }
 
-export async function getCopilotOAuthStatus() {
+export async function getCopilotOAuthStatus(options?: RequestInit) {
   return api<{
     authenticated: boolean;
     accounts: CopilotAccount[];
     default_account_id: string | null;
-  }>('/copilot/oauth/status');
+  }>('/copilot/oauth/status', options);
 }
 
 export async function startCopilotOAuth(github_domain?: string) {
@@ -161,12 +161,12 @@ export async function setDefaultCopilotAccount(account_id: string) {
   });
 }
 
-export async function getCopilotUsage() {
-  return api<CopilotUsageResponse>('/copilot/usage');
+export async function getCopilotUsage(signal?: AbortSignal) {
+  return api<CopilotUsageResponse>('/copilot/usage', { signal });
 }
 
 // Proxy
-export async function getProxyStatus() {
+export async function getProxyStatus(options?: RequestInit) {
   return api<{
     running: boolean;
     listen_addr: string | null;
@@ -174,7 +174,7 @@ export async function getProxyStatus() {
     http_proxy_url: string | null;
     active_target_provider_id: string | null;
     active_target_provider_name: string | null;
-  }>('/proxy/status');
+  }>('/proxy/status', options);
 }
 
 export async function startProxy() {
@@ -221,16 +221,16 @@ export interface Provider {
   inFailoverQueue: boolean;
 }
 
-export async function listProviders() {
-  return api<{ providers: Record<string, Provider> }>('/providers');
+export async function listProviders(options?: RequestInit) {
+  return api<{ providers: Record<string, Provider> }>('/providers', options);
 }
 
 export async function getProvider(id: string) {
   return api<{ provider: Provider }>(`/providers/${id}`);
 }
 
-export async function getCurrentProviderId() {
-  return api<{ current_provider_id: string | null }>('/providers/current');
+export async function getCurrentProviderId(options?: RequestInit) {
+  return api<{ current_provider_id: string | null }>('/providers/current', options);
 }
 
 export async function saveProvider(provider: Provider) {
@@ -267,8 +267,8 @@ export interface ProxyConfig {
   port: number;
 }
 
-export async function getProxyConfig() {
-  return api<ProxyConfig>('/settings/proxy');
+export async function getProxyConfig(options?: RequestInit) {
+  return api<ProxyConfig>('/settings/proxy', options);
 }
 
 export async function setProxyConfig(config: ProxyConfig) {
@@ -284,8 +284,8 @@ export async function deleteProxyConfig() {
   });
 }
 
-export async function getProxyPort() {
-  return api<{ port: number }>('/settings/proxy-port');
+export async function getProxyPort(options?: RequestInit) {
+  return api<{ port: number }>('/settings/proxy-port', options);
 }
 
 export async function setProxyPort(port: number) {
@@ -300,6 +300,11 @@ export interface ProxyUsageTrend {
   day: string;
   total_input_tokens: number;
   total_output_tokens: number;
+  request_count: number;
+}
+
+export interface UsageSourceItem {
+  app_type: string;
   request_count: number;
 }
 
@@ -322,10 +327,144 @@ export interface ProxyUsageSummaryResponse {
     request_count: number;
   }[];
   trend: ProxyUsageTrend[];
+  sources: UsageSourceItem[];
 }
 
-export async function getProxyUsageSummary() {
-  return api<ProxyUsageSummaryResponse>('/usage/summary');
+export async function getProxyUsageSummary(signal?: AbortSignal) {
+  return api<ProxyUsageSummaryResponse>('/usage/summary', { signal });
+}
+
+// Model pricing
+export interface ModelPricingItem {
+  modelId: string;
+  displayName: string;
+  inputCostPerMillion: string;
+  outputCostPerMillion: string;
+  cacheReadCostPerMillion: string;
+  cacheCreationCostPerMillion: string;
+}
+
+export async function getModelPricing(signal?: AbortSignal) {
+  return api<ModelPricingItem[]>('/usage/pricing', { signal });
+}
+
+export async function upsertModelPricing(pricing: ModelPricingItem) {
+  return api<{ success: boolean }>('/usage/pricing', {
+    method: 'PUT',
+    body: JSON.stringify(pricing),
+  });
+}
+
+export async function deleteModelPricing(modelId: string) {
+  return api<{ success: boolean }>(`/usage/pricing/${encodeURIComponent(modelId)}`, {
+    method: 'DELETE',
+  });
+}
+
+// Provider & Model stats
+export interface ProviderStatsItem {
+  provider_id: string;
+  request_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  success_count: number;
+  fail_count: number;
+}
+
+export interface ModelStatsItem {
+  model: string;
+  request_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+export interface RequestLogDetail {
+  id: number;
+  app_type: string;
+  provider_id: string;
+  request_path: string;
+  request_model: string | null;
+  status_code: number | null;
+  success: boolean;
+  error_message: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  created_at: number;
+}
+
+export interface PaginatedLogs {
+  data: RequestLogDetail[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface LogsQueryParams {
+  page?: number;
+  page_size?: number;
+  app_type?: string;
+  provider_id?: string;
+  model?: string;
+  status_code?: number;
+  start_date?: number;
+  end_date?: number;
+}
+
+export async function getProviderStats(start_date?: number, end_date?: number, signal?: AbortSignal) {
+  const params = new URLSearchParams();
+  if (start_date !== undefined) params.set('start_date', String(start_date));
+  if (end_date !== undefined) params.set('end_date', String(end_date));
+  const qs = params.toString();
+  return api<{ providers: ProviderStatsItem[] }>(`/usage/provider-stats${qs ? '?' + qs : ''}`, { signal });
+}
+
+export async function getModelStats(start_date?: number, end_date?: number, signal?: AbortSignal) {
+  const params = new URLSearchParams();
+  if (start_date !== undefined) params.set('start_date', String(start_date));
+  if (end_date !== undefined) params.set('end_date', String(end_date));
+  const qs = params.toString();
+  return api<{ models: ModelStatsItem[] }>(`/usage/model-stats${qs ? '?' + qs : ''}`, { signal });
+}
+
+export async function getRequestLogs(params: LogsQueryParams, signal?: AbortSignal) {
+  const qs = new URLSearchParams();
+  if (params.page !== undefined) qs.set('page', String(params.page));
+  if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
+  if (params.app_type) qs.set('app_type', params.app_type);
+  if (params.provider_id) qs.set('provider_id', params.provider_id);
+  if (params.model) qs.set('model', params.model);
+  if (params.status_code !== undefined) qs.set('status_code', String(params.status_code));
+  if (params.start_date !== undefined) qs.set('start_date', String(params.start_date));
+  if (params.end_date !== undefined) qs.set('end_date', String(params.end_date));
+  return api<PaginatedLogs>(`/usage/request-logs?${qs.toString()}`, { signal });
+}
+
+export async function getRequestLogDetail(id: number, signal?: AbortSignal) {
+  return api<RequestLogDetail | null>(`/usage/request-logs/${id}`, { signal });
+}
+
+// Session usage sync
+export interface SessionSyncResult {
+  imported: number;
+  skipped: number;
+  filesScanned: number;
+  errors: string[];
+}
+
+export interface DataSourceSummary {
+  dataSource: string;
+  requestCount: number;
+  totalCostUsd: string;
+}
+
+export async function syncSessionUsage() {
+  return api<SessionSyncResult>('/usage/sync-session', {
+    method: 'POST',
+  });
+}
+
+export async function getDataSourceBreakdown(signal?: AbortSignal) {
+  return api<DataSourceSummary[]>('/usage/sources', { signal });
 }
 
 // MCP Servers
@@ -337,8 +476,8 @@ export interface McpServer {
   enabled: boolean;
 }
 
-export async function listMcpServers() {
-  return api<{ servers: McpServer[] }>('/mcp/servers');
+export async function listMcpServers(options?: RequestInit) {
+  return api<{ servers: McpServer[] }>('/mcp/servers', options);
 }
 
 export async function saveMcpServer(server: McpServer) {
@@ -382,8 +521,8 @@ export interface Skill {
   readmeUrl?: string;
 }
 
-export async function listSkills() {
-  return api<{ skills: Skill[] }>('/skills');
+export async function listSkills(options?: RequestInit) {
+  return api<{ skills: Skill[] }>('/skills', options);
 }
 
 export async function saveSkill(skill: Skill) {
