@@ -118,30 +118,32 @@ export function CurrentProviderCard({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 rounded-xl border border-white/5 bg-black/20 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Local Route</span>
-                <span className={`text-xs font-semibold ${routeRuntime?.running ? 'text-emerald-400' : 'text-muted-foreground'}`}>
-                  {routeRuntime?.running ? 'Running' : 'Stopped'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Current Target</span>
-                <span className={`text-xs font-semibold ${isCurrentTarget ? 'text-primary' : 'text-muted-foreground'}`}>
-                  {isCurrentTarget ? 'This Provider' : 'Different Provider'}
-                </span>
-              </div>
-              {routeRuntime?.listenAddr && (
-                <div className="truncate text-[11px] font-mono text-muted-foreground/80">
-                  {routeRuntime.listenAddr}
+            {routeRuntime?.running && (
+              <div className="grid grid-cols-1 gap-2 rounded-xl border border-white/5 bg-black/20 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Local Route</span>
+                  <span className={`text-xs font-semibold text-emerald-400`}>
+                    Running
+                  </span>
                 </div>
-              )}
-              {routeError && (
-                <div className="truncate text-[11px] text-destructive">
-                  {routeError}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Current Target</span>
+                  <span className={`text-xs font-semibold ${isCurrentTarget ? 'text-primary' : 'text-muted-foreground'}`}>
+                    {isCurrentTarget ? 'This Provider' : 'Different Provider'}
+                  </span>
                 </div>
-              )}
-            </div>
+                {routeRuntime?.listenAddr && (
+                  <div className="truncate text-[11px] font-mono text-muted-foreground/80">
+                    {routeRuntime.listenAddr}
+                  </div>
+                )}
+                {routeError && (
+                  <div className="truncate text-[11px] text-destructive">
+                    {routeError}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="py-8 flex flex-col items-center justify-center text-center text-muted-foreground bg-white/[0.02] rounded-xl border border-dashed border-white/10">

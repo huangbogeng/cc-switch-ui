@@ -5,6 +5,7 @@ import {
   getCopilotOAuthStatus, startCopilotOAuth, pollCopilotOAuth,
   type CodexAccount,
 } from '@/api';
+import { cacheGet, cacheSet } from '@/lib/fetchCache';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,47 +23,56 @@ interface CodexStatus {
 }
 
 export default function OAuthPage() {
+  const cachedCodex = cacheGet<CodexStatus>('oauth-codex');
+  const cachedCopilot = cacheGet<CopilotStatus>('oauth-copilot');
+
   // Codex OAuth state
-  const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(null);
+  const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(cachedCodex ?? null);
   const [codexPending, setCodexPending] = useState(false);
   const [codexDeviceCode, setCodexDeviceCode] = useState('');
   const [codexUserCode, setCodexUserCode] = useState('');
   const [codexVerificationUri, setCodexVerificationUri] = useState('');
 
   // Copilot OAuth state
-  const [copilotStatus, setCopilotStatus] = useState<CopilotStatus | null>(null);
+  const [copilotStatus, setCopilotStatus] = useState<CopilotStatus | null>(cachedCopilot ?? null);
   const [copilotPending, setCopilotPending] = useState(false);
   const [copilotDeviceCode, setCopilotDeviceCode] = useState('');
   const [copilotUserCode, setCopilotUserCode] = useState('');
   const [copilotVerificationUri, setCopilotVerificationUri] = useState('');
 
-  const loadCodexStatus = useCallback(async () => {
+  const loadCodexStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      const status = await getCodexOAuthStatus();
+      const status = await getCodexOAuthStatus({ signal });
       setCodexStatus(status);
+      cacheSet('oauth-codex', status);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Codex status error:', e);
     }
   }, []);
 
-  const loadCopilotStatus = useCallback(async () => {
+  const loadCopilotStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      const status = await getCopilotOAuthStatus();
+      const status = await getCopilotOAuthStatus({ signal });
       setCopilotStatus(status);
+      cacheSet('oauth-copilot', status);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Copilot status error:', e);
     }
   }, []);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (signal?: AbortSignal) => {
     await Promise.all([
-      loadCodexStatus(),
-      loadCopilotStatus(),
+      loadCodexStatus(signal),
+      loadCopilotStatus(signal),
     ]);
   }, [loadCodexStatus, loadCopilotStatus]);
 
   useEffect(() => {
-    Promise.resolve().then(loadAll);
+    const ctrl = new AbortController();
+    Promise.resolve().then(() => loadAll(ctrl.signal));
+    return () => ctrl.abort();
   }, [loadAll]);
 
   // Codex OAuth handlers

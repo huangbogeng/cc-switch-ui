@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SkillGroup } from '@/components/skills/SkillGroup';
 import { SkillFormDialog } from '@/components/skills/SkillFormDialog';
+import { cacheGet, cacheSet } from '@/lib/fetchCache';
 
 const DEFAULT_COLLECTION = 'Other';
 
@@ -28,24 +29,33 @@ function groupByCollection(skills: Skill[]): [string, Skill[]][] {
 }
 
 export default function SkillsPage() {
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = cacheGet<Skill[]>('skills');
+  const [skills, setSkills] = useState<Skill[]>(cached ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  const loadSkills = useCallback(async () => {
+  const loadSkills = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await listSkills();
+      const data = await listSkills({ signal });
       setSkills(data.skills);
+      cacheSet('skills', data.skills);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadSkills(); }, [loadSkills]);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    loadSkills(ctrl.signal);
+    return () => ctrl.abort();
+  }, [loadSkills]);
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return skills;
@@ -71,15 +81,20 @@ export default function SkillsPage() {
   }, [loadSkills]);
 
   const handleSync = async () => {
+    setSyncing(true);
     try {
       await syncSkills();
       setError('');
+      await loadSkills();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sync failed');
+    } finally {
+      setSyncing(false);
     }
   };
 
   const handleImport = async () => {
+    setImporting(true);
     try {
       const res = await importSkills();
       setError('');
@@ -88,6 +103,8 @@ export default function SkillsPage() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -118,11 +135,11 @@ export default function SkillsPage() {
         description="Skills synced to ~/.claude/skills/"
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5">
-              <Download className="h-3.5 w-3.5" /> Import
+            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={importing}>
+              <Download className={importing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {importing ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" /> Sync
+            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5" disabled={syncing}>
+              <RefreshCw className={syncing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {syncing ? 'Syncing...' : 'Sync'}
             </Button>
             <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add

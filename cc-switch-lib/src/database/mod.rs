@@ -22,8 +22,10 @@ pub mod skills;
 pub mod usage;
 
 pub use types::{
-    DailyUsage, FailoverQueueItem, LiveBackup, McpServerRecord, ProxyConfig, ProxyRequestLogEntry,
-    ProxyRequestLogRecord, ProxyType, Provider, ProviderUsageSummary, SkillRecord, UsageRecord,
+    DailyUsage, DataSourceSummary, FailoverQueueItem, LiveBackup, LogFilters, McpServerRecord,
+    ModelPricing, ModelStats, PaginatedLogs, ProxyConfig, ProxyRequestLogRecord,
+    ProxyType, Provider, ProviderStats, ProviderUsageSummary, RequestLogDetail, SessionSyncResult,
+    SkillRecord, UsageRecord, UsageSourceItem,
 };
 
 mod types;
@@ -123,7 +125,22 @@ impl Database {
                 status_code INTEGER,
                 success INTEGER NOT NULL DEFAULT 0,
                 error_message TEXT,
+                request_id TEXT,
+                model TEXT,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                total_cost_usd TEXT NOT NULL DEFAULT '0',
+                data_source TEXT NOT NULL DEFAULT 'proxy',
                 created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            CREATE TABLE IF NOT EXISTS session_log_sync (
+                file_path TEXT PRIMARY KEY,
+                last_modified INTEGER NOT NULL DEFAULT 0,
+                last_line_offset INTEGER NOT NULL DEFAULT 0,
+                last_synced_at INTEGER NOT NULL DEFAULT (unixepoch())
             );
 
             CREATE TABLE IF NOT EXISTS proxy_live_backup (
@@ -157,15 +174,29 @@ impl Database {
                 readme_url TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS model_pricing (
+                model_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                input_cost_per_million TEXT NOT NULL DEFAULT '0',
+                output_cost_per_million TEXT NOT NULL DEFAULT '0',
+                cache_read_cost_per_million TEXT NOT NULL DEFAULT '0',
+                cache_creation_cost_per_million TEXT NOT NULL DEFAULT '0'
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_records(provider_id);
             CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(request_timestamp);
+            CREATE INDEX IF NOT EXISTS idx_usage_request_provider_model
+              ON usage_records(request_timestamp, provider_id, model);
             CREATE INDEX IF NOT EXISTS idx_proxy_request_logs_app_type_created_at
               ON proxy_request_logs(app_type, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_proxy_logs_created_provider
+              ON proxy_request_logs(created_at, provider_id);
             "
         )?;
 
         migrations::migrate_proxy_config(&conn)?;
         migrations::migrate_proxy_request_logs(&conn)?;
+        migrations::migrate_session_log_schema(&conn)?;
         migrations::run_schema_migrations(&conn)?;
 
         Ok(())

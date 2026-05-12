@@ -151,9 +151,11 @@ impl Forwarder {
             apply_model_mapping(&mut body_json, &self.config.model_mapping);
             let request_model = extract_request_model(&body_json);
 
+            let app_type_owned = app_type.to_string();
             let attempt_result = self
                 .forward_once(
                     state.clone(),
+                    app_type_owned,
                     method.clone(),
                     headers.clone(),
                     body_json,
@@ -269,6 +271,7 @@ impl Forwarder {
     async fn forward_once(
         &self,
         state: Arc<ProxyState>,
+        app_type: String,
         method: axum::http::Method,
         headers: axum::http::HeaderMap,
         body_json: Value,
@@ -470,6 +473,8 @@ impl Forwarder {
                 StreamingResponseFormat::OpenAIChat => {
                     let db = state.db.clone();
                     let provider_id = state.provider_id.clone();
+                    let log_app_type = app_type.clone();
+                    let log_path = path.clone();
                     openai_chat_sse_to_anthropic_with_usage(
                         upstream_res.bytes_stream(),
                         move |usage| {
@@ -481,7 +486,10 @@ impl Forwarder {
                                 cache_read_tokens: None,
                                 request_timestamp: unix_timestamp(),
                             };
+                            let rec_model = record.model.clone();
                             let db = db.clone();
+                            let app_type = log_app_type.clone();
+                            let path = log_path.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = db.save_usage_record(&record) {
                                     log::error!("[Proxy] Failed to save streaming usage record: {}", e);
@@ -493,6 +501,26 @@ impl Forwarder {
                                         record.input_tokens,
                                         record.output_tokens
                                     );
+                                }
+                                let log_record = cc_switch_lib::database::ProxyRequestLogRecord {
+                                    app_type,
+                                    provider_id: record.provider_id.clone(),
+                                    request_path: path,
+                                    request_model: Some(rec_model),
+                                    status_code: Some(200),
+                                    success: true,
+                                    error_message: None,
+                                    request_id: None,
+                                    model: Some(record.model.clone()),
+                                    input_tokens: record.input_tokens,
+                                    output_tokens: record.output_tokens,
+                                    cache_read_tokens: record.cache_read_tokens.unwrap_or(0),
+                                    cache_creation_tokens: 0,
+                                    total_cost_usd: String::new(),
+                                    data_source: "proxy".to_string(),
+                                };
+                                if let Err(e) = db.save_proxy_request_log(&log_record) {
+                                    log::error!("[Proxy] Failed to save streaming request log: {}", e);
                                 }
                             });
                         },
@@ -527,6 +555,9 @@ impl Forwarder {
         if let Some(mut record) = transform_result.record {
             record.provider_id = state.provider_id.clone();
             let db = state.db.clone();
+            let log_app_type = app_type.clone();
+            let log_path = path.clone();
+            let rec_model = record.model.clone();
             tokio::spawn(async move {
                 if let Err(e) = db.save_usage_record(&record) {
                     log::error!("[Proxy] Failed to save usage record: {}", e);
@@ -538,6 +569,26 @@ impl Forwarder {
                         record.input_tokens,
                         record.output_tokens
                     );
+                }
+                let log_record = cc_switch_lib::database::ProxyRequestLogRecord {
+                    app_type: log_app_type,
+                    provider_id: record.provider_id.clone(),
+                    request_path: log_path,
+                    request_model: Some(rec_model),
+                    status_code: Some(200),
+                    success: true,
+                    error_message: None,
+                    request_id: None,
+                    model: Some(record.model.clone()),
+                    input_tokens: record.input_tokens,
+                    output_tokens: record.output_tokens,
+                    cache_read_tokens: record.cache_read_tokens.unwrap_or(0),
+                    cache_creation_tokens: 0,
+                    total_cost_usd: String::new(),
+                    data_source: "proxy".to_string(),
+                };
+                if let Err(e) = db.save_proxy_request_log(&log_record) {
+                    log::error!("[Proxy] Failed to save request log: {}", e);
                 }
             });
         }

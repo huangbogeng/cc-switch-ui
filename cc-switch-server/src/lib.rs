@@ -376,9 +376,26 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/skills/:id", delete(skills::delete_skill))
         .route("/api/usage/summary", get(usage::get_usage_summary))
         .route(
-            "/api/usage/request-logs",
-            get(usage::get_proxy_request_logs),
+            "/api/usage/provider-stats",
+            get(usage::get_provider_stats),
         )
+        .route("/api/usage/model-stats", get(usage::get_model_stats))
+        .route(
+            "/api/usage/request-logs",
+            get(usage::get_request_logs_paginated),
+        )
+        .route(
+            "/api/usage/request-logs/:id",
+            get(usage::get_request_log_detail),
+        )
+        .route("/api/usage/pricing", get(usage::get_model_pricing_handler))
+        .route("/api/usage/pricing", put(usage::upsert_model_pricing_handler))
+        .route(
+            "/api/usage/pricing/:model_id",
+            delete(usage::delete_model_pricing_handler),
+        )
+        .route("/api/usage/sync-session", post(usage::sync_session_usage))
+        .route("/api/usage/sources", get(usage::get_usage_sources))
         .nest_service("/ui", ServeDir::new(config.ui_dist_dir.clone()))
         .layer(axum::middleware::from_fn_with_state(
             app_state.clone(),

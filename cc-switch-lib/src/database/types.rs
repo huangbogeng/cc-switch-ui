@@ -120,18 +120,14 @@ pub struct ProxyRequestLogRecord {
     pub status_code: Option<i32>,
     pub success: bool,
     pub error_message: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ProxyRequestLogEntry {
-    pub app_type: String,
-    pub provider_id: String,
-    pub request_path: String,
-    pub request_model: Option<String>,
-    pub status_code: Option<i32>,
-    pub success: bool,
-    pub error_message: Option<String>,
-    pub created_at: i64,
+    pub request_id: Option<String>,
+    pub model: Option<String>,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub total_cost_usd: String,
+    pub data_source: String,
 }
 
 /// Live backup record for proxy takeover detection/restore
@@ -153,6 +149,13 @@ pub struct ProviderUsageSummary {
     pub request_count: i64,
 }
 
+/// Usage breakdown by source app_type
+#[derive(Debug, Clone, Serialize)]
+pub struct UsageSourceItem {
+    pub app_type: String,
+    pub request_count: i64,
+}
+
 /// Daily usage aggregate
 #[derive(Debug, Clone, Serialize)]
 pub struct DailyUsage {
@@ -164,3 +167,95 @@ pub struct DailyUsage {
 
 /// Failover queue item for external reference
 pub struct FailoverQueueItem;
+
+/// Provider statistics (aggregated)
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderStats {
+    pub provider_id: String,
+    pub request_count: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub success_count: i64,
+    pub fail_count: i64,
+}
+
+/// Model statistics (aggregated)
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelStats {
+    pub model: String,
+    pub request_count: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+}
+
+/// Filters for request log queries
+#[derive(Debug, Clone, Default)]
+pub struct LogFilters {
+    pub app_type: Option<String>,
+    pub provider_id: Option<String>,
+    pub model: Option<String>,
+    pub status_code: Option<i32>,
+    pub start_date: Option<i64>,
+    pub end_date: Option<i64>,
+}
+
+/// Paginated request log response
+#[derive(Debug, Clone, Serialize)]
+pub struct PaginatedLogs {
+    pub data: Vec<RequestLogDetail>,
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+}
+
+/// Model pricing entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPricing {
+    pub model_id: String,
+    pub display_name: String,
+    pub input_cost_per_million: String,
+    pub output_cost_per_million: String,
+    pub cache_read_cost_per_million: String,
+    pub cache_creation_cost_per_million: String,
+}
+
+/// Detailed request log entry
+#[derive(Debug, Clone, Serialize)]
+pub struct RequestLogDetail {
+    pub id: i64,
+    pub app_type: String,
+    pub provider_id: String,
+    pub request_path: String,
+    pub request_model: Option<String>,
+    pub status_code: Option<i32>,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub model: Option<String>,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub total_cost_usd: String,
+    pub data_source: String,
+    pub created_at: i64,
+}
+
+/// Result of a session log sync operation
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSyncResult {
+    pub imported: u32,
+    pub skipped: u32,
+    pub files_scanned: u32,
+    pub errors: Vec<String>,
+}
+
+/// Data source breakdown for usage page
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSourceSummary {
+    pub data_source: String,
+    pub request_count: u32,
+    pub total_cost_usd: String,
+}

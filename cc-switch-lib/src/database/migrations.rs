@@ -62,43 +62,103 @@ fn migrate_proxy_request_logs_schema(conn: &Connection) -> Result<(), AppError> 
         conn.execute(
             "ALTER TABLE proxy_request_logs ADD COLUMN request_path TEXT NOT NULL DEFAULT ''",
             [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
     }
     if !has_column("request_model") {
         conn.execute(
             "ALTER TABLE proxy_request_logs ADD COLUMN request_model TEXT",
             [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
     }
     if !has_column("status_code") {
         conn.execute(
             "ALTER TABLE proxy_request_logs ADD COLUMN status_code INTEGER",
             [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
     }
     if !has_column("success") {
         conn.execute(
             "ALTER TABLE proxy_request_logs ADD COLUMN success INTEGER NOT NULL DEFAULT 0",
             [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
     }
     if !has_column("error_message") {
         conn.execute(
             "ALTER TABLE proxy_request_logs ADD COLUMN error_message TEXT",
             [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
     }
+    if !has_column("request_id") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN request_id TEXT",
+            [],
+        )?;
+    }
+    if !has_column("model") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN model TEXT",
+            [],
+        )?;
+    }
+    if !has_column("input_tokens") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !has_column("output_tokens") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !has_column("cache_read_tokens") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !has_column("cache_creation_tokens") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !has_column("total_cost_usd") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN total_cost_usd TEXT NOT NULL DEFAULT '0'",
+            [],
+        )?;
+    }
+    if !has_column("data_source") {
+        conn.execute(
+            "ALTER TABLE proxy_request_logs ADD COLUMN data_source TEXT NOT NULL DEFAULT 'proxy'",
+            [],
+        )?;
+    }
+
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_proxy_request_logs_request_id ON proxy_request_logs(request_id);
+         CREATE INDEX IF NOT EXISTS idx_proxy_request_logs_data_source ON proxy_request_logs(data_source);"
+    )?;
 
     Ok(())
 }
 
+pub fn migrate_session_log_schema(conn: &Connection) -> Result<(), AppError> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS session_log_sync (
+            file_path TEXT PRIMARY KEY,
+            last_modified INTEGER NOT NULL DEFAULT 0,
+            last_line_offset INTEGER NOT NULL DEFAULT 0,
+            last_synced_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );"
+    )?;
+    Ok(())
+}
+
 /// Current schema version for PRAGMA user_version-based migration tracking.
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
     let current_version: u32 =
@@ -118,6 +178,15 @@ pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
         if !has_column {
             conn.execute_batch("ALTER TABLE skills ADD COLUMN collection TEXT")?;
         }
+    }
+
+    if current_version < 3 {
+        // Migrate legacy _session provider_ids to model-derived names
+        conn.execute_batch(
+            "UPDATE proxy_request_logs
+             SET provider_id = LOWER(SUBSTR(model, 1, INSTR(model || '-', '-') - 1))
+             WHERE provider_id = '_session' AND model != '';"
+        )?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;

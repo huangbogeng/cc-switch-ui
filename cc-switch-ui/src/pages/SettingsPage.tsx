@@ -15,6 +15,7 @@ import {
   setProxyPort,
   type ProxyConfig,
 } from '@/api';
+import { cacheGet, cacheSet } from '@/lib/fetchCache';
 
 type Language = 'en' | 'zh';
 
@@ -23,45 +24,58 @@ export default function SettingsPage() {
     () => (localStorage.getItem('ccswitch_language') as Language) || 'en'
   );
 
+  const cachedPort = cacheGet<number>('settings-proxy-port');
+  const cachedProxy = cacheGet<ProxyConfig>('settings-outbound-proxy');
+
   // Proxy port state
-  const [proxyPort, setProxyPortState] = useState(15721);
-  const [portLoading, setPortLoading] = useState(true);
+  const [proxyPort, setProxyPortState] = useState(cachedPort ?? 15721);
+  const [portLoading, setPortLoading] = useState(!cachedPort);
   const [portSaved, setPortSaved] = useState(false);
   const [portError, setPortError] = useState<string | null>(null);
-  const [outboundProxy, setOutboundProxy] = useState<ProxyConfig>({
-    enabled: false,
-    proxy_type: 'http',
-    host: '127.0.0.1',
-    port: 10809,
-  });
-  const [outboundLoading, setOutboundLoading] = useState(true);
+  const [outboundProxy, setOutboundProxy] = useState<ProxyConfig>(
+    cachedProxy ?? {
+      enabled: false,
+      proxy_type: 'http',
+      host: '127.0.0.1',
+      port: 10809,
+    },
+  );
+  const [outboundLoading, setOutboundLoading] = useState(!cachedProxy);
   const [outboundSaved, setOutboundSaved] = useState(false);
   const [outboundError, setOutboundError] = useState<string | null>(null);
 
-  const loadProxyPort = useCallback(async () => {
+  const loadProxyPort = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await getProxyPort();
+      const data = await getProxyPort({ signal });
       setProxyPortState(data.port);
+      cacheSet('settings-proxy-port', data.port);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Failed to load proxy port:', e);
     } finally {
-      setPortLoading(false);
+      if (!signal?.aborted) setPortLoading(false);
     }
   }, []);
 
-  const loadOutboundProxy = useCallback(async () => {
+  const loadOutboundProxy = useCallback(async (signal?: AbortSignal) => {
     try {
-      const config = await getProxyConfig();
+      const config = await getProxyConfig({ signal });
       setOutboundProxy(config);
+      cacheSet('settings-outbound-proxy', config);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Failed to load outbound proxy config:', e);
     } finally {
-      setOutboundLoading(false);
+      if (!signal?.aborted) setOutboundLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(() => Promise.all([loadProxyPort(), loadOutboundProxy()]));
+    const ctrl = new AbortController();
+    void Promise.resolve().then(() =>
+      Promise.all([loadProxyPort(ctrl.signal), loadOutboundProxy(ctrl.signal)]),
+    );
+    return () => ctrl.abort();
   }, [loadProxyPort, loadOutboundProxy]);
 
   const handleLanguageReset = () => {
