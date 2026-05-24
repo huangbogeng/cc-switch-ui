@@ -14,7 +14,7 @@
 
 Configuring API Providers for Claude Code traditionally requires manually editing JSON files, memorizing various API endpoints, and handling complex OAuth authorization flows. 
 
-**CC Switch Web allows you to manage all of this effortlessly within your browser:**
+**CC Switch UI lets you manage all of this in a browser-first workflow:**
 
 - **One-click Provider Switching:** Instantly switch between 50+ model providers without ever touching a config file.
 - **Built-in Presets:** 50+ pre-configured providers (DeepSeek, OpenAI, Anthropic, Google, Copilot, Codex, MiniMax, etc.).
@@ -23,11 +23,12 @@ Configuring API Providers for Claude Code traditionally requires manually editin
 
 ---
 
-## 📌 Project Status (2026-05-11)
+## 📌 Project Status (2026-05-14)
 
 - **All core features complete**: Providers (50+ presets), MCP Servers, Skills, Proxy, OAuth, Usage tracking.
 - Backend database module modularized into domain sub-modules (`providers`, `mcp`, `skills`, `proxy`, `usage`, `migrations`, `types`).
 - Proxy streaming pipeline modularized under `cc-switch-server/src/proxy/streaming/`.
+- Usage supports both proxy-mode logs and Claude local session-log sync (`~/.claude/projects/*/*.jsonl`).
 - Current focus: Phase 2 (`forwarder.rs` decomposition) while avoiding over-fragmented files.
 
 ---
@@ -155,11 +156,17 @@ Claude Code will immediately start using the new Provider you selected.
 - Merge-only env updates preserve other settings in `settings.json`.
 - Completely eliminates the need to manually edit config files.
 
+### 📊 Usage Monitoring (Current Behavior)
+- Request logs and trend charts are sourced from `proxy_request_logs`.
+- Session usage sync is available via `POST /api/usage/sync-session` and can import Claude local JSONL sessions.
+- Data source breakdown is available via `GET /api/usage/sources` (`proxy` / `session_log`).
+- Model pricing is used for session-synced records; proxy-ingested records currently keep `total_cost_usd` empty/zero unless cost is filled later in the pipeline.
+
 ---
 
 ## 🏗 Architecture
 
-CC Switch UI is a pure Web architecture variant, separating the React frontend and Rust backend:
+CC Switch UI is a browser-first Web architecture with a Rust workspace backend:
 
 ```mermaid
 graph TD
@@ -172,7 +179,7 @@ graph TD
     %% Nodes
     UI["💻 Browser (React UI)<br/>http://localhost:5007/ui"]:::frontend
     
-    subgraph CC_Switch_Web ["cc-switch-server (Rust + Axum)"]
+    subgraph CC_Switch_Server ["cc-switch-server (Rust + Axum)"]
         API["🔌 REST API<br/>/api/*"]:::backend
         OAuth["🔐 OAuth Handler<br/>codex / copilot"]:::backend
         Proxy["🌐 Local Proxy<br/>:15721"]:::backend

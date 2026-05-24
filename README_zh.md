@@ -14,7 +14,7 @@
 
 传统配置 Claude Code 的 API Provider 需要手动编辑 JSON 文件、记住各种 API 端点、并且还要处理复杂的 OAuth 授权。
 
-**CC Switch Web 让这一切都在浏览器中轻松完成：**
+**CC Switch UI 让这一切都能以浏览器为中心轻松完成：**
 
 - **一键切换 Provider：** 无需手动编辑配置，一键即可在 50+ 模型供应商之间切换。
 - **内置丰富预设：** 50+ 种 Provider 预设（DeepSeek、OpenAI、Anthropic、Google、Copilot、Codex、MiniMax 等）。
@@ -23,11 +23,12 @@
 
 ---
 
-## 📌 当前进度（2026-05-11）
+## 📌 当前进度（2026-05-14）
 
 - **核心功能已全部完成**：Provider（50+ 预设）、MCP 服务器、Skills、代理、OAuth、用量追踪。
 - 后端数据库模块已按领域拆分（`providers`、`mcp`、`skills`、`proxy`、`usage`、`migrations`、`types`）。
 - 代理流式转换链路已模块化到 `cc-switch-server/src/proxy/streaming/`。
+- 用量统计已支持两条路径：代理日志 + Claude 本地会话日志同步（`~/.claude/projects/*/*.jsonl`）。
 - 当前重点：推进 Phase 2（`forwarder.rs` 拆分），同时避免把文件拆得过度细碎。
 
 ---
@@ -155,11 +156,17 @@ Claude Code 将会立即开始使用你新选中的 Provider。
 - 仅合并 env 字段，保留 `settings.json` 中的其他配置。
 - 彻底告别手动编辑配置文件的烦恼。
 
+### 📊 用量监控（当前实现口径）
+- 请求日志与趋势图主要来自 `proxy_request_logs`。
+- 支持通过 `POST /api/usage/sync-session` 手动同步 Claude 本地 JSONL 会话日志。
+- 支持通过 `GET /api/usage/sources` 查看数据来源占比（`proxy` / `session_log`）。
+- `model_pricing` 当前用于 session 同步数据的成本计算；proxy 侧写入记录目前 `total_cost_usd` 仍可能为空/0（后续链路可继续补齐）。
+
 ---
 
 ## 🏗 技术架构
 
-CC Switch UI 采用纯 Web 架构，前后端分离设计：
+CC Switch UI 采用浏览器优先的 Web 架构，后端为 Rust workspace：
 
 ```mermaid
 graph TD
@@ -172,7 +179,7 @@ graph TD
     %% Nodes
     UI["💻 Browser (React UI)<br/>http://localhost:5007/ui"]:::frontend
     
-    subgraph CC_Switch_Web ["cc-switch-server (Rust + Axum)"]
+    subgraph CC_Switch_Server ["cc-switch-server (Rust + Axum)"]
         API["🔌 REST API<br/>/api/*"]:::backend
         OAuth["🔐 OAuth 认证处理<br/>codex / copilot"]:::backend
         Proxy["🌐 本地代理<br/>:15721"]:::backend

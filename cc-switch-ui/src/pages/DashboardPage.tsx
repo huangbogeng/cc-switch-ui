@@ -12,7 +12,7 @@ import {
   UsageCard,
 } from '@/components/dashboard/DashboardPanels';
 import { sortProviders } from '@/lib/provider';
-import { useUsageSummary, useCopilotUsage } from '@/lib/useUsage';
+import { useProviderStats, useCopilotUsage } from '@/lib/useUsage';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
 
 interface DashboardProxyStatus {
@@ -44,9 +44,15 @@ export default function DashboardPage() {
     cached?.proxyStatus ?? null,
   );
   const [proxyError, setProxyError] = useState('');
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
 
   const { data: usage } = useCopilotUsage();
-  const { data: proxyUsage } = useUsageSummary(30_000);
+  const { data: providerStats24h } = useProviderStats(nowSec - 24 * 3600, nowSec);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const loadProviders = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -164,26 +170,16 @@ export default function DashboardPage() {
             usage24h={
               currentProvider
                 ? (() => {
-                    // Proxy mode: match by provider_id
-                    const byProvider = (proxyUsage?.providers || []).find(
+                    const byProvider = (providerStats24h?.providers || []).find(
                       (item) => item.provider_id === currentProvider.id,
                     );
-                    if (byProvider) {
-                      return {
-                        requestCount: byProvider.request_count,
-                        inputTokens: byProvider.input_tokens,
-                        outputTokens: byProvider.output_tokens,
-                      };
-                    }
-                    // Direct mode: show total session usage
-                    if (proxyUsage?.totals && proxyUsage.totals.request_count > 0) {
-                      return {
-                        requestCount: proxyUsage.totals.request_count,
-                        inputTokens: proxyUsage.totals.input_tokens,
-                        outputTokens: proxyUsage.totals.output_tokens,
-                      };
-                    }
-                    return null;
+                    return byProvider
+                      ? {
+                          requestCount: byProvider.request_count,
+                          inputTokens: byProvider.total_input_tokens,
+                          outputTokens: byProvider.total_output_tokens,
+                        }
+                      : null;
                   })()
                 : null
             }

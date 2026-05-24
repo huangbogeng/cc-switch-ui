@@ -169,12 +169,9 @@ pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
     }
 
     if current_version < 2 {
-        let has_column: bool = conn
-            .pragma_query_value(None, "table_info(skills)", |row| {
-                let col_name: String = row.get(1)?;
-                Ok(col_name == "collection")
-            })
-            .unwrap_or(false);
+        let has_column = table_columns(conn, "skills")?
+            .iter()
+            .any(|column| column == "collection");
         if !has_column {
             conn.execute_batch("ALTER TABLE skills ADD COLUMN collection TEXT")?;
         }

@@ -56,6 +56,10 @@ export function CurrentProviderCard({
   };
 
   const isCurrentTarget = !!provider && routeRuntime?.activeTargetProviderId === provider.id;
+  const authMode = provider ? providerAuthMode(provider) : 'api_key';
+  const avatarStyle = provider?.iconColor
+    ? { backgroundColor: provider.iconColor, borderColor: `${provider.iconColor}66` }
+    : undefined;
 
   return (
     <Card className="overflow-hidden relative group border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
@@ -75,16 +79,42 @@ export function CurrentProviderCard({
           </div>
         ) : provider ? (
           <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] relative overflow-hidden">
-                  <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
-                  <span className="relative z-10 text-xl font-bold text-primary drop-shadow-sm">{providerInitial(provider)}</span>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6">
+              <div className="flex items-start gap-4 min-w-0">
+                <div
+                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-inner text-white"
+                  style={avatarStyle}
+                >
+                  <span className="text-2xl font-bold tracking-tight drop-shadow-sm">{providerInitial(provider)}</span>
                 </div>
-                <div className="min-w-0">
-                  <div className="truncate text-xl font-bold tracking-tight text-foreground">{provider.name}</div>
-                  <div className="truncate text-sm font-medium text-muted-foreground mt-0.5">
-                    {provider.websiteUrl || 'Custom Provider'}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="truncate text-xl font-bold tracking-tight text-foreground">{provider.name}</div>
+                    <Badge
+                      variant={authMode === 'oauth_proxy' ? 'success' : 'outline'}
+                      className={`text-[10px] uppercase tracking-wider font-bold ${
+                        authMode === 'oauth_proxy'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-white/5 text-muted-foreground border-white/10'
+                      }`}
+                    >
+                      {providerAuthLabel(provider)}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1.5">
+                    {provider.websiteUrl ? (
+                      <a
+                        href={provider.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary/80 hover:text-primary transition-colors hover:underline"
+                      >
+                        <span className="truncate max-w-[260px]">{provider.websiteUrl}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    ) : (
+                      <div className="truncate text-sm font-medium text-muted-foreground">Custom Provider</div>
+                    )}
                   </div>
                 </div>
               </div>

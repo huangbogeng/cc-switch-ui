@@ -254,4 +254,41 @@ mod tests {
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 10809);
     }
+
+    #[test]
+    fn schema_migration_does_not_readd_existing_skills_collection_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE skills (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                directory TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                collection TEXT,
+                installed_at INTEGER NOT NULL DEFAULT 0,
+                repo_owner TEXT,
+                repo_name TEXT,
+                repo_branch TEXT,
+                readme_url TEXT
+            );
+            CREATE TABLE proxy_request_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL,
+                model TEXT
+            );
+            PRAGMA user_version = 0;
+            ",
+        )
+        .unwrap();
+
+        migrations::run_schema_migrations(&conn).unwrap();
+
+        let version: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 3);
+    }
 }
