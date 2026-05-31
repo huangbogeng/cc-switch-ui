@@ -50,8 +50,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Release version: $VERSION"
 
-          # Update Rust workspace version
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          # Update Rust workspace version (cross-platform: macOS uses BSD sed)
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
 
           # Update frontend version
           cd cc-switch-ui
