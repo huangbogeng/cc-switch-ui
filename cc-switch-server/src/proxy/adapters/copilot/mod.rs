@@ -86,14 +86,6 @@ impl ProviderAdapter for CopilotAdapter {
         response::transform(body, is_streaming)
     }
 
-    fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {
-        provider
-            .settings_config
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string)
-    }
 }
 
 #[cfg(test)]
@@ -110,6 +102,7 @@ mod tests {
             .transform_request(TransformInput {
                 body: json!({"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}),
                 upstream_url: "https://api.githubcopilot.com/chat/completions".to_string(),
+                path: "".to_string(),
                 prompt_cache_key: None,
                 requested_stream: true,
                 codex_fast_mode: false,

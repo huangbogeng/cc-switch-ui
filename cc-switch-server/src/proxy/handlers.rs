@@ -7,12 +7,13 @@ use super::{ProxyConfig, ProxyServer};
 use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 use cc_switch_lib::database::{Provider, ProxyType};
+use cc_switch_lib::live;
 use serde::Deserialize;
 use serde_json::Value;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-const APP_TYPE: &str = "claude";
+const APP_TYPE: &str = cc_switch_lib::DEFAULT_APP_TYPE;
 const CODEX_RESPONSES_UPSTREAM: &str = "https://chatgpt.com/backend-api/codex/responses";
 
 #[derive(Deserialize)]
@@ -48,7 +49,10 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     );
 
     // Check if provider is supported by any adapter
-    let registry = create_registry(state.codex_oauth.clone(), state.copilot_oauth.clone());
+    let registry = std::sync::Arc::new(create_registry(
+        state.codex_oauth.clone(),
+        state.copilot_oauth.clone(),
+    ));
     if registry.find_for_provider(&target_provider).is_none() {
         return Json(serde_json::json!({
             "success": false,
@@ -75,11 +79,17 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let provider_id = target_provider.id.clone();
     let db = state.db.clone();
 
-    let live_settings = super::super::handlers::providers::settings_for_live(
-        &target_provider,
-        state.proxy_listen_port,
-        true,
-    );
+    // Save backup of original live config before overwriting, so we can
+    // restore it when the proxy is stopped or the server crashes.
+    if let Ok(raw) = std::fs::read_to_string(cc_switch_lib::live::get_live_settings_path()) {
+        if let Err(e) = state.db.save_live_backup(APP_TYPE, &provider_id, &raw) {
+            log::warn!("[ProxyAPI] failed to save live backup: {}", e);
+        } else {
+            log::info!("[ProxyAPI] saved live backup for provider_id={}", provider_id);
+        }
+    }
+
+    let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
     if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
         log::error!(
             "[ProxyAPI] proxy_start failed to apply proxied live settings provider_id={}: {}",
@@ -106,8 +116,7 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
 
     match server
         .start(
-            state.codex_oauth.clone(),
-            state.copilot_oauth.clone(),
+            registry,
             account_id,
             db,
             provider_id,
@@ -148,11 +157,7 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
         }
     };
 
-    let live_settings = super::super::handlers::providers::settings_for_live(
-        &target_provider,
-        state.proxy_listen_port,
-        false,
-    );
+    let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, false);
     log::info!(
         "[ProxyAPI] proxy_stop restoring live settings for provider_id={}",
         target_provider.id
@@ -163,6 +168,11 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
             "error": format!("Failed to restore provider config: {}", e)
         }))
         .into_response();
+    }
+
+    // Clean up the live backup now that we've restored the original config
+    if let Err(e) = state.db.delete_live_backup(APP_TYPE) {
+        log::warn!("[ProxyAPI] failed to delete live backup: {}", e);
     }
 
     let server = state.proxy_server.write().await.take();
@@ -278,7 +288,7 @@ fn get_active_target_provider(
     }
 }
 
-fn provider_codex_account_id(provider: &Provider) -> Option<String> {
+pub(crate) fn provider_codex_account_id(provider: &Provider) -> Option<String> {
     provider
         .meta
         .get("authBinding")

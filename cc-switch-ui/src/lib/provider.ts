@@ -37,7 +37,9 @@ export function providerAuthMode(provider: Provider): ProviderAuthMode {
 }
 
 export function providerAuthLabel(provider: Provider) {
-  return providerAuthMode(provider) === 'oauth_proxy' ? 'OAuth Account' : 'API Key';
+  if (providerAuthMode(provider) === 'oauth_proxy') return 'OAuth Account';
+  const meta = provider.meta as { apiKeyField?: string } | null;
+  return meta?.apiKeyField === 'ANTHROPIC_API_KEY' ? 'API Key' : 'Auth Token';
 }
 
 export function providerApiFormat(provider: Provider) {

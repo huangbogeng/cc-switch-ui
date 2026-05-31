@@ -1,8 +1,9 @@
 //! Proxy server implementation
 
-use super::adapters::create_registry;
 use super::failover_switch::FailoverSwitchManager;
-use super::forwarder::{ForwardResult, Forwarder, ProxyState};
+use super::handlers::provider_codex_account_id;
+use super::forwarder::{ForwardResult, Forwarder};
+use super::types::ProxyState;
 use super::provider_router::{ProviderRouter, SelectProvidersError};
 use super::types::ProxyConfig;
 use axum::{
@@ -51,8 +52,7 @@ impl ProxyServer {
     /// Start the proxy server
     pub async fn start(
         &self,
-        codex_oauth: Arc<cc_switch_lib::oauth::codex::CodexOAuthManager>,
-        copilot_auth: Arc<cc_switch_lib::oauth::copilot::CopilotAuthManager>,
+        registry: Arc<ProviderRegistry>,
         codex_account_id: Option<String>,
         db: Arc<Database>,
         provider_id: String,
@@ -64,7 +64,6 @@ impl ProxyServer {
         }
 
         let forwarder = Arc::new(Forwarder::new(self.config.clone())?);
-        let registry = Arc::new(create_registry(codex_oauth.clone(), copilot_auth));
         let runtime_state = Arc::new(ProxyRuntimeState {
             db: db.clone(),
             provider_hint_id: provider_id,
@@ -160,9 +159,26 @@ async fn handle_proxy(
     )>,
     req: Request,
 ) -> Response {
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    log::info!(
+        "[Proxy] >>> {} {} | headers: {:?}",
+        method,
+        uri,
+        req.headers().iter().map(|(k, v)| format!("{k:?}: {:?}", v.to_str().unwrap_or("(binary)"))).collect::<Vec<_>>()
+    );
+
     let current_provider = match resolve_current_provider(&runtime_state) {
-        Ok(provider) => provider,
+        Ok(provider) => {
+            log::info!(
+                "[Proxy] resolved provider: id={} name={}",
+                provider.id,
+                provider.name
+            );
+            provider
+        }
         Err(status) => {
+            log::error!("[Proxy] resolve_current_provider failed status={}", status);
             return Response::builder()
                 .status(status)
                 .body(Body::empty())
@@ -209,21 +225,57 @@ async fn handle_proxy(
         }
     };
 
-    let proxy_states = provider_candidates
+    log::info!(
+        "[Proxy] {} provider candidate(s) after circuit-breaker filter",
+        provider_candidates.len()
+    );
+
+    let proxy_states: Vec<_> = provider_candidates
         .into_iter()
         .filter_map(|provider| {
-            let adapter = runtime_state.registry.find_for_provider(&provider)?;
-            let provider_id = provider.id.clone();
-            Some(Arc::new(ProxyState::new(
-                adapter,
-                provider_codex_account_id(&provider)
-                    .or_else(|| runtime_state.codex_account_id.clone()),
-                provider,
-                runtime_state.db.clone(),
-                provider_id,
-            )))
+            let adapter = runtime_state.registry.find_for_provider(&provider);
+            match adapter {
+                Some(adapter) => {
+                    log::info!(
+                        "[Proxy] adapter matched: provider={} type={}",
+                        provider.id,
+                        adapter.provider_type()
+                    );
+                    let provider_id = provider.id.clone();
+                    Some(Arc::new(ProxyState::new(
+                        adapter,
+                        provider_codex_account_id(&provider)
+                            .or_else(|| runtime_state.codex_account_id.clone()),
+                        provider,
+                        runtime_state.db.clone(),
+                        provider_id,
+                    )))
+                }
+                None => {
+                    log::error!(
+                        "[Proxy] NO adapter for provider={} provider_type={:?}",
+                        provider.id,
+                        provider.meta.get("providerType").and_then(|v| v.as_str())
+                    );
+                    None
+                }
+            }
         })
-        .collect::<Vec<_>>();
+        .collect();
+
+    if proxy_states.is_empty() {
+        log::error!("[Proxy] no adapter matched any candidate — returning 502");
+        return Response::builder()
+            .status(axum::http::StatusCode::BAD_GATEWAY)
+            .body(Body::empty())
+            .unwrap();
+    }
+
+    log::info!(
+        "[Proxy] forwarding with {} proxy state(s) | app_type={}",
+        proxy_states.len(),
+        runtime_state.app_type
+    );
 
     forwarder
         .forward_with_retry(
@@ -240,11 +292,12 @@ async fn handle_proxy(
                  response,
                  provider_id,
              }| {
-                log::info!("[Proxy] Request succeeded via provider={provider_id}");
+                log::info!("[Proxy] <<< success provider={provider_id} status={}", response.status());
                 response
             },
         )
         .unwrap_or_else(|status| {
+            log::error!("[Proxy] <<< all attempts failed status={}", status);
             Response::builder()
                 .status(status)
                 .body(Body::empty())
@@ -275,15 +328,6 @@ fn resolve_current_provider(
         .ok()
         .flatten()
         .ok_or(axum::http::StatusCode::BAD_GATEWAY)
-}
-
-fn provider_codex_account_id(provider: &cc_switch_lib::database::Provider) -> Option<String> {
-    provider
-        .meta
-        .get("authBinding")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string())
 }
 
 #[cfg(test)]

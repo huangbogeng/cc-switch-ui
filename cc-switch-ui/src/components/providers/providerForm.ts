@@ -24,6 +24,8 @@ export interface ProviderFormData {
   promptCacheKey: string;
   codexAccountId: string;
   codexFastMode: boolean;
+  subagentModel: string;
+  effortLevel: string;
 }
 
 export const emptyProviderForm: ProviderFormData = {
@@ -46,6 +48,8 @@ export const emptyProviderForm: ProviderFormData = {
   promptCacheKey: '',
   codexAccountId: '',
   codexFastMode: false,
+  subagentModel: '',
+  effortLevel: '',
 };
 
 export function formFromPreset(preset: ProviderPreset): ProviderFormData {
@@ -73,6 +77,8 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
     promptCacheKey: '',
     codexAccountId: '',
     codexFastMode: preset.codexFastMode || false,
+    subagentModel: env.CLAUDE_CODE_SUBAGENT_MODEL || '',
+    effortLevel: env.CLAUDE_CODE_EFFORT_LEVEL || '',
   };
 }
 
@@ -103,6 +109,8 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     promptCacheKey: meta.promptCacheKey || '',
     codexAccountId: meta.authBinding?.accountId || '',
     codexFastMode: meta.codexFastMode || false,
+    subagentModel: env.CLAUDE_CODE_SUBAGENT_MODEL || '',
+    effortLevel: env.CLAUDE_CODE_EFFORT_LEVEL || '',
   };
 }
 
@@ -129,6 +137,8 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_SONNET_MODEL', formData.sonnetModel || formData.model);
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_OPUS_MODEL', formData.opusModel || formData.model);
   setOptionalEnv(env, 'API_TIMEOUT_MS', apiTimeoutMs);
+  setOptionalEnv(env, 'CLAUDE_CODE_SUBAGENT_MODEL', formData.subagentModel);
+  setOptionalEnv(env, 'CLAUDE_CODE_EFFORT_LEVEL', formData.effortLevel);
   if (formData.disableNonessentialTraffic) {
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
   } else {
@@ -201,8 +211,11 @@ function providerMeta(provider: Provider): {
   };
 }
 
-function findApiKeyField(env: Record<string, string>): ApiKeyField {
-  return env.ANTHROPIC_API_KEY !== undefined ? 'ANTHROPIC_API_KEY' : 'ANTHROPIC_AUTH_TOKEN';
+function findApiKeyField(_env: Record<string, string>): ApiKeyField {
+  // Default to AUTH_TOKEN — the canonical field for Anthropic-compatible
+  // providers. Providers that need API_KEY (e.g. Gemini) set apiKeyField
+  // explicitly in their preset / meta.
+  return 'ANTHROPIC_AUTH_TOKEN';
 }
 
 function setOptionalEnv(env: Record<string, string>, key: string, value: string) {

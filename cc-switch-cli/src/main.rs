@@ -57,6 +57,12 @@ enum Commands {
     Doctor,
     /// Stop server using pid file
     Stop,
+    /// Remove all persisted provider credentials and database
+    Clean {
+        /// Also clean the live Claude Code config (removes proxy base URL)
+        #[arg(long)]
+        live: bool,
+    },
     /// Manage persisted CLI defaults
     Config {
         #[command(subcommand)]
@@ -263,6 +269,95 @@ fn can_write(path: &Path) -> bool {
     result.is_ok()
 }
 
+fn run_clean(clean_live: bool) -> i32 {
+    let config_dir = get_app_config_dir();
+    let db_path = config_dir.join("cc-switch.db");
+    let settings_path = config_dir.join("settings.json");
+    let cli_config_path = config_dir.join("cli.json");
+    let pid_path = config_dir.join("cc-switch-server.pid");
+    let mut removed = 0u32;
+    let mut errors = 0u32;
+
+    let mut remove = |path: &Path, label: &str| {
+        if path.exists() {
+            match std::fs::remove_file(path) {
+                Ok(()) => {
+                    println!("  removed: {}", path.display());
+                    removed += 1;
+                }
+                Err(e) => {
+                    eprintln!("  ERROR removing {} ({}): {}", label, path.display(), e);
+                    errors += 1;
+                }
+            }
+        } else {
+            println!("  skipped (not found): {}", path.display());
+        }
+    };
+
+    println!("clean: removing cc-switch-ui local data");
+    println!("  config_dir: {}", config_dir.display());
+
+    remove(&db_path, "database");
+    remove(&settings_path, "device settings");
+    remove(&cli_config_path, "CLI config");
+    remove(&pid_path, "PID file");
+
+    if clean_live {
+        let live_path = cc_switch_lib::config::get_claude_settings_path();
+        if live_path.exists() {
+            match std::fs::read_to_string(&live_path) {
+                Ok(raw) => {
+                    let mut value: serde_json::Value =
+                        serde_json::from_str(&raw).unwrap_or_default();
+                    let env = value
+                        .get_mut("env")
+                        .and_then(|v| v.as_object_mut());
+                    if let Some(env) = env {
+                        // Only strip proxy-routing fields; keep legitimate user config.
+                        let base_url = env
+                            .get("ANTHROPIC_BASE_URL")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if base_url.starts_with("http://127.0.0.1:") {
+                            env.remove("ANTHROPIC_BASE_URL");
+                            env.remove("ANTHROPIC_AUTH_TOKEN");
+                            env.remove("ANTHROPIC_API_KEY");
+                            println!("  stripped proxy fields from live config");
+                        } else {
+                            println!(
+                                "  live config base URL is not proxy — left untouched"
+                            );
+                        }
+                        match cc_switch_lib::config::write_json_file(&live_path, &value) {
+                            Ok(()) => println!("  updated: {}", live_path.display()),
+                            Err(e) => {
+                                eprintln!("  ERROR writing live config: {}", e);
+                                errors += 1;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("  ERROR reading live config ({}): {}", live_path.display(), e);
+                    errors += 1;
+                }
+            }
+        } else {
+            println!("  skipped live config (not found): {}", live_path.display());
+        }
+    }
+
+    println!();
+    if errors == 0 {
+        println!("clean: done ({removed} file(s) removed)");
+        0
+    } else {
+        eprintln!("clean: done with {errors} error(s) ({removed} file(s) removed)");
+        1
+    }
+}
+
 fn run_doctor() -> i32 {
     let mut has_error = false;
 
@@ -428,6 +523,7 @@ async fn main() {
         }
         Some(Commands::Doctor) => run_doctor(),
         Some(Commands::Stop) => run_stop(),
+        Some(Commands::Clean { live }) => run_clean(live),
         Some(Commands::Config { command }) => run_config(command),
         None => start_and_run(compose_server_options(None, None, None, None, None)).await,
     };

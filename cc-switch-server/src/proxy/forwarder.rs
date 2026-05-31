@@ -7,7 +7,7 @@ use axum::{
     response::Response,
 };
 use cc_switch_lib::providers::{
-    AuthStrategy, ProviderAdapter, StreamingResponseFormat, TransformInput,
+    AuthStrategy, StreamingResponseFormat, TransformInput,
 };
 use futures::StreamExt;
 use reqwest::Method;
@@ -20,10 +20,10 @@ use super::failover_switch::FailoverSwitchManager;
 use super::headers::{copy_forward_headers, copy_response_headers};
 use super::provider_router::ProviderRouter;
 use super::session::{build_prompt_cache_key, extract_session_id};
-use super::streaming_responses::{
+use super::streaming::{
     openai_chat_sse_to_anthropic_with_usage, responses_sse_to_anthropic,
 };
-use super::types::{ProxyConfig, ProxyStatus};
+use super::types::{ProxyConfig, ProxyState, ProxyStatus};
 
 /// Forwarder handles proxying requests to OpenAI API with Codex OAuth auth
 pub struct Forwarder {
@@ -69,11 +69,6 @@ impl Forwarder {
         }
     }
 
-    #[allow(dead_code)]
-    pub async fn get_status(&self) -> ProxyStatus {
-        self.status.read().await.clone()
-    }
-
     pub async fn increment_requests(&self) {
         let mut status = self.status.write().await;
         status.request_count += 1;
@@ -112,6 +107,11 @@ impl Forwarder {
                 log::error!("[Proxy] Failed to read request body for {}: {}", path, e);
                 StatusCode::BAD_REQUEST
             })?;
+        log::debug!(
+            "[Proxy] body_read path={} size={} bytes",
+            path,
+            body.len()
+        );
 
         let mut last_response: Option<(String, Response)> = None;
         let mut last_status: Option<StatusCode> = None;
@@ -145,9 +145,23 @@ impl Forwarder {
             );
 
             let mut body_json: Value = serde_json::from_slice(&body).map_err(|e| {
-                log::error!("[Proxy] Failed to parse request body for {}: {}", path, e);
+                log::error!(
+                    "[Proxy] Failed to parse request body for {}: {} | body_preview={}",
+                    path,
+                    e,
+                    String::from_utf8_lossy(&body).chars().take(200).collect::<String>()
+                );
                 StatusCode::BAD_REQUEST
             })?;
+            let request_model = extract_request_model(&body_json);
+            let is_stream = body_json.get("stream").and_then(Value::as_bool) != Some(false);
+            log::debug!(
+                "[Proxy] body_parsed path={} model={:?} stream={} body_size={}",
+                path,
+                request_model,
+                is_stream,
+                body.len()
+            );
             apply_model_mapping(&mut body_json, &self.config.model_mapping);
             let request_model = extract_request_model(&body_json);
 
@@ -326,6 +340,7 @@ impl Forwarder {
         let transform_input = TransformInput {
             body: body_json,
             upstream_url: upstream_url.clone(),
+            path: path.clone(),
             prompt_cache_key: Some(cache_key),
             requested_stream,
             codex_fast_mode: self.config.codex_fast_mode,
@@ -339,7 +354,7 @@ impl Forwarder {
             })?;
 
         log::info!(
-            "[Proxy] {} {}{} -> {}{}",
+            "[Proxy] {} {}{} -> {}{} | auth={} stream={}",
             method,
             path,
             if query.is_empty() {
@@ -347,7 +362,7 @@ impl Forwarder {
             } else {
                 format!("?{query}")
             },
-            upstream_url,
+            transform_output.upstream_url,
             if transform_output
                 .headers
                 .iter()
@@ -356,7 +371,9 @@ impl Forwarder {
                 " via configured proxy"
             } else {
                 ""
-            }
+            },
+            format!("{:?}", auth_info.strategy),
+            requested_stream,
         );
 
         let reqwest_method =
@@ -411,13 +428,18 @@ impl Forwarder {
 
         // Send request
         let upstream_res = upstream_req.send().await.map_err(|e| {
-            log::error!("[Proxy] HTTP error: {}", e);
+            log::error!("[Proxy] upstream HTTP error url={}: {}", transform_output.upstream_url, e);
             StatusCode::BAD_GATEWAY
         })?;
 
         // Convert response
         let status = StatusCode::from_u16(upstream_res.status().as_u16()).unwrap_or(StatusCode::OK);
-        log::info!("[Proxy] Upstream status for {}: {}", path, status);
+        log::info!(
+            "[Proxy] upstream response url={} status={} stream={}",
+            transform_output.upstream_url,
+            status,
+            requested_stream
+        );
 
         let mut response = Response::builder().status(status);
         response = copy_response_headers(response, upstream_res.headers());
@@ -605,7 +627,7 @@ impl Forwarder {
         reqwest_method: Method,
         headers: axum::http::HeaderMap,
         body_json: Value,
-        _path: String,
+        path: String,
         _query: String,
     ) -> Result<Response, StatusCode> {
         let auth_info = state
@@ -622,6 +644,7 @@ impl Forwarder {
             .transform_request(TransformInput {
                 body: body_json,
                 upstream_url,
+                path,
                 prompt_cache_key: None,
                 requested_stream: false,
                 codex_fast_mode: self.config.codex_fast_mode,
@@ -734,30 +757,3 @@ fn unix_timestamp() -> i64 {
         .unwrap_or(0)
 }
 
-/// Shared state for proxy server
-#[derive(Clone)]
-pub struct ProxyState {
-    pub adapter: Arc<dyn ProviderAdapter>,
-    pub account_id: Option<String>,
-    pub provider: cc_switch_lib::database::Provider,
-    pub db: Arc<cc_switch_lib::database::Database>,
-    pub provider_id: String,
-}
-
-impl ProxyState {
-    pub fn new(
-        adapter: Arc<dyn ProviderAdapter>,
-        account_id: Option<String>,
-        provider: cc_switch_lib::database::Provider,
-        db: Arc<cc_switch_lib::database::Database>,
-        provider_id: String,
-    ) -> Self {
-        Self {
-            adapter,
-            account_id,
-            provider,
-            db,
-            provider_id,
-        }
-    }
-}

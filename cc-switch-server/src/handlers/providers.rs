@@ -8,12 +8,12 @@ use axum::{
     Json,
 };
 use cc_switch_lib::database::Provider;
+use cc_switch_lib::live;
 use cc_switch_lib::providers::AppType;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-const APP_TYPE: &str = "claude_code";
-const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
+const APP_TYPE: &str = cc_switch_lib::DEFAULT_APP_TYPE;
 
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     log::debug!("[Providers] list_providers requested app_type={}", APP_TYPE);
@@ -88,13 +88,17 @@ pub async fn get_provider(
 
 pub async fn save_provider(
     State(state): State<Arc<AppState>>,
-    Json(provider): Json<Provider>,
+    Json(mut provider): Json<Provider>,
 ) -> impl IntoResponse {
     log::info!(
         "[Providers] save_provider requested id={} name={}",
         provider.id,
         provider.name
     );
+    // Normalise the key field so the DB record always matches the
+    // declared apiKeyField.  Prevents stale ANTHROPIC_API_KEY values
+    // from persisting across edits and surfacing during route toggles.
+    normalize_provider_key_field(&mut provider);
     match state.db.save_provider(APP_TYPE, &provider) {
         Ok(()) => {
             log::info!("[Providers] save_provider success id={}", provider.id);
@@ -114,7 +118,7 @@ pub async fn save_provider(
 pub async fn update_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(provider): Json<Provider>,
+    Json(mut provider): Json<Provider>,
 ) -> impl IntoResponse {
     log::info!(
         "[Providers] update_provider requested path_id={} payload_id={}",
@@ -128,6 +132,7 @@ pub async fn update_provider(
         )
             .into_response();
     }
+    normalize_provider_key_field(&mut provider);
     match state.db.save_provider(APP_TYPE, &provider) {
         Ok(()) => {
             log::info!("[Providers] update_provider success id={}", provider.id);
@@ -149,6 +154,20 @@ pub async fn delete_provider(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     log::info!("[Providers] delete_provider requested id={}", id);
+
+    // Clear stale references before deleting so the deleted provider
+    // doesn't leave dangling current/target pointers.
+    if let Ok(Some(current_id)) = state.db.get_current_provider_id(APP_TYPE) {
+        if current_id == id {
+            let _ = state.db.set_current_provider("", APP_TYPE);
+        }
+    }
+    if let Ok(Some(target_id)) = state.db.get_proxy_target_provider_id() {
+        if target_id == id {
+            let _ = state.db.set_proxy_target_provider_id("");
+        }
+    }
+
     match state.db.delete_provider(&id, APP_TYPE) {
         Ok(()) => {
             log::info!("[Providers] delete_provider success id={}", id);
@@ -304,7 +323,7 @@ pub async fn switch_provider(
 
         // (d) Write live config (with sanitize, optional proxy routing)
         let use_proxy = proxy_running;
-        let live_settings = settings_for_live(&provider, state.proxy_listen_port, use_proxy);
+        let live_settings = live::settings_for_live(&provider, state.proxy_listen_port, use_proxy);
         if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -334,143 +353,37 @@ pub async fn switch_provider(
     .into_response()
 }
 
-pub(crate) fn settings_for_live(provider: &Provider, proxy_port: u16, use_proxy: bool) -> Value {
-    let mut settings = provider.settings_config.clone();
+/// Normalise the provider's `settings_config.env` so the API key lives in the
+/// field declared by `meta.apiKeyField`.  If the wrong field has a value and
+/// the correct field is empty, the value is migrated.
+fn normalize_provider_key_field(provider: &mut Provider) {
+    let declared = provider
+        .meta
+        .get("apiKeyField")
+        .and_then(Value::as_str)
+        .unwrap_or("ANTHROPIC_AUTH_TOKEN");
+    let (keep, drop) = if declared == "ANTHROPIC_API_KEY" {
+        ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+    } else {
+        ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
+    };
 
-    if !settings.is_object() {
-        settings = json!({});
-    }
-    let root = settings
-        .as_object_mut()
-        .expect("settings should be normalized to object");
-    let env = root.entry("env".to_string()).or_insert_with(|| json!({}));
-    if !env.is_object() {
-        *env = json!({});
-    }
-    let env = env
-        .as_object_mut()
-        .expect("settings env should be normalized to object");
+    let env = provider
+        .settings_config
+        .get_mut("env")
+        .and_then(|v| v.as_object_mut());
+    let Some(env) = env else { return };
 
-    if use_proxy {
-        if is_codex_oauth_provider(provider) || is_copilot_oauth_provider(provider) {
-            // OAuth Provider: 写入代理地址，token 由代理注入
-            env.insert(
-                "ANTHROPIC_BASE_URL".to_string(),
-                json!(format!("http://127.0.0.1:{}", proxy_port)),
-            );
-            env.insert(
-                "ANTHROPIC_AUTH_TOKEN".to_string(),
-                json!(PROXY_TOKEN_PLACEHOLDER),
-            );
-            env.remove("ANTHROPIC_API_KEY");
-        } else {
-            // Direct Provider: 也写入代理地址，原样转发 API Key
-            env.insert(
-                "ANTHROPIC_BASE_URL".to_string(),
-                json!(format!("http://127.0.0.1:{}", proxy_port)),
-            );
-            // 保留原有的 API Key，代理会原样转发
-            if env
-                .get("ANTHROPIC_AUTH_TOKEN")
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.is_empty())
-            {
-                env.remove("ANTHROPIC_API_KEY");
-            } else if env
-                .get("ANTHROPIC_API_KEY")
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.is_empty())
-            {
-                env.remove("ANTHROPIC_AUTH_TOKEN");
+    let preferred_empty = env
+        .get(keep)
+        .and_then(Value::as_str)
+        .map_or(true, |s| s.is_empty());
+    if preferred_empty {
+        if let Some(other_val) = env.get(drop).and_then(Value::as_str) {
+            if !other_val.is_empty() {
+                env.insert(keep.to_string(), json!(other_val));
             }
         }
     }
-    settings
-}
-
-fn is_codex_oauth_provider(provider: &Provider) -> bool {
-    provider.meta.get("providerType").and_then(Value::as_str) == Some("codex_oauth")
-}
-
-fn is_copilot_oauth_provider(provider: &Provider) -> bool {
-    provider
-        .meta
-        .get("providerType")
-        .and_then(Value::as_str)
-        .map(|t| t.contains("copilot"))
-        .unwrap_or(false)
-        || provider.id.contains("copilot")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn provider_with_env(env: serde_json::Value) -> Provider {
-        Provider {
-            id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            settings_config: json!({ "env": env }),
-            website_url: None,
-            category: None,
-            created_at: None,
-            sort_index: None,
-            notes: None,
-            icon: None,
-            icon_color: None,
-            meta: json!({ "providerType": "minimax" }),
-            in_failover_queue: false,
-        }
-    }
-
-    #[test]
-    fn proxy_mode_rewrites_base_url_to_local_proxy() {
-        let provider = provider_with_env(json!({
-            "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/v1",
-            "ANTHROPIC_AUTH_TOKEN": "real-token"
-        }));
-
-        let settings = settings_for_live(&provider, 15721, true);
-        let env = settings
-            .get("env")
-            .and_then(|value| value.as_object())
-            .unwrap();
-
-        assert_eq!(
-            env.get("ANTHROPIC_BASE_URL")
-                .and_then(|value| value.as_str()),
-            Some("http://127.0.0.1:15721")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN")
-                .and_then(|value| value.as_str()),
-            Some("real-token")
-        );
-    }
-
-    #[test]
-    fn restore_mode_preserves_direct_provider_settings() {
-        let provider = provider_with_env(json!({
-            "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/v1",
-            "ANTHROPIC_AUTH_TOKEN": "real-token"
-        }));
-
-        let settings = settings_for_live(&provider, 15721, false);
-        let env = settings
-            .get("env")
-            .and_then(|value| value.as_object())
-            .unwrap();
-
-        assert_eq!(
-            env.get("ANTHROPIC_BASE_URL")
-                .and_then(|value| value.as_str()),
-            Some("https://api.minimaxi.com/v1")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN")
-                .and_then(|value| value.as_str()),
-            Some("real-token")
-        );
-    }
+    env.remove(drop);
 }

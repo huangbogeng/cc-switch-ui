@@ -73,11 +73,16 @@ pub trait ProviderAdapter: Send + Sync {
         }
     }
 
-    /// Transform outgoing request (optional - passthrough by default)
+    /// Transform outgoing request (passthrough by default, appends request path).
     fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
+        let url = if input.upstream_url.ends_with('/') {
+            format!("{}{}", input.upstream_url.trim_end_matches('/'), input.path)
+        } else {
+            format!("{}{}", input.upstream_url, input.path)
+        };
         Ok(TransformOutput {
             body: input.body,
-            upstream_url: input.upstream_url,
+            upstream_url: url,
             headers: vec![],
             method: "POST".to_string(),
         })
@@ -115,11 +120,24 @@ pub trait ProviderAdapter: Send + Sync {
             .map(str::to_string)
     }
 
-    /// Get upstream URL from provider settings
+    /// Get upstream URL from provider settings.
+    ///
+    /// Checks `settings_config.baseUrl` first, then falls back to
+    /// `settings_config.env.ANTHROPIC_BASE_URL` (the canonical location
+    /// used by the provider form and seed data).
     fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {
-        provider
+        let from_base_url = provider
             .settings_config
             .get("baseUrl")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty());
+        if let Some(url) = from_base_url {
+            return Some(url.to_string());
+        }
+        provider
+            .settings_config
+            .get("env")
+            .and_then(|v| v.get("ANTHROPIC_BASE_URL"))
             .and_then(|v| v.as_str())
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string)

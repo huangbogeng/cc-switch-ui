@@ -43,6 +43,7 @@ mod tests {
                 "stream": true
             }),
             upstream_url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
+            path: "/responses".to_string(),
             prompt_cache_key: Some("k1".to_string()),
             requested_stream: true,
             codex_fast_mode: false,
