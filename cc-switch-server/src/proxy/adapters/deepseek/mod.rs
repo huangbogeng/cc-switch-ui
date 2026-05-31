@@ -82,21 +82,4 @@ impl ProviderAdapter for DeepSeekAdapter {
         StreamingResponseFormat::OpenAIChat
     }
 
-    fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {
-        provider
-            .settings_config
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string)
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("env")
-                    .and_then(|v| v.get("ANTHROPIC_BASE_URL"))
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.trim().is_empty())
-                    .map(str::to_string)
-            })
-    }
 }

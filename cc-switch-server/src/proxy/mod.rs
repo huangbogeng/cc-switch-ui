@@ -11,7 +11,6 @@ pub mod responses_aggregate;
 pub mod server;
 pub mod session;
 pub mod streaming;
-pub mod streaming_responses;
 pub mod transform_responses;
 pub mod types;
 

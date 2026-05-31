@@ -4,6 +4,10 @@
 //! - Database persistence
 //! - OAuth authentication
 
+/// Default application type used across the workspace.
+/// Mirrors `providers::AppType::ClaudeCode.as_str()`.
+pub const DEFAULT_APP_TYPE: &str = "claude_code";
+
 pub mod app_store;
 pub mod config;
 pub mod database;

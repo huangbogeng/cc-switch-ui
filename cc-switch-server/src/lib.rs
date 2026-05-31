@@ -265,6 +265,11 @@ async fn auth_middleware(
 
 pub async fn run_server(config: ServerConfig) -> Result<(), String> {
     let db = Database::init().map_err(|e| format!("failed to initialize database: {e}"))?;
+
+    // Seed default providers and import live config on first run (idempotent).
+    // NOTE: disabled — users prefer to add providers manually via the UI.
+    // db.initialize_providers_on_startup("claude_code");
+
     let codex_oauth = CodexOAuthManager::new(config.config_dir.clone());
     let copilot_oauth = CopilotAuthManager::new(config.config_dir.clone());
 

@@ -81,12 +81,4 @@ impl ProviderAdapter for OpenRouterAdapter {
         response::transform(body, is_streaming)
     }
 
-    fn extract_upstream_url(&self, provider: &Provider) -> Option<String> {
-        provider
-            .settings_config
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string)
-    }
 }

@@ -316,6 +316,31 @@ export function ProviderFormDialog({
                 />
                 Disable Claude Code nonessential traffic
               </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="subagent-model">Subagent Model</Label>
+                  <Input
+                    id="subagent-model"
+                    value={formData.subagentModel}
+                    onChange={(e) => setFormData({ ...formData, subagentModel: e.target.value })}
+                    placeholder="CLAUDE_CODE_SUBAGENT_MODEL"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="effort-level">Effort Level</Label>
+                  <Select
+                    id="effort-level"
+                    value={formData.effortLevel}
+                    onChange={(e) => setFormData({ ...formData, effortLevel: e.target.value })}
+                  >
+                    <option value="">(default)</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="max">max</option>
+                  </Select>
+                </div>
+              </div>
               </div>
             </details>
 

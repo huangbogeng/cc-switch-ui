@@ -75,3 +75,31 @@ impl ProxyStatus {
         Self::default()
     }
 }
+
+/// Shared state for an active proxy provider candidate.
+#[derive(Clone)]
+pub struct ProxyState {
+    pub adapter: std::sync::Arc<dyn cc_switch_lib::providers::ProviderAdapter>,
+    pub account_id: Option<String>,
+    pub provider: cc_switch_lib::database::Provider,
+    pub db: std::sync::Arc<cc_switch_lib::database::Database>,
+    pub provider_id: String,
+}
+
+impl ProxyState {
+    pub fn new(
+        adapter: std::sync::Arc<dyn cc_switch_lib::providers::ProviderAdapter>,
+        account_id: Option<String>,
+        provider: cc_switch_lib::database::Provider,
+        db: std::sync::Arc<cc_switch_lib::database::Database>,
+        provider_id: String,
+    ) -> Self {
+        Self {
+            adapter,
+            account_id,
+            provider,
+            db,
+            provider_id,
+        }
+    }
+}

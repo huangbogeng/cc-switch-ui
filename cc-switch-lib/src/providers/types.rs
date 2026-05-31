@@ -64,6 +64,10 @@ impl AuthInfo {
 pub struct TransformInput {
     pub body: serde_json::Value,
     pub upstream_url: String,
+    /// Incoming request path (e.g. `/v1/messages`). Passthrough adapters
+    /// append this to the upstream URL; format-converting adapters replace
+    /// it with their own endpoint path.
+    pub path: String,
     pub prompt_cache_key: Option<String>,
     pub requested_stream: bool,
     pub codex_fast_mode: bool,

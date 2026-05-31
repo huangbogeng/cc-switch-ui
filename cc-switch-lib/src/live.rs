@@ -43,26 +43,25 @@ fn read_live_settings_raw() -> Result<Value, AppError> {
 
 /// Check whether the live config is currently pointing at the local proxy.
 ///
-/// Returns `true` if the live config has `ANTHROPIC_AUTH_TOKEN = "PROXY_MANAGED"`
-/// and `ANTHROPIC_BASE_URL` points to `127.0.0.1` — meaning the proxy has taken
-/// over and is responsible for routing API requests.
+/// Returns `true` if `ANTHROPIC_BASE_URL` points to `127.0.0.1` — meaning
+/// the proxy has taken over and is responsible for routing API requests.
 ///
-/// Checks inside the `env` object where provider settings are stored.
+/// Previously required `ANTHROPIC_AUTH_TOKEN == "PROXY_MANAGED"` as well, but
+/// that only holds for OAuth providers (Codex/Copilot). Direct API-key providers
+/// (DeepSeek, MiniMax, etc.) keep their real key in the live config so the
+/// proxy can forward it. Checking the base URL alone correctly detects takeover
+/// for both provider types.
 pub fn detect_takeover_in_live_config() -> bool {
     let settings = match read_live_settings_raw() {
         Ok(v) => v,
         Err(_) => return false,
     };
     let env = settings.get("env").and_then(Value::as_object);
-    let auth_token = env
-        .and_then(|e| e.get("ANTHROPIC_AUTH_TOKEN"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
     let base_url = env
         .and_then(|e| e.get("ANTHROPIC_BASE_URL"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    auth_token == "PROXY_MANAGED" && base_url.starts_with("http://127.0.0.1:")
+    base_url.starts_with("http://127.0.0.1:")
 }
 
 /// Read current live settings and sanitize them for backfill storage.
@@ -78,8 +77,77 @@ pub fn backfill_current_live_config() -> Result<Value, AppError> {
     Ok(sanitize_claude_settings_for_live(&live_settings))
 }
 
+/// Placeholder auth token written to the live config during proxy takeover.
+/// The real credential is stored in the database, and the proxy injects it
+/// during forwarding. The placeholder signals "managed by proxy" to any
+/// tooling that inspects the live config.
+pub const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+/// Stable Claude role aliases written to the live config during proxy
+/// takeover — mirrors upstream cc-switch.  Claude Code recognizes these
+/// names and the proxy maps them to the real provider model on the fly.
+pub const CLAUDE_TAKEOVER_HAIKU: &str = "claude-haiku-4-5";
+pub const CLAUDE_TAKEOVER_SONNET: &str = "claude-sonnet-4-6";
+pub const CLAUDE_TAKEOVER_OPUS: &str = "claude-opus-4-8";
+
+/// Build the sanitized live-settings payload for a provider.
+///
+/// When `use_proxy` is true the env is rewritten to route all Claude Code
+/// requests through the local proxy (matching upstream cc-switch behaviour).
+/// Otherwise the provider's settings_config is passed through as-is.
+pub fn settings_for_live(
+    provider: &crate::database::Provider,
+    proxy_port: u16,
+    use_proxy: bool,
+) -> Value {
+    let mut settings = provider.settings_config.clone();
+
+    if !settings.is_object() {
+        settings = serde_json::json!({});
+    }
+    let root = settings
+        .as_object_mut()
+        .expect("settings should be normalized to object");
+    let env = root
+        .entry("env".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !env.is_object() {
+        *env = serde_json::json!({});
+    }
+    let env = env
+        .as_object_mut()
+        .expect("settings env should be normalized to object");
+
+    if use_proxy {
+        env.clear();
+        env.insert(
+            "ANTHROPIC_BASE_URL".to_string(),
+            serde_json::json!(format!("http://127.0.0.1:{}", proxy_port)),
+        );
+        env.insert(
+            "ANTHROPIC_AUTH_TOKEN".to_string(),
+            serde_json::json!(PROXY_TOKEN_PLACEHOLDER),
+        );
+        env.insert(
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(),
+            serde_json::json!(CLAUDE_TAKEOVER_HAIKU),
+        );
+        env.insert(
+            "ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(),
+            serde_json::json!(CLAUDE_TAKEOVER_SONNET),
+        );
+        env.insert(
+            "ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(),
+            serde_json::json!(CLAUDE_TAKEOVER_OPUS),
+        );
+    }
+
+    settings
+}
+
 /// Write Claude settings to disk (atomic write)
 fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
+
     let path = get_claude_settings_path();
     write_json_file(&path, settings)
 }
@@ -271,5 +339,89 @@ mod tests {
         assert_eq!(live.pointer("/env/ANTHROPIC_AUTH_TOKEN"), None);
 
         cleanup(test_home);
+    }
+
+    fn provider_with_env(env: serde_json::Value) -> crate::database::Provider {
+        crate::database::Provider {
+            id: "minimax".to_string(),
+            name: "MiniMax".to_string(),
+            settings_config: json!({ "env": env }),
+            website_url: None,
+            category: None,
+            created_at: None,
+            sort_index: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            meta: json!({ "providerType": "minimax" }),
+            in_failover_queue: false,
+        }
+    }
+
+    #[test]
+    fn proxy_mode_writes_minimal_takeover_env() {
+        let provider = provider_with_env(json!({
+            "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/v1",
+            "ANTHROPIC_AUTH_TOKEN": "real-token",
+            "API_TIMEOUT_MS": "3000000"
+        }));
+
+        let settings = settings_for_live(&provider, 15721, true);
+        let env = settings
+            .get("env")
+            .and_then(|value| value.as_object())
+            .unwrap();
+
+        assert_eq!(env.len(), 5, "takeover env must have exactly 5 keys");
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()),
+            Some("http://127.0.0.1:15721")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str()),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(|v| v.as_str()),
+            Some("claude-haiku-4-5")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(|v| v.as_str()),
+            Some("claude-sonnet-4-6")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                .and_then(|v| v.as_str()),
+            Some("claude-opus-4-8")
+        );
+        assert_eq!(env.get("API_TIMEOUT_MS"), None);
+        assert_eq!(env.get("ANTHROPIC_MODEL"), None);
+    }
+
+    #[test]
+    fn restore_mode_preserves_direct_provider_settings() {
+        let provider = provider_with_env(json!({
+            "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/v1",
+            "ANTHROPIC_AUTH_TOKEN": "real-token"
+        }));
+
+        let settings = settings_for_live(&provider, 15721, false);
+        let env = settings
+            .get("env")
+            .and_then(|value| value.as_object())
+            .unwrap();
+
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL")
+                .and_then(|value| value.as_str()),
+            Some("https://api.minimaxi.com/v1")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN")
+                .and_then(|value| value.as_str()),
+            Some("real-token")
+        );
     }
 }
