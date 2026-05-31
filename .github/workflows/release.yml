@@ -43,6 +43,23 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set release version from tag
+        shell: bash
+        run: |
+          # Strip 'v' prefix: v0.1.8 → 0.1.8
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Release version: $VERSION"
+
+          # Update Rust workspace version
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+
+          # Update frontend version
+          cd cc-switch-ui
+          npm version --no-git-tag-version "$VERSION"
+          cd ..
+
+          echo "✅ Version synced: Cargo.toml + package.json → $VERSION"
+
       - name: Setup Node.js (for frontend build)
         uses: actions/setup-node@v4
         with:
