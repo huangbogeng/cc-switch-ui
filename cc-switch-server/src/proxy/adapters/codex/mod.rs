@@ -4,14 +4,14 @@
 //! and extracts usage from OpenAI-format responses.
 
 mod request;
-mod response;
+pub(crate) mod response;
 
 use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, StreamingResponseFormat,
-    TransformInput, TransformOutput, UsageParseResult,
+    resolve_managed_account_id, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter,
+    ProviderError, StreamingResponseFormat, TransformInput, TransformOutput, UsageParseResult,
 };
 use std::sync::Arc;
 
@@ -37,12 +37,8 @@ impl ProviderAdapter for CodexAdapter {
         account_id: Option<&str>,
     ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
         let codex_oauth = self.codex_oauth.clone();
-        let resolved_account_id = provider
-            .meta
-            .get("authBinding")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
-            .or(account_id.map(str::to_string));
+        let resolved_account_id =
+            resolve_managed_account_id(provider).or(account_id.map(str::to_string));
 
         Box::pin(async move {
             let token = match resolved_account_id.as_deref() {

@@ -10,7 +10,6 @@ use axum::{
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::live;
 use cc_switch_lib::providers::AppType;
-use serde_json::{json, Value};
 use std::sync::Arc;
 
 const APP_TYPE: &str = cc_switch_lib::DEFAULT_APP_TYPE;
@@ -98,7 +97,7 @@ pub async fn save_provider(
     // Normalise the key field so the DB record always matches the
     // declared apiKeyField.  Prevents stale ANTHROPIC_API_KEY values
     // from persisting across edits and surfacing during route toggles.
-    normalize_provider_key_field(&mut provider);
+    cc_switch_lib::providers::normalize_provider_schema(&mut provider);
     match state.db.save_provider(APP_TYPE, &provider) {
         Ok(()) => {
             log::info!("[Providers] save_provider success id={}", provider.id);
@@ -132,7 +131,7 @@ pub async fn update_provider(
         )
             .into_response();
     }
-    normalize_provider_key_field(&mut provider);
+    cc_switch_lib::providers::normalize_provider_schema(&mut provider);
     match state.db.save_provider(APP_TYPE, &provider) {
         Ok(()) => {
             log::info!("[Providers] update_provider success id={}", provider.id);
@@ -222,46 +221,21 @@ pub async fn switch_provider(
         }
     };
 
-    let should_hot_switch = (backup.is_some() || live_taken_over) && proxy_running;
+    let takeover_active = (backup.is_some() || live_taken_over) && proxy_running;
     let mut warnings: Vec<String> = Vec::new();
 
-    if should_hot_switch {
-        // Path A: Hot-switch (proxy takeover mode)
+    // Always update current-provider state. During route takeover we intentionally
+    // avoid changing route target or rewriting live config; those belong to the
+    // explicit route-target and route-lifecycle actions.
+    if takeover_active {
         log::info!(
-            "[Providers] switch_provider id={} path=hot_switch",
+            "[Providers] switch_provider id={} path=takeover_select_only",
             id
         );
-
-        // Block switching to official providers
-        let provider_type = provider
-            .meta
-            .get("providerType")
-            .and_then(Value::as_str);
-        if provider_type == Some("official") || provider_type == Some("Official") {
-            return (
-                StatusCode::FORBIDDEN,
-                Json(serde_json::json!({
-                    "error": "Cannot switch to official provider while proxy takeover is active"
-                })),
-            )
-                .into_response();
-        }
-
-        // Just update the proxy target — live config already points at proxy
-        let guard = state.proxy_server.read().await;
-        if let Some(proxy) = guard.as_ref() {
-            if let Err(e) = proxy.hot_switch_provider(&state.db, &id).await {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                )
-                    .into_response();
-            }
-        }
     } else {
-        // Path B: Normal switch (with backfill)
+        // Direct-live path: backfill current live settings, then apply selected provider.
         log::info!(
-            "[Providers] switch_provider id={} path=normal",
+            "[Providers] switch_provider id={} path=direct_live",
             id
         );
 
@@ -303,27 +277,8 @@ pub async fn switch_provider(
             }
         }
 
-        // (b) Set device-level current provider
-        if let Err(e) =
-            cc_switch_lib::settings::set_current_provider(&app_type_enum, Some(&id))
-        {
-            warnings.push(format!("Failed to save device setting: {}", e));
-        }
-
-        // (c) Set DB is_current
-        if let Err(e) = state.db.set_current_provider(&id, app_type) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": format!("Failed to set current provider: {}", e)
-                })),
-            )
-                .into_response();
-        }
-
-        // (d) Write live config (with sanitize, optional proxy routing)
-        let use_proxy = proxy_running;
-        let live_settings = live::settings_for_live(&provider, state.proxy_listen_port, use_proxy);
+        // (b) Write direct live config only when route takeover is inactive.
+        let live_settings = live::settings_for_live(&provider, state.proxy_listen_port, false);
         if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -333,11 +288,20 @@ pub async fn switch_provider(
             )
                 .into_response();
         }
+    }
 
-        // (e) Update proxy target DB record
-        if let Err(e) = state.db.set_proxy_target_provider_id(&id) {
-            warnings.push(format!("Failed to update proxy target: {}", e));
-        }
+    let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
+    if let Err(e) = cc_switch_lib::settings::set_current_provider(&app_type_enum, Some(&id)) {
+        warnings.push(format!("Failed to save device setting: {}", e));
+    }
+    if let Err(e) = state.db.set_current_provider(&id, app_type) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to set current provider: {}", e)
+            })),
+        )
+            .into_response();
     }
 
     log::info!(
@@ -351,39 +315,4 @@ pub async fn switch_provider(
         "warnings": warnings
     }))
     .into_response()
-}
-
-/// Normalise the provider's `settings_config.env` so the API key lives in the
-/// field declared by `meta.apiKeyField`.  If the wrong field has a value and
-/// the correct field is empty, the value is migrated.
-fn normalize_provider_key_field(provider: &mut Provider) {
-    let declared = provider
-        .meta
-        .get("apiKeyField")
-        .and_then(Value::as_str)
-        .unwrap_or("ANTHROPIC_AUTH_TOKEN");
-    let (keep, drop) = if declared == "ANTHROPIC_API_KEY" {
-        ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-    } else {
-        ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
-    };
-
-    let env = provider
-        .settings_config
-        .get_mut("env")
-        .and_then(|v| v.as_object_mut());
-    let Some(env) = env else { return };
-
-    let preferred_empty = env
-        .get(keep)
-        .and_then(Value::as_str)
-        .map_or(true, |s| s.is_empty());
-    if preferred_empty {
-        if let Some(other_val) = env.get(drop).and_then(Value::as_str) {
-            if !other_val.is_empty() {
-                env.insert(keep.to_string(), json!(other_val));
-            }
-        }
-    }
-    env.remove(drop);
 }

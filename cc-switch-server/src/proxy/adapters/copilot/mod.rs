@@ -8,8 +8,8 @@ use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::oauth::CopilotAuthManager;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
-    TransformOutput, UsageParseResult,
+    resolve_managed_account_id, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter,
+    ProviderError, TransformInput, TransformOutput, UsageParseResult,
 };
 use std::sync::Arc;
 
@@ -45,12 +45,7 @@ impl ProviderAdapter for CopilotAdapter {
         account_id: Option<&str>,
     ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
         let copilot_auth = self.copilot_auth.clone();
-        let provider_account_id = provider
-            .meta
-            .get("authBinding")
-            .and_then(|v| v.get("accountId"))
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
+        let provider_account_id = resolve_managed_account_id(provider);
 
         // Use provider's account_id if available, otherwise use the passed account_id
         let effective_account_id = provider_account_id.or_else(|| account_id.map(str::to_string));

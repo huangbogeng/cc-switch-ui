@@ -8,8 +8,8 @@ mod response;
 use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
-    TransformOutput, UsageParseResult,
+    provider_allows_empty_api_key, resolve_provider_api_key, AuthInfo, AuthStrategy, BoxFuture,
+    ProviderAdapter, ProviderError, TransformInput, TransformOutput, UsageParseResult,
 };
 
 /// Adapter for Claude API (x-api-key auth, Anthropic format)
@@ -37,23 +37,17 @@ impl ProviderAdapter for ClaudeAdapter {
         provider: &Provider,
         _account_id: Option<&str>,
     ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
-        let token_result = provider
-            .settings_config
-            .get("apiKey")
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("api_key")
-                    .and_then(|v| v.as_str())
-            })
-            .map(str::to_string);
+        let token_result = resolve_provider_api_key(provider);
+        let allow_empty_auth = provider_allows_empty_api_key(provider);
 
         Box::pin(async move {
-            let token = token_result.ok_or_else(|| {
-                ProviderError::AuthFailed("No API key found in provider config".into())
-            })?;
-            Ok(AuthInfo::new(token, AuthStrategy::Anthropic))
+            match token_result {
+                Some(token) => Ok(AuthInfo::new(token, AuthStrategy::Anthropic)),
+                None if allow_empty_auth => Ok(AuthInfo::new(String::new(), AuthStrategy::None)),
+                None => Err(ProviderError::AuthFailed(
+                    "No API key found in provider config".into(),
+                )),
+            }
         })
     }
 
