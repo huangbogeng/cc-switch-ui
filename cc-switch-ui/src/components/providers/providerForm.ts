@@ -87,6 +87,8 @@ export function formFromProvider(provider: Provider): ProviderFormData {
   const meta = providerMeta(provider);
   const authMode = meta.authMode === 'oauth_proxy' || meta.providerType === 'codex_oauth' ? 'oauth_proxy' : 'api_key';
   const apiKeyField = meta.apiKeyField || findApiKeyField(env);
+  const fallbackApiKeyField: ApiKeyField =
+    apiKeyField === 'ANTHROPIC_AUTH_TOKEN' ? 'ANTHROPIC_API_KEY' : 'ANTHROPIC_AUTH_TOKEN';
   const model = env.ANTHROPIC_MODEL || '';
 
   return {
@@ -96,7 +98,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     websiteUrl: provider.websiteUrl || '',
     baseUrl: env.ANTHROPIC_BASE_URL || '',
     notes: provider.notes || '',
-    apiKey: env[apiKeyField] || '',
+    apiKey: env[apiKeyField] || env[fallbackApiKeyField] || '',
     apiKeyField,
     apiFormat: meta.apiFormat || 'anthropic',
     isFullUrl: meta.isFullUrl || false,
@@ -212,9 +214,11 @@ function providerMeta(provider: Provider): {
 }
 
 function findApiKeyField(_env: Record<string, string>): ApiKeyField {
-  // Default to AUTH_TOKEN — the canonical field for Anthropic-compatible
-  // providers. Providers that need API_KEY (e.g. Gemini) set apiKeyField
-  // explicitly in their preset / meta.
+  // Respect existing persisted shape first to avoid flipping field selection
+  // during edit/save cycles on legacy providers without meta.apiKeyField.
+  if (Object.prototype.hasOwnProperty.call(_env, 'ANTHROPIC_API_KEY')) {
+    return 'ANTHROPIC_API_KEY';
+  }
   return 'ANTHROPIC_AUTH_TOKEN';
 }
 

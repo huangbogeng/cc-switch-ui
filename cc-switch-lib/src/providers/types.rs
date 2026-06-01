@@ -6,6 +6,8 @@ use bytes::Bytes;
 /// Authentication strategy used to build upstream request headers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthStrategy {
+    /// No authentication headers.
+    None,
     /// Anthropic-compatible API key: `x-api-key: <secret>`.
     Anthropic,
     /// Bearer token for Claude relay services.

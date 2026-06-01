@@ -221,8 +221,51 @@ export interface Provider {
   inFailoverQueue: boolean;
 }
 
+export interface FetchedModel {
+  id: string;
+  ownedBy?: string | null;
+}
+
+export type DetectedApiFormat = 'anthropic' | 'openai_chat' | 'openai_responses';
+
+export interface EndpointProbeResult {
+  apiFormat: DetectedApiFormat;
+  url: string;
+  statusCode?: number | null;
+  supported: boolean;
+  error?: string | null;
+}
+
+export interface EndpointDetectionResult {
+  recommendedApiFormat?: DetectedApiFormat | null;
+  probes: EndpointProbeResult[];
+}
+
 export async function listProviders(options?: RequestInit) {
   return api<{ providers: Record<string, Provider> }>('/providers', options);
+}
+
+export async function fetchProviderModels(payload: {
+  baseUrl: string;
+  apiKey: string;
+  isFullUrl?: boolean;
+  modelsUrl?: string;
+}) {
+  return api<{ models: FetchedModel[] }>('/providers/fetch-models', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function detectProviderEndpointType(payload: {
+  baseUrl: string;
+  apiKey: string;
+  isFullUrl?: boolean;
+}) {
+  return api<EndpointDetectionResult>('/providers/detect-endpoint-type', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getProvider(id: string) {

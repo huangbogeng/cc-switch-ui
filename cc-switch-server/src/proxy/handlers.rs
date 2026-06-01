@@ -56,8 +56,10 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     if registry.find_for_provider(&target_provider).is_none() {
         return Json(serde_json::json!({
             "success": false,
-            "error": format!("The provider type '{}' is not supported by the local route.",
-                target_provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("unknown"))
+            "error": format!("The provider '{}' (type: '{}', format: '{}') cannot be routed. Check that the provider has a valid API format configured.",
+                target_provider.name,
+                target_provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("not set"),
+                target_provider.meta.get("apiFormat").and_then(|v| v.as_str()).unwrap_or("not set"))
         }))
         .into_response();
     }
@@ -256,6 +258,38 @@ pub async fn proxy_set_target(
         .into_response();
     }
 
+    let proxy_running = {
+        let guard = state.proxy_server.read().await;
+        match guard.as_ref() {
+            Some(server) => server.is_running().await,
+            None => false,
+        }
+    };
+
+    if proxy_running {
+        let guard = state.proxy_server.read().await;
+        if let Some(proxy) = guard.as_ref() {
+            match proxy.hot_switch_provider(&state.db, &payload.provider_id).await {
+                Ok(()) => {
+                    log::info!(
+                        "[ProxyAPI] proxy_set_target hot-switch success provider_id={}",
+                        payload.provider_id
+                    );
+                    return Json(serde_json::json!({"success": true})).into_response();
+                }
+                Err(e) => {
+                    log::error!(
+                        "[ProxyAPI] proxy_set_target hot-switch failed provider_id={} error={}",
+                        payload.provider_id,
+                        e
+                    );
+                    return Json(serde_json::json!({"success": false, "error": e.to_string()}))
+                        .into_response();
+                }
+            }
+        }
+    }
+
     match state.db.set_proxy_target_provider_id(&payload.provider_id) {
         Ok(()) => {
             log::info!(
@@ -289,12 +323,7 @@ fn get_active_target_provider(
 }
 
 pub(crate) fn provider_codex_account_id(provider: &Provider) -> Option<String> {
-    provider
-        .meta
-        .get("authBinding")
-        .and_then(|value| value.get("accountId"))
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string())
+    cc_switch_lib::providers::resolve_managed_account_id(provider)
 }
 
 fn provider_prompt_cache_key(provider: &Provider) -> Option<String> {

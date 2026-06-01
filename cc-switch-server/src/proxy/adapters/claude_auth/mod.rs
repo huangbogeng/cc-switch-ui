@@ -7,8 +7,8 @@ mod response;
 use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::providers::{
-    AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError, TransformInput,
-    TransformOutput, UsageParseResult,
+    resolve_provider_api_key, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError,
+    TransformInput, TransformOutput, UsageParseResult,
 };
 
 /// Adapter for Claude Auth relay (Bearer token auth, Anthropic format)
@@ -36,17 +36,7 @@ impl ProviderAdapter for ClaudeAuthAdapter {
         provider: &Provider,
         _account_id: Option<&str>,
     ) -> BoxFuture<'_, Result<AuthInfo, ProviderError>> {
-        let token_result = provider
-            .settings_config
-            .get("token")
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("apiKey")
-                    .and_then(|v| v.as_str())
-            })
-            .map(str::to_string);
+        let token_result = resolve_provider_api_key(provider);
 
         Box::pin(async move {
             let token = token_result.ok_or_else(|| {

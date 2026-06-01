@@ -36,6 +36,7 @@ pub trait ProviderAdapter: Send + Sync {
     ) -> Result<Vec<(HeaderName, HeaderValue)>, ProviderError> {
         let bearer = format!("Bearer {}", auth.secret);
         match auth.strategy {
+            AuthStrategy::None => Ok(vec![]),
             AuthStrategy::Anthropic => Ok(vec![header("x-api-key", &auth.secret)?]),
             AuthStrategy::ClaudeAuth | AuthStrategy::Bearer => {
                 Ok(vec![header("authorization", &bearer)?])
@@ -201,6 +202,12 @@ mod tests {
             headers,
             vec![("x-api-key".to_string(), "sk-ant".to_string())]
         );
+    }
+
+    #[test]
+    fn no_auth_uses_no_headers() {
+        let headers = header_pairs(AuthInfo::new(String::new(), AuthStrategy::None));
+        assert!(headers.is_empty());
     }
 
     #[test]

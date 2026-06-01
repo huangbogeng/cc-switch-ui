@@ -26,6 +26,7 @@ mod deepseek;
 mod gemini;
 mod minimax;
 mod openrouter;
+mod responses;
 mod siliconflow;
 
 pub use claude::ClaudeAdapter;
@@ -36,6 +37,7 @@ pub use deepseek::DeepSeekAdapter;
 pub use gemini::GeminiAdapter;
 pub use minimax::MiniMaxAdapter;
 pub use openrouter::OpenRouterAdapter;
+pub use responses::ResponsesAdapter;
 pub use siliconflow::SiliconFlowAdapter;
 
 use cc_switch_lib::oauth::{CodexOAuthManager, CopilotAuthManager};
@@ -58,6 +60,7 @@ pub fn create_registry(
     registry.register(Arc::new(SiliconFlowAdapter::new()));
     registry.register(Arc::new(DeepSeekAdapter::new()));
     registry.register(Arc::new(GeminiAdapter::new()));
+    registry.register(Arc::new(ResponsesAdapter::new()));
     registry.register(Arc::new(CopilotAdapter::new(copilot_auth)));
 
     registry

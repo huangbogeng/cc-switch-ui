@@ -28,7 +28,7 @@ use cc_switch_lib::database::Database;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::oauth::copilot::CopilotAuthManager;
 
-use handlers::{auth, copilot_oauth, mcp, oauth, providers, settings, skills, usage};
+use handlers::{auth, copilot_oauth, mcp, model_fetch, oauth, providers, settings, skills, usage};
 use state::AppState;
 
 #[derive(Debug, Clone)]
@@ -344,6 +344,14 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/settings/proxy-port", put(settings::set_proxy_port))
         .route("/api/providers", get(providers::list_providers))
         .route("/api/providers", post(providers::save_provider))
+        .route(
+            "/api/providers/fetch-models",
+            post(model_fetch::fetch_models_for_config),
+        )
+        .route(
+            "/api/providers/detect-endpoint-type",
+            post(model_fetch::detect_endpoint_type),
+        )
         .route(
             "/api/providers/current",
             get(providers::get_current_provider),

@@ -15,6 +15,7 @@ import {
 } from '../api';
 import type { CodexAccount } from '../api';
 import type { ProviderPreset } from '@/config/providerPresets';
+import { LocalRoutePanel } from '@/components/providers/LocalRoutePanel';
 import { ProviderCard } from '@/components/providers/ProviderCard';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
 import {
@@ -158,13 +159,17 @@ export default function ProvidersPage() {
   const handleSwitch = async (id: string) => {
     try {
       await switchProvider(id);
-      await setProxyTarget(id);
       setCurrentProviderId(id);
       if (proxyStatus?.running) {
-        await stopProxy();
-        await startProxy();
-        await loadProxyStatus();
+        const shouldSwitchTarget = confirm(
+          'Local route takeover is active.\n\nAlso switch the active route target to this provider?'
+        );
+        if (shouldSwitchTarget) {
+          await setProxyTarget(id);
+        }
       }
+      await applyProviders();
+      await loadProxyStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Switch failed');
     }
@@ -215,8 +220,15 @@ export default function ProvidersPage() {
       if (!id || !name) {
         throw new Error('Provider ID and name are required.');
       }
-      if (formData.authMode !== 'oauth_proxy' && selectedPreset && !formData.apiKey.trim()) {
-        throw new Error(`${selectedPreset.name} requires an API key.`);
+      if (formData.authMode !== 'oauth_proxy' && !formData.apiKey.trim()) {
+        const providerName = selectedPreset?.name || name;
+        const shouldContinue = confirm(
+          `${providerName} is missing an API key.\n\nSave anyway? Switching or routing through this provider may fail until you add credentials.`
+        );
+        if (!shouldContinue) {
+          setSaving(false);
+          return;
+        }
       }
       await saveProvider(buildProvider(formData, selectedPreset));
       setShowForm(false);
@@ -232,7 +244,7 @@ export default function ProvidersPage() {
     <div>
       <PageHeader
         title="Providers"
-        description="Create, switch, and maintain Claude Code routes."
+        description="Manage provider configs. Local route control is separated below."
         action={
           <Button onClick={handleAdd}>
             <Plus className="h-4 w-4" />
@@ -251,6 +263,24 @@ export default function ProvidersPage() {
         <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-sm">
           {proxyError}
         </div>
+      )}
+
+      {!loading && providerList.length > 0 && (
+        <LocalRoutePanel
+          providers={providerList}
+          currentProviderId={currentProviderId}
+          proxyRunning={proxyStatus?.running ?? false}
+          proxyTargetId={proxyStatus?.active_target_provider_id ?? null}
+          onStartProxy={() => {
+            const startId = currentProviderId ?? providerList[0]?.id ?? '';
+            if (!startId) {
+              setProxyError('Select a provider before starting the local route');
+              return;
+            }
+            void handleStartProxy(startId);
+          }}
+          onStopProxy={handleStopProxy}
+        />
       )}
 
       {loading ? (
@@ -281,13 +311,9 @@ export default function ProvidersPage() {
               key={provider.id}
               provider={provider}
               active={provider.id === currentProviderId}
-              proxyRunning={proxyStatus?.running ?? false}
-              proxyTargetId={proxyStatus?.active_target_provider_id ?? null}
               onSwitch={handleSwitch}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onStartProxy={handleStartProxy}
-              onStopProxy={handleStopProxy}
             />
           ))}
         </div>

@@ -19,17 +19,18 @@ Configuring API Providers for Claude Code traditionally requires manually editin
 - **One-click Provider Switching:** Instantly switch between 50+ model providers without ever touching a config file.
 - **Built-in Presets:** 50+ pre-configured providers (DeepSeek, OpenAI, Anthropic, Google, Copilot, Codex, MiniMax, etc.).
 - **Dual Authentication Support:** Supports both API Key and OAuth authentication flows.
+- **Direct Config + Local Route:** Manage direct provider config and local route takeover separately.
 - **Real-time Live Sync:** Changes are immediately synchronized with your local Claude Code configuration and take effect instantly.
 
 ---
 
-## 📌 Project Status (2026-05-14)
+## 📌 Project Status (2026-06-01)
 
-- **All core features complete**: Providers (50+ presets), MCP Servers, Skills, Proxy, OAuth, Usage tracking.
+- **All core features complete**: Providers (50+ presets), local route takeover, MCP Servers, Skills, Proxy, OAuth, Usage tracking.
 - Backend database module modularized into domain sub-modules (`providers`, `mcp`, `skills`, `proxy`, `usage`, `migrations`, `types`).
 - Proxy streaming pipeline modularized under `cc-switch-server/src/proxy/streaming/`.
 - Usage supports both proxy-mode logs and Claude local session-log sync (`~/.claude/projects/*/*.jsonl`).
-- Current focus: Phase 2 (`forwarder.rs` decomposition) while avoiding over-fragmented files.
+- Custom providers now support endpoint detection, model list fetch, and protocol-specific routing (`anthropic`, `openai_chat`, `openai_responses`).
 
 ---
 
@@ -113,10 +114,19 @@ Open your browser and navigate to: **http://localhost:5007/ui**
 
 1. Go to the **Providers** page in the dashboard.
 2. Select a preset or configure a custom endpoint.
-3. Enter your API Key.
-4. Click **Save** and switch to it.
+3. Enter your API Key if required.
+4. Optionally use **Detect endpoint type** and **Fetch models** for custom endpoints.
+5. Click **Save** and switch to it.
 
-Claude Code will immediately start using the new Provider you selected.
+Claude Code will immediately start using the selected direct Provider.
+
+### 4. Optional: Enable Local Route Takeover
+
+1. Stay on the **Providers** page.
+2. Pick a **Route Target** in the `Local Route` panel.
+3. Start the local route.
+
+Once started, Claude Code traffic goes to the local route first, then the route forwards requests to the selected target provider.
 
 ---
 
@@ -126,6 +136,8 @@ Claude Code will immediately start using the new Provider you selected.
 - 50+ built-in Provider presets for quick setup.
 - Support for custom Provider configurations.
 - One-click switching with real-time configuration sync.
+- Endpoint-type detection for custom URLs.
+- Model list fetch for OpenAI-compatible `/models` endpoints.
 - Failover queue with circuit breaker.
 
 ### 🔑 OAuth Authentication
@@ -148,11 +160,13 @@ Claude Code will immediately start using the new Provider you selected.
 ### 🌐 Local Proxy Server
 - HTTP proxy on port 15721 (configurable).
 - Provider adapter chain with request/response format conversion.
+- Separate route target selection and route start/stop control.
 - Circuit breaker per provider, failover queue.
 - Streaming response transformation (Anthropic ↔ OpenAI formats).
 
 ### ⚡ Live Config
-- Automatically writes configurations directly to Claude Code when switching Providers.
+- Automatically writes direct configurations to Claude Code when switching Providers.
+- Local route takeover can replace direct config at runtime without changing the selected direct provider.
 - Merge-only env updates preserve other settings in `settings.json`.
 - Completely eliminates the need to manually edit config files.
 
@@ -228,10 +242,10 @@ graph TD
 
 ```bash
 cd cc-switch-ui
-pnpm install
-pnpm dev        # Start dev server on http://localhost:5173
-pnpm build      # Production build
-pnpm lint       # Run ESLint checks
+npm install
+npm run dev        # Start dev server on http://localhost:5173
+npm run build      # Production build
+npm run lint       # Run ESLint checks
 ```
 
 ### Backend (Rust + Axum)
@@ -249,7 +263,7 @@ cc-switch-ui/          # React frontend workspace
   └── src/
       ├── api/         # API client layer
       ├── components/  # Reusable UI components
-      └── pages/       # Dashboard, Providers, MCP, Skills, etc.
+      └── pages/       # Dashboard (read-only), Providers, MCP, Skills, Usage, etc.
 cc-switch-server/      # Axum HTTP server (Rust)
   └── src/
       ├── handlers/    # REST API handlers (providers, mcp, skills, etc.)

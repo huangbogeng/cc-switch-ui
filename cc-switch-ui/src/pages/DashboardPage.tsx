@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  listProviders, switchProvider, getCurrentProviderId,
-  getProxyStatus, startProxy, stopProxy, setProxyTarget,
+  listProviders, getCurrentProviderId,
+  getProxyStatus,
   type Provider,
 } from '../api';
 import { PageHeader } from '@/components/PageHeader';
 import {
-  CurrentProviderCard,
-  ProviderGrid,
-  ProxyCard,
+  DashboardHeroCard,
   UsageCard,
 } from '@/components/dashboard/DashboardPanels';
+import UsageTrendChart from '@/components/usage/UsageTrendChart';
 import { sortProviders } from '@/lib/provider';
-import { useProviderStats, useCopilotUsage } from '@/lib/useUsage';
+import { useCopilotUsage, useUsageSummary } from '@/lib/useUsage';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
 
 interface DashboardProxyStatus {
@@ -43,16 +42,8 @@ export default function DashboardPage() {
   const [proxyStatus, setProxyStatus] = useState<DashboardProxyStatus | null>(
     cached?.proxyStatus ?? null,
   );
-  const [proxyError, setProxyError] = useState('');
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-
   const { data: usage } = useCopilotUsage();
-  const { data: providerStats24h } = useProviderStats(nowSec - 24 * 3600, nowSec);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  const { data: usageSummary, isLoading: usageSummaryLoading } = useUsageSummary();
 
   const loadProviders = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -106,109 +97,29 @@ export default function DashboardPage() {
     }
   }, [providers, currentProviderId, proxyStatus, loadingProviders]);
 
-  const handleSwitchProvider = async (id: string) => {
-    try {
-      await switchProvider(id);
-      setCurrentProviderId(id);
-      if (proxyStatus?.running) {
-        await stopProxy();
-        await startProxy();
-        await loadProxyStatus();
-      }
-    } catch (e) {
-      console.error('Switch provider error:', e);
-    }
-  };
-
-  const handleRouteTargetChange = async (providerId: string) => {
-    if (!providerId) return;
-    try {
-      setProxyError('');
-      const result = await setProxyTarget(providerId);
-      if (!result.success) throw new Error(result.error || 'Failed to set route target');
-      await loadProxyStatus();
-    } catch (e) {
-      setProxyError(e instanceof Error ? e.message : 'Failed to set route target');
-    }
-  };
-
-  const handleToggleRoute = async () => {
-    try {
-      setProxyError('');
-      if (proxyStatus?.running) {
-        const result = await stopProxy();
-        if (!result.success) throw new Error(result.error || 'Failed to stop local route');
-      } else {
-        const result = await startProxy();
-        if (!result.success) throw new Error(result.error || 'Failed to start local route');
-      }
-      await loadProxyStatus();
-    } catch (e) {
-      setProxyError(e instanceof Error ? e.message : 'Local route operation failed');
-    }
-  };
-
   const currentProvider = currentProviderId ? providers[currentProviderId] : null;
   const providerList = sortProviders(providers);
+  const routeTarget =
+    providerList.find((provider) => provider.id === proxyStatus?.active_target_provider_id) ?? null;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         title="Dashboard"
-        description="Monitor active provider and local route status."
+        description="Read-only runtime overview. Manage providers and local route from the Providers page."
       />
-      {proxyError && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive shadow-sm">
-          {proxyError}
-        </div>
-      )}
       <div className="space-y-8">
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <CurrentProviderCard
-            loading={loadingProviders}
-            provider={currentProvider}
-            usage24h={
-              currentProvider
-                ? (() => {
-                    const byProvider = (providerStats24h?.providers || []).find(
-                      (item) => item.provider_id === currentProvider.id,
-                    );
-                    return byProvider
-                      ? {
-                          requestCount: byProvider.request_count,
-                          inputTokens: byProvider.total_input_tokens,
-                          outputTokens: byProvider.total_output_tokens,
-                        }
-                      : null;
-                  })()
-                : null
-            }
-            routeRuntime={
-              proxyStatus
-                ? {
-                    running: proxyStatus.running,
-                    listenAddr: proxyStatus.listen_addr,
-                    activeTargetProviderId: proxyStatus.active_target_provider_id,
-                  }
-                : null
-            }
-            routeError={proxyError || undefined}
-          />
-          <ProxyCard
-            status={proxyStatus}
-            targetProviders={providerList}
-            error={proxyError}
-            onToggle={handleToggleRoute}
-            onTargetChange={handleRouteTargetChange}
-          />
+        <DashboardHeroCard
+          currentProvider={currentProvider}
+          routeTarget={routeTarget}
+          status={proxyStatus}
+        />
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.25fr)_360px]">
+          <div className={usage ? '' : 'xl:col-span-2'}>
+            <UsageTrendChart trend={usageSummary?.trend ?? []} loading={usageSummaryLoading} />
+          </div>
           {usage && <UsageCard usage={usage} />}
         </div>
-
-        <ProviderGrid
-          providers={providerList}
-          currentProviderId={currentProviderId}
-          onSwitch={handleSwitchProvider}
-        />
       </div>
     </div>
   );
