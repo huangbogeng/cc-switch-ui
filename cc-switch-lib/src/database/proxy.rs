@@ -147,3 +147,82 @@ impl super::Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::Database;
+    use crate::database::types::Provider;
+    use rusqlite::Connection;
+    use serde_json::json;
+    use std::sync::Mutex;
+
+    fn in_memory_db() -> Database {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS providers (
+                id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                settings_config TEXT NOT NULL,
+                website_url TEXT,
+                category TEXT,
+                created_at INTEGER,
+                sort_index INTEGER,
+                notes TEXT,
+                icon TEXT,
+                icon_color TEXT,
+                meta TEXT NOT NULL DEFAULT '{}',
+                is_current INTEGER NOT NULL DEFAULT 0,
+                in_failover_queue INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (id, app_type)
+            );
+            CREATE TABLE IF NOT EXISTS proxy_target_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                active_target_provider_id TEXT
+            );",
+        )
+        .unwrap();
+        Database { conn: Mutex::new(conn) }
+    }
+
+    fn insert_provider(db: &Database, id: &str, app_type: &str) {
+        db.save_provider(
+            app_type,
+            &Provider {
+                id: id.to_string(),
+                name: id.to_string(),
+                settings_config: json!({ "env": {} }),
+                website_url: None,
+                category: None,
+                created_at: None,
+                sort_index: None,
+                notes: None,
+                icon: None,
+                icon_color: None,
+                meta: json!({}),
+                in_failover_queue: false,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn setting_proxy_target_does_not_change_current_provider() {
+        let db = in_memory_db();
+        let app_type = "claude_code";
+        insert_provider(&db, "provider-a", app_type);
+        insert_provider(&db, "provider-b", app_type);
+
+        db.set_current_provider("provider-a", app_type).unwrap();
+        db.set_proxy_target_provider_id("provider-b").unwrap();
+
+        assert_eq!(
+            db.get_current_provider_id(app_type).unwrap().as_deref(),
+            Some("provider-a")
+        );
+        assert_eq!(
+            db.get_proxy_target_provider_id().unwrap().as_deref(),
+            Some("provider-b")
+        );
+    }
+}

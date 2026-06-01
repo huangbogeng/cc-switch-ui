@@ -411,6 +411,7 @@ impl super::Database {
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
+    use serde_json::json;
 
     fn in_memory_db() -> super::super::Database {
         let conn = Connection::open_in_memory().unwrap();
@@ -431,12 +432,34 @@ mod tests {
                 is_current INTEGER NOT NULL DEFAULT 0,
                 in_failover_queue INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (id, app_type)
+            );
+            CREATE TABLE IF NOT EXISTS proxy_target_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                active_target_provider_id TEXT
             );",
         )
         .unwrap();
         super::super::Database {
             conn: std::sync::Mutex::new(conn),
         }
+    }
+
+    fn insert_provider(db: &super::super::Database, id: &str, app_type: &str) {
+        let provider = crate::database::types::Provider {
+            id: id.to_string(),
+            name: id.to_string(),
+            settings_config: json!({ "env": {} }),
+            website_url: None,
+            category: None,
+            created_at: None,
+            sort_index: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            meta: json!({}),
+            in_failover_queue: false,
+        };
+        db.save_provider(app_type, &provider).unwrap();
     }
 
     #[test]
@@ -475,5 +498,25 @@ mod tests {
 
         let providers = db.list_providers(app_type).unwrap();
         assert_eq!(providers.len(), 5, "still exactly 5 providers after two calls");
+    }
+
+    #[test]
+    fn setting_current_provider_does_not_change_proxy_target() {
+        let db = in_memory_db();
+        let app_type = "claude_code";
+        insert_provider(&db, "provider-a", app_type);
+        insert_provider(&db, "provider-b", app_type);
+
+        db.set_proxy_target_provider_id("provider-b").unwrap();
+        db.set_current_provider("provider-a", app_type).unwrap();
+
+        assert_eq!(
+            db.get_current_provider_id(app_type).unwrap().as_deref(),
+            Some("provider-a")
+        );
+        assert_eq!(
+            db.get_proxy_target_provider_id().unwrap().as_deref(),
+            Some("provider-b")
+        );
     }
 }
