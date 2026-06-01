@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, Circle, Copy, ExternalLink, Globe, Loader2, Server, Zap } from 'lucide-react';
+import { CheckCircle2, Circle, ExternalLink, Server, Zap } from 'lucide-react';
 import type { CodexAccount, CopilotAccount, CopilotUsageResponse, Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { providerAuthLabel, providerAuthMode, providerInitial } from '@/lib/provider';
+import { providerApiFormat } from '@/lib/provider';
 import { usagePercent } from '@/lib/usage';
 
 interface CopilotStatus {
@@ -28,160 +27,94 @@ interface ProxyStatus {
   active_target_provider_name: string | null;
 }
 
-export function CurrentProviderCard({
-  loading,
-  provider,
-  usage24h,
-  routeRuntime,
-  routeError,
+export function DashboardHeroCard({
+  currentProvider,
+  routeTarget,
+  status,
 }: {
-  loading: boolean;
-  provider: Provider | null;
-  usage24h: {
-    requestCount: number;
-    inputTokens: number;
-    outputTokens: number;
-  } | null;
-  routeRuntime: {
-    running: boolean;
-    listenAddr: string | null;
-    activeTargetProviderId: string | null;
-  } | null;
-  routeError?: string;
+  currentProvider: Provider | null;
+  routeTarget: Provider | null;
+  status: ProxyStatus | null;
 }) {
-  const formatCompact = (value: number) => {
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-    return value.toString();
-  };
-
-  const isCurrentTarget = !!provider && routeRuntime?.activeTargetProviderId === provider.id;
-  const authMode = provider ? providerAuthMode(provider) : 'api_key';
-  const avatarStyle = provider?.iconColor
-    ? { backgroundColor: provider.iconColor, borderColor: `${provider.iconColor}66` }
-    : undefined;
+  const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/messages` : 'Unavailable';
 
   return (
-    <Card className="overflow-hidden relative group border-white/10 bg-gradient-to-br from-card to-card/50 shadow-xl">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
-      <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-        <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
-          <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
-            <Globe className="h-4 w-4 text-primary" />
-          </div>
-          Current Provider
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-6">
-        {loading ? (
-          <div className="flex h-24 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
-          </div>
-        ) : provider ? (
-          <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6">
-              <div className="flex items-start gap-4 min-w-0">
-                <div
-                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-inner text-white"
-                  style={avatarStyle}
-                >
-                  <span className="text-2xl font-bold tracking-tight drop-shadow-sm">{providerInitial(provider)}</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="truncate text-xl font-bold tracking-tight text-foreground">{provider.name}</div>
-                    <Badge
-                      variant={authMode === 'oauth_proxy' ? 'success' : 'outline'}
-                      className={`text-[10px] uppercase tracking-wider font-bold ${
-                        authMode === 'oauth_proxy'
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-white/5 text-muted-foreground border-white/10'
-                      }`}
-                    >
-                      {providerAuthLabel(provider)}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1.5">
-                    {provider.websiteUrl ? (
-                      <a
-                        href={provider.websiteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary/80 hover:text-primary transition-colors hover:underline"
-                      >
-                        <span className="truncate max-w-[260px]">{provider.websiteUrl}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    ) : (
-                      <div className="truncate text-sm font-medium text-muted-foreground">Custom Provider</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <Badge variant="success" className="justify-self-start sm:justify-self-end gap-1.5 py-1 px-3 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                Active
+    <Card className="relative overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.14),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.16),_transparent_30%),linear-gradient(135deg,rgba(12,18,32,0.98),rgba(8,12,20,0.96))] shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)]">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.04),transparent)] opacity-60" />
+      <CardContent className="relative p-6 sm:p-8">
+        <div className="grid gap-8 xl:grid-cols-[minmax(0,1.25fr)_360px]">
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="border-amber-400/20 bg-amber-400/12 text-amber-200">Runtime Cockpit</Badge>
+              <Badge
+                variant="outline"
+                className={
+                  status?.running
+                    ? 'border-emerald-500/25 bg-emerald-500/12 text-emerald-300'
+                    : 'border-white/10 bg-white/5 text-slate-300/75'
+                }
+              >
+                {status?.running ? 'Local Route Running' : 'Local Route Stopped'}
               </Badge>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">24h Requests</div>
-                <div className="mt-1 font-mono text-base font-bold text-foreground tabular-nums">
-                  {usage24h ? formatCompact(usage24h.requestCount) : '-'}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">24h Input</div>
-                <div className="mt-1 font-mono text-base font-bold text-primary tabular-nums">
-                  {usage24h ? formatCompact(usage24h.inputTokens) : '-'}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">24h Output</div>
-                <div className="mt-1 font-mono text-base font-bold text-amber-500 tabular-nums">
-                  {usage24h ? formatCompact(usage24h.outputTokens) : '-'}
-                </div>
-              </div>
+            <div className="space-y-2">
+              <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                Dashboard is now read-only. Providers owns all configuration and route control.
+              </h2>
+              <p className="max-w-2xl text-sm leading-6 text-slate-300/75">
+                Use this page to confirm the live runtime shape: direct config, route takeover target, and the local entry point currently exposed to Claude Code.
+              </p>
             </div>
 
-            {routeRuntime?.running && (
-              <div className="grid grid-cols-1 gap-2 rounded-xl border border-white/5 bg-black/20 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">Local Route</span>
-                  <span className={`text-xs font-semibold text-emerald-400`}>
-                    Running
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">Current Target</span>
-                  <span className={`text-xs font-semibold ${isCurrentTarget ? 'text-primary' : 'text-muted-foreground'}`}>
-                    {isCurrentTarget ? 'This Provider' : 'Different Provider'}
-                  </span>
-                </div>
-                {routeRuntime?.listenAddr && (
-                  <div className="truncate text-[11px] font-mono text-muted-foreground/80">
-                    {routeRuntime.listenAddr}
-                  </div>
-                )}
-                {routeError && (
-                  <div className="truncate text-[11px] text-destructive">
-                    {routeError}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <HeroStat
+                label="Direct Config"
+                value={currentProvider?.name || 'None'}
+                meta={currentProvider ? `${currentProvider.id} · ${formatApiFormatLabel(providerApiFormat(currentProvider))}` : 'No provider selected'}
+                tone="neutral"
+              />
+              <HeroStat
+                label="Route Takeover"
+                value={routeTarget?.name || 'None'}
+                meta={
+                  routeTarget
+                    ? `${routeTarget.id} · ${formatApiFormatLabel(providerApiFormat(routeTarget))}`
+                    : 'No route target selected'
+                }
+                tone={status?.running ? 'warning-active' : 'warning'}
+              />
+              <HeroStat
+                label="Listen Address"
+                value={status?.listen_addr || 'Unavailable'}
+                meta={status?.running ? 'Traffic is currently routed through the local proxy' : 'Proxy endpoint will appear here after startup'}
+                tone="neutral"
+                mono
+              />
+            </div>
           </div>
-        ) : (
-          <div className="py-8 flex flex-col items-center justify-center text-center text-muted-foreground bg-white/[0.02] rounded-xl border border-dashed border-white/10">
-            <Globe className="h-8 w-8 text-muted-foreground/30 mb-3" />
-            <p className="font-medium text-foreground">No provider selected</p>
-            <p className="mt-1 text-sm text-muted-foreground/70">Select one below to get started</p>
+
+          <div className="space-y-3 rounded-3xl border border-white/10 bg-black/25 p-4 shadow-inner shadow-black/20">
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase tracking-[0.24em] text-slate-300/55">Runtime Signals</div>
+              <div className={`h-2.5 w-2.5 rounded-full ${status?.running ? 'bg-emerald-400 shadow-[0_0_16px_rgba(74,222,128,0.95)]' : 'bg-slate-500/70'}`} />
+            </div>
+            <HeroSignal
+              label="Route Status"
+              value={status?.running ? 'Takeover active' : 'Direct config active'}
+            />
+            <HeroSignal
+              label="Proxy Entry"
+              value={proxyUrl}
+              mono
+            />
+            <HeroSignal
+              label="Upstream Proxy"
+              value={status?.http_proxy_url || 'None'}
+              mono
+            />
           </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -312,176 +245,6 @@ export function CodexOAuthStatusCard({
   );
 }
 
-export function ProxyCard({
-  status,
-  targetProviders,
-  error,
-  onToggle,
-  onTargetChange,
-}: {
-  status: ProxyStatus | null;
-  targetProviders: Provider[];
-  error?: string;
-  onToggle: () => void;
-  onTargetChange: (providerId: string) => void;
-}) {
-  const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/messages` : '';
-
-  return (
-    <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
-      <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-        <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
-          <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
-            <Server className="h-4 w-4 text-emerald-500" />
-          </div>
-          Local Route
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5 pt-5">
-        {error && (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive shadow-sm">
-            {error}
-          </div>
-        )}
-        <div className="space-y-2.5">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">
-            Route Target
-          </div>
-          <RouteTargetMenu
-            providers={targetProviders}
-            selectedId={status?.active_target_provider_id || ''}
-            disabled={status?.running || targetProviders.length === 0}
-            onChange={onTargetChange}
-          />
-          <div className="flex flex-col gap-1">
-            <p className="truncate text-xs font-medium text-muted-foreground">
-              {status?.active_target_provider_name || 'No route selected'}
-            </p>
-            {status?.http_proxy_url && (
-              <p className="truncate font-mono text-[11px] text-primary/80 bg-primary/10 w-fit px-1.5 py-0.5 rounded-md">
-                via {status.http_proxy_url}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center justify-between rounded-xl bg-white/[0.02] border border-white/5 p-3">
-          <div className="flex items-center gap-3">
-            <div className={`h-2.5 w-2.5 rounded-full ${status?.running ? 'animate-pulse bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-muted-foreground/40'}`} />
-            <span className="text-sm font-semibold tracking-tight">
-              {status?.running ? 'Running' : 'Stopped'}
-            </span>
-          </div>
-          <Button size="sm" variant={status?.running ? 'destructive' : 'default'} onClick={onToggle} className="rounded-lg shadow-sm">
-            {status?.running ? 'Stop' : 'Start'}
-          </Button>
-        </div>
-        {status?.running && proxyUrl && (
-          <div className="flex items-center gap-2 rounded-xl bg-black/30 border border-white/5 p-2 pl-3 shadow-inner">
-            <code className="flex-1 truncate font-mono text-[11px] text-emerald-400">{proxyUrl}</code>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground"
-              onClick={() => navigator.clipboard.writeText(proxyUrl)}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function RouteTargetMenu({
-  providers,
-  selectedId,
-  disabled,
-  onChange,
-}: {
-  providers: Provider[];
-  selectedId: string;
-  disabled: boolean;
-  onChange: (providerId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const selectedProvider = providers.find((provider) => provider.id === selectedId);
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', handlePointerDown);
-    return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
-
-  return (
-    <div ref={menuRef} className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-        className="grid h-12 w-full grid-cols-[32px_minmax(0,1fr)_16px] items-center gap-3 rounded-xl border border-white/10 bg-black/25 px-3 text-left shadow-inner shadow-black/20 outline-none transition hover:border-white/20 hover:bg-white/[0.06] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-xs font-bold text-foreground">
-          {selectedProvider ? providerInitial(selectedProvider) : '-'}
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold leading-5 text-foreground">
-            {selectedProvider?.name || 'Select provider route'}
-          </div>
-          <div className="truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-            {selectedProvider ? providerAuthLabel(selectedProvider) : 'No route selected'}
-          </div>
-        </div>
-        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-card/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">
-          {providers.map((provider) => {
-            const selected = provider.id === selectedId;
-            return (
-              <button
-                key={provider.id}
-                type="button"
-                onClick={() => {
-                  onChange(provider.id);
-                  setOpen(false);
-                }}
-                className={`grid w-full grid-cols-[32px_minmax(0,1fr)_18px] items-center gap-3 rounded-lg px-2.5 py-2 text-left transition ${
-                  selected
-                    ? 'bg-primary/15 text-foreground'
-                    : 'text-muted-foreground hover:bg-white/[0.06] hover:text-foreground'
-                }`}
-              >
-                <div className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-bold ${
-                  selected
-                    ? 'border-primary/30 bg-primary/20 text-primary'
-                    : 'border-white/10 bg-white/[0.04] text-foreground/80'
-                }`}>
-                  {providerInitial(provider)}
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold leading-5">{provider.name}</div>
-                  <div className="truncate text-[11px] font-medium uppercase tracking-wider opacity-70">
-                    {providerAuthLabel(provider)}
-                  </div>
-                </div>
-                {selected && <Check className="h-4 w-4 text-primary" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function UsageCard({ usage }: { usage: CopilotUsageResponse }) {
   return (
     <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
@@ -531,61 +294,65 @@ function UsageMeter({
   );
 }
 
-export function ProviderGrid({
-  providers,
-  currentProviderId,
-  onSwitch,
+function HeroStat({
+  label,
+  value,
+  meta,
+  tone,
+  mono = false,
 }: {
-  providers: Provider[];
-  currentProviderId: string | null;
-  onSwitch: (id: string) => void;
+  label: string;
+  value: string;
+  meta: string;
+  tone: 'neutral' | 'warning' | 'warning-active';
+  mono?: boolean;
 }) {
+  const toneClass =
+    tone === 'warning-active'
+      ? 'border-amber-400/30 bg-gradient-to-br from-amber-500/18 to-amber-500/6'
+      : tone === 'warning'
+        ? 'border-amber-500/20 bg-amber-500/8'
+        : 'border-white/10 bg-white/[0.04]';
+  const textClass = tone === 'neutral' ? 'text-white' : 'text-amber-50';
+  const metaClass = tone === 'neutral' ? 'text-slate-300/70' : 'text-amber-100/75';
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <h2 className="text-lg font-bold tracking-tight">All Providers</h2>
-        <div className="h-[1px] flex-1 bg-gradient-to-r from-white/10 to-transparent" />
-      </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {providers.map((provider) => (
-          <button
-            key={provider.id}
-            onClick={() => onSwitch(provider.id)}
-            className={`
-              relative min-w-0 rounded-2xl border p-4 text-left transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-primary/50 group overflow-hidden
-              ${provider.id === currentProviderId
-                ? 'border-primary/50 bg-gradient-to-b from-primary/10 to-primary/5 shadow-[0_4px_20px_-4px_rgba(var(--primary),0.2)] hover:from-primary/15 hover:to-primary/10'
-                : 'border-white/5 bg-card/40 hover:bg-white/[0.08] hover:border-white/10 hover:shadow-lg'
-              }
-            `}
-          >
-            {provider.id === currentProviderId && (
-              <div className="absolute right-3 top-3 animate-in zoom-in duration-300">
-                <CheckCircle2 className="h-5 w-5 text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
-              </div>
-            )}
-            <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-xl shadow-inner transition-colors duration-300
-              ${provider.id === currentProviderId ? 'bg-primary/20 border border-primary/20' : 'bg-white/5 border border-white/5 group-hover:bg-white/10'}
-            `}>
-              <span className={`text-xl font-bold ${provider.id === currentProviderId ? 'text-primary' : 'text-foreground/80 group-hover:text-foreground'}`}>
-                {providerInitial(provider)}
-              </span>
-            </div>
-            <div className="truncate text-[15px] font-bold tracking-tight leading-5">{provider.name}</div>
-            <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
-              {providerAuthLabel(provider)}
-            </div>
-            <div className="mt-3 flex items-center gap-1.5">
-              <div className={`h-1.5 w-1.5 rounded-full ${providerAuthMode(provider) === 'oauth_proxy' ? 'bg-emerald-500' : 'bg-primary'
-                } shadow-[0_0_8px_currentColor]`} />
-              <div className={`h-1.5 flex-1 rounded-full opacity-20 ${providerAuthMode(provider) === 'oauth_proxy' ? 'bg-emerald-500' : 'bg-primary'
-                }`} />
-            </div>
-          </button>
-        ))}
-      </div>
+    <div className={`rounded-2xl border px-4 py-4 backdrop-blur-sm ${toneClass}`}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-300/55">{label}</div>
+      <div className={`mt-2 truncate text-lg font-semibold ${mono ? 'font-mono text-base' : ''} ${textClass}`}>{value}</div>
+      <div className={`mt-1 truncate text-xs ${metaClass}`}>{meta}</div>
     </div>
   );
+}
+
+function HeroSignal({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300/50">{label}</div>
+      <div className={`mt-1 truncate text-sm text-slate-100 ${mono ? 'font-mono text-[13px]' : 'font-medium'}`}>{value}</div>
+    </div>
+  );
+}
+
+function formatApiFormatLabel(apiFormat: string) {
+  switch (apiFormat) {
+    case 'openai_chat':
+      return 'OpenAI Chat';
+    case 'openai_responses':
+      return 'OpenAI Responses';
+    case 'gemini_native':
+      return 'Gemini Native';
+    default:
+      return 'Anthropic';
+  }
 }
 
 export function DeviceOAuthModal({

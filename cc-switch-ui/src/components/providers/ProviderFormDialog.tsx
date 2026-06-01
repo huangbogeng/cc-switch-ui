@@ -1,4 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Download, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,7 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import type { ProviderPreset } from '@/config/providerPresets';
 import { PresetSelector } from './PresetSelector';
 import type { ApiFormat, ApiKeyField, ProviderFormData } from './providerForm';
-import type { CodexAccount } from '@/api';
+import {
+  detectProviderEndpointType,
+  fetchProviderModels,
+  type CodexAccount,
+  type EndpointDetectionResult,
+  type FetchedModel,
+} from '@/api';
 
 interface ProviderFormDialogProps {
   open: boolean;
@@ -37,12 +44,72 @@ export function ProviderFormDialog({
   onSubmit,
 }: ProviderFormDialogProps) {
   const [formData, setFormData] = useState<ProviderFormData>(initialFormData);
+  const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsError, setFetchModelsError] = useState('');
+  const [detectingApiFormat, setDetectingApiFormat] = useState(false);
+  const [endpointDetection, setEndpointDetection] = useState<EndpointDetectionResult | null>(null);
+  const [detectEndpointError, setDetectEndpointError] = useState('');
+
+  useEffect(() => {
+    setFormData(initialFormData);
+    setFetchedModels([]);
+    setFetchModelsError('');
+    setEndpointDetection(null);
+    setDetectEndpointError('');
+  }, [initialFormData, open]);
 
   if (!open) return null;
 
   const usesOAuthProxy = formData.authMode === 'oauth_proxy';
   const showApiKey = !usesOAuthProxy;
   const showEndpoint = !usesOAuthProxy || !!formData.baseUrl;
+  const modelOptions = useMemo(
+    () => fetchedModels.map((model) => model.id).filter((value, index, list) => list.indexOf(value) === index),
+    [fetchedModels]
+  );
+  const canFetchModels = !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
+  const canDetectEndpointType = canFetchModels && !usesOAuthProxy;
+
+  const handleFetchModels = async () => {
+    setFetchingModels(true);
+    setFetchModelsError('');
+    try {
+      const response = await fetchProviderModels({
+        baseUrl: formData.baseUrl.trim(),
+        apiKey: formData.apiKey.trim(),
+        isFullUrl: formData.isFullUrl,
+        modelsUrl: selectedPreset?.modelsUrl,
+      });
+      setFetchedModels(response.models);
+      if (response.models.length === 0) {
+        setFetchModelsError('No models returned from this endpoint.');
+      }
+    } catch (e) {
+      setFetchedModels([]);
+      setFetchModelsError(e instanceof Error ? e.message : 'Failed to fetch models');
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleDetectEndpointType = async () => {
+    setDetectingApiFormat(true);
+    setDetectEndpointError('');
+    setEndpointDetection(null);
+    try {
+      const result = await detectProviderEndpointType({
+        baseUrl: formData.baseUrl.trim(),
+        apiKey: formData.apiKey.trim(),
+        isFullUrl: formData.isFullUrl,
+      });
+      setEndpointDetection(result);
+    } catch (e) {
+      setDetectEndpointError(e instanceof Error ? e.message : 'Failed to detect endpoint type');
+    } finally {
+      setDetectingApiFormat(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
@@ -212,45 +279,148 @@ export function ProviderFormDialog({
                   id="model-main"
                   label="Main"
                   value={formData.model}
+                  options={modelOptions}
                   onChange={(value) => setFormData({ ...formData, model: value })}
                 />
                 <ModelInput
                   id="model-haiku"
                   label="Haiku"
                   value={formData.haikuModel}
+                  options={modelOptions}
                   onChange={(value) => setFormData({ ...formData, haikuModel: value })}
                 />
                 <ModelInput
                   id="model-sonnet"
                   label="Sonnet"
                   value={formData.sonnetModel}
+                  options={modelOptions}
                   onChange={(value) => setFormData({ ...formData, sonnetModel: value })}
                 />
                 <ModelInput
                   id="model-opus"
                   label="Opus"
                   value={formData.opusModel}
+                  options={modelOptions}
                   onChange={(value) => setFormData({ ...formData, opusModel: value })}
                 />
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  const value = formData.model || formData.sonnetModel || formData.opusModel || formData.haikuModel;
-                  setFormData({
-                    ...formData,
-                    model: value,
-                    haikuModel: value,
-                    sonnetModel: value,
-                    opusModel: value,
-                  });
-                }}
-              >
-                Apply one model to all
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const value = formData.model || formData.sonnetModel || formData.opusModel || formData.haikuModel;
+                    setFormData({
+                      ...formData,
+                      model: value,
+                      haikuModel: value,
+                      sonnetModel: value,
+                      opusModel: value,
+                    });
+                  }}
+                >
+                  Apply one model to all
+                </Button>
+              </div>
             </FormSection>
+
+            <details className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <summary className="cursor-pointer select-none text-sm font-medium leading-5 text-muted-foreground">
+                Diagnostics
+              </summary>
+              <div className="space-y-4 pt-4">
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDetectEndpointType}
+                      disabled={detectingApiFormat || !canDetectEndpointType}
+                    >
+                      {detectingApiFormat ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
+                      Detect endpoint type
+                    </Button>
+                    {endpointDetection?.recommendedApiFormat && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            apiFormat: endpointDetection.recommendedApiFormat as ApiFormat,
+                          })
+                        }
+                      >
+                        Apply recommended {formatApiFormatLabel(endpointDetection.recommendedApiFormat)}
+                      </Button>
+                    )}
+                  </div>
+                  {detectEndpointError && (
+                    <p className="mt-3 text-sm text-muted-foreground">{detectEndpointError}</p>
+                  )}
+                  {endpointDetection && (
+                    <div className="mt-3 space-y-2 text-sm">
+                      <p className="text-muted-foreground">
+                        Recommended:{' '}
+                        {endpointDetection.recommendedApiFormat
+                          ? formatApiFormatLabel(endpointDetection.recommendedApiFormat)
+                          : 'No clear match'}
+                      </p>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {endpointDetection.probes.map((probe) => (
+                          <div key={probe.apiFormat} className="space-y-1 rounded-lg border border-white/10 px-2 py-2">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-medium text-foreground">{formatApiFormatLabel(probe.apiFormat)}</span>
+                              <span>{probe.supported ? 'supported' : 'not supported'}</span>
+                              <span>{probe.statusCode ? `HTTP ${probe.statusCode}` : 'no status'}</span>
+                            </div>
+                            {probe.error && (
+                              <pre className="whitespace-pre-wrap break-words rounded-md bg-black/30 px-2 py-2 text-[11px] leading-4 text-muted-foreground">
+                                {probe.error}
+                              </pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleFetchModels}
+                      disabled={usesOAuthProxy || fetchingModels || !canFetchModels}
+                    >
+                      {fetchingModels ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
+                      Fetch models
+                    </Button>
+                    {modelOptions.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {modelOptions.length} models fetched
+                      </span>
+                    )}
+                  </div>
+                  {fetchModelsError && (
+                    <p className="mt-3 text-sm text-muted-foreground">{fetchModelsError}</p>
+                  )}
+                </div>
+              </div>
+            </details>
 
             <details className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
               <summary className="cursor-pointer select-none text-sm font-medium leading-5 text-muted-foreground">
@@ -382,17 +552,52 @@ function ModelInput({
   id,
   label,
   value,
+  options,
   onChange,
 }: {
   id: string;
   label: string;
   value: string;
+  options?: string[];
   onChange: (value: string) => void;
 }) {
+  const listId = `${id}-models`;
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input id={id} list={options?.length ? listId : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
+      {options?.length ? (
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      ) : null}
     </div>
   );
+}
+
+function isLikelyLocalBaseUrl(baseUrl: string): boolean {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return false;
+  return (
+    trimmed.includes('://localhost') ||
+    trimmed.includes('://127.0.0.1') ||
+    trimmed.includes('://0.0.0.0') ||
+    trimmed.startsWith('localhost:') ||
+    trimmed.startsWith('127.0.0.1:') ||
+    trimmed.startsWith('0.0.0.0:')
+  );
+}
+
+function formatApiFormatLabel(apiFormat: string): string {
+  switch (apiFormat) {
+    case 'openai_chat':
+      return 'OpenAI Chat';
+    case 'openai_responses':
+      return 'OpenAI Responses';
+    case 'anthropic':
+    default:
+      return 'Anthropic Messages';
+  }
 }

@@ -1,35 +1,35 @@
-import { ExternalLink, PencilLine, Server, Trash2 } from 'lucide-react';
+import { ExternalLink, PencilLine, Trash2 } from 'lucide-react';
 import type { Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { providerAuthLabel, providerAuthMode, providerInitial } from '@/lib/provider';
+import {
+  providerApiFormat,
+  providerAuthLabel,
+  providerAuthMode,
+  providerBaseUrl,
+  providerHost,
+  providerInitial,
+} from '@/lib/provider';
 
 interface ProviderCardProps {
   provider: Provider;
   active: boolean;
-  proxyRunning: boolean;
-  proxyTargetId: string | null;
   onSwitch: (id: string) => void;
   onEdit: (provider: Provider) => void;
   onDelete: (id: string) => void;
-  onStartProxy: (id: string) => void;
-  onStopProxy: () => void;
 }
 
 export function ProviderCard({
   provider,
   active,
-  proxyRunning,
-  proxyTargetId,
   onSwitch,
   onEdit,
   onDelete,
-  onStartProxy,
-  onStopProxy,
 }: ProviderCardProps) {
   const authMode = providerAuthMode(provider);
-  const isProxyTarget = proxyTargetId === provider.id;
+  const apiFormat = providerApiFormat(provider);
+  const baseUrl = providerBaseUrl(provider);
 
   return (
     <Card className={`group relative overflow-hidden transition-all duration-300 ${
@@ -57,13 +57,7 @@ export function ProviderCard({
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                     </span>
-                    Active
-                  </Badge>
-                )}
-                {proxyRunning && isProxyTarget && (
-                  <Badge variant="outline" className="gap-1.5 py-0.5 px-2 bg-amber-500/15 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(234,179,8,0.15)]">
-                    <Server className="h-3 w-3" />
-                    Running
+                    Selected
                   </Badge>
                 )}
               </div>
@@ -76,12 +70,15 @@ export function ProviderCard({
                 }`}>
                   {providerAuthLabel(provider)}
                 </Badge>
+                <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">
+                  {formatApiFormatLabel(apiFormat)}
+                </Badge>
               </div>
 
               <div className="space-y-1.5">
-                {proxyRunning && isProxyTarget && (
-                  <div className="truncate font-mono text-[11px] text-amber-400/80 bg-amber-500/10 w-fit px-2 py-1 rounded-md border border-amber-500/20">
-                    localhost:15721/v1/messages
+                {baseUrl && (
+                  <div className="truncate font-mono text-[11px] text-muted-foreground bg-white/[0.03] w-fit px-2 py-1 rounded-md border border-white/10">
+                    {providerHost(baseUrl)}
                   </div>
                 )}
                 {provider.websiteUrl && (
@@ -114,27 +111,8 @@ export function ProviderCard({
               }`}
               onClick={() => onSwitch(provider.id)}
             >
-              {active ? 'Selected' : 'Switch to this'}
+              {active ? 'Selected' : 'Select'}
             </Button>
-            {proxyRunning && isProxyTarget ? (
-              <Button
-                size="sm"
-                variant="destructive"
-                className="w-full sm:w-auto shadow-sm"
-                onClick={onStopProxy}
-              >
-                Stop Route
-              </Button>
-            ) : !proxyRunning ? (
-              <Button
-                size="sm"
-                variant="default"
-                className="w-full sm:w-auto shadow-sm bg-amber-600 hover:bg-amber-700 text-white"
-                onClick={() => onStartProxy(provider.id)}
-              >
-                Start Route
-              </Button>
-            ) : null}
             <div className="flex items-center gap-1">
               <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors" onClick={() => onEdit(provider)}>
                 <PencilLine className="h-3.5 w-3.5" />
@@ -153,4 +131,17 @@ export function ProviderCard({
       </CardContent>
     </Card>
   );
+}
+
+function formatApiFormatLabel(apiFormat: string) {
+  switch (apiFormat) {
+    case 'openai_chat':
+      return 'OpenAI Chat';
+    case 'openai_responses':
+      return 'OpenAI Responses';
+    case 'gemini_native':
+      return 'Gemini Native';
+    default:
+      return 'Anthropic';
+  }
 }
