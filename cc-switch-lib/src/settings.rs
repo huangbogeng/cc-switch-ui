@@ -7,9 +7,9 @@
 //! Architecture mirrors the original cc-switch: a global `OnceLock<RwLock<AppSettings>>`
 //! loaded once at startup and persisted on mutation.
 
-use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::sync::OnceLock;
 use std::sync::RwLock;
 
 use crate::error::AppError;
@@ -19,7 +19,7 @@ use crate::providers::AppType;
 // AppSettings
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     /// Device-level current provider ID for Claude Code.
@@ -33,16 +33,6 @@ pub struct AppSettings {
     /// Device-level current provider ID for OpenCode (reserved).
     #[serde(default)]
     pub current_provider_opencode: Option<String>,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            current_provider_claude_code: None,
-            current_provider_codex: None,
-            current_provider_opencode: None,
-        }
-    }
 }
 
 impl AppSettings {
@@ -109,9 +99,9 @@ fn settings_store() -> &'static RwLock<AppSettings> {
 /// Reload settings from disk (used after import/migration).
 pub fn reload_settings() -> Result<(), AppError> {
     let fresh = AppSettings::load_from_file();
-    let mut store = settings_store().write().map_err(|e| {
-        AppError::Config(format!("Settings store poisoned: {e}"))
-    })?;
+    let mut store = settings_store()
+        .write()
+        .map_err(|e| AppError::Config(format!("Settings store poisoned: {e}")))?;
     *store = fresh;
     Ok(())
 }
@@ -136,14 +126,11 @@ pub fn get_current_provider(app_type: &AppType) -> Option<String> {
 }
 
 /// Set the device-level current provider ID for an app type.
-pub fn set_current_provider(
-    app_type: &AppType,
-    id: Option<&str>,
-) -> Result<(), AppError> {
+pub fn set_current_provider(app_type: &AppType, id: Option<&str>) -> Result<(), AppError> {
     let id_owned = id.map(|s| s.to_string());
-    let mut store = settings_store().write().map_err(|e| {
-        AppError::Config(format!("Settings store poisoned: {e}"))
-    })?;
+    let mut store = settings_store()
+        .write()
+        .map_err(|e| AppError::Config(format!("Settings store poisoned: {e}")))?;
 
     match app_type {
         AppType::ClaudeCode => store.current_provider_claude_code = id_owned,

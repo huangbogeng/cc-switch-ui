@@ -21,9 +21,7 @@ pub struct DetectEndpointTypeRequest {
     pub is_full_url: bool,
 }
 
-pub async fn fetch_models_for_config(
-    Json(payload): Json<FetchModelsRequest>,
-) -> impl IntoResponse {
+pub async fn fetch_models_for_config(Json(payload): Json<FetchModelsRequest>) -> impl IntoResponse {
     match cc_switch_lib::providers::fetch_models(
         &payload.base_url,
         &payload.api_key,

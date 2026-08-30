@@ -73,11 +73,14 @@ pub async fn fetch_models(
     }
 
     let candidates = build_models_url_candidates(base_url, is_full_url, models_url_override)?;
-    let client = crate::oauth::new_http_client().map_err(|e| format!("Request setup failed: {e}"))?;
+    let client =
+        crate::oauth::new_http_client().map_err(|e| format!("Request setup failed: {e}"))?;
     let mut last_err: Option<String> = None;
 
     for url in &candidates {
-        let mut request = client.get(url).timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
+        let mut request = client
+            .get(url)
+            .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
         if !api_key.trim().is_empty() {
             request = request.header("Authorization", format!("Bearer {}", api_key.trim()));
         }
@@ -132,7 +135,8 @@ pub async fn detect_endpoint_type(
         return Err("API Key is required to detect endpoint type".to_string());
     }
 
-    let client = crate::oauth::new_http_client().map_err(|e| format!("Request setup failed: {e}"))?;
+    let client =
+        crate::oauth::new_http_client().map_err(|e| format!("Request setup failed: {e}"))?;
     let probes = vec![
         probe_endpoint(
             &client,
@@ -480,8 +484,7 @@ mod tests {
     #[test]
     fn strips_known_compat_suffixes() {
         let candidates =
-            build_models_url_candidates("https://api.deepseek.com/anthropic", false, None)
-                .unwrap();
+            build_models_url_candidates("https://api.deepseek.com/anthropic", false, None).unwrap();
         assert_eq!(
             candidates,
             vec![
@@ -509,7 +512,9 @@ mod tests {
     #[test]
     fn local_base_url_allows_empty_api_key() {
         assert!(base_url_allows_empty_api_key("http://localhost:11434/v1"));
-        assert!(base_url_allows_empty_api_key("http://127.0.0.1:8080/anthropic"));
+        assert!(base_url_allows_empty_api_key(
+            "http://127.0.0.1:8080/anthropic"
+        ));
         assert!(!base_url_allows_empty_api_key("https://api.example.com/v1"));
     }
 
@@ -607,11 +612,17 @@ mod tests {
     #[test]
     fn keeps_response_detail_for_supported_non_success_statuses() {
         assert_eq!(
-            probe_response_detail(StatusCode::UNAUTHORIZED, "{\"detail\":\"auth\"}".to_string()),
+            probe_response_detail(
+                StatusCode::UNAUTHORIZED,
+                "{\"detail\":\"auth\"}".to_string()
+            ),
             Some("{\"detail\":\"auth\"}".to_string())
         );
         assert_eq!(
-            probe_response_detail(StatusCode::UNPROCESSABLE_ENTITY, "validation failed".to_string()),
+            probe_response_detail(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation failed".to_string()
+            ),
             Some("validation failed".to_string())
         );
     }

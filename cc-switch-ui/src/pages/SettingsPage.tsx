@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
 import {
   deleteProxyConfig,
   getProxyConfig,
@@ -16,14 +15,10 @@ import {
   type ProxyConfig,
 } from '@/api';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
-
-type Language = 'en' | 'zh';
+import { ErrorAlert } from '@/components/ErrorAlert';
+import { errorMessage } from '@/lib/errors';
 
 export default function SettingsPage() {
-  const [language, setLanguage] = useState<Language>(
-    () => (localStorage.getItem('ccswitch_language') as Language) || 'en'
-  );
-
   const cachedPort = cacheGet<number>('settings-proxy-port');
   const cachedProxy = cacheGet<ProxyConfig>('settings-outbound-proxy');
 
@@ -43,6 +38,8 @@ export default function SettingsPage() {
   const [outboundLoading, setOutboundLoading] = useState(!cachedProxy);
   const [outboundSaved, setOutboundSaved] = useState(false);
   const [outboundError, setOutboundError] = useState<string | null>(null);
+  const [savingPort, setSavingPort] = useState(false);
+  const [savingOutbound, setSavingOutbound] = useState(false);
 
   const loadProxyPort = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -51,7 +48,7 @@ export default function SettingsPage() {
       cacheSet('settings-proxy-port', data.port);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Failed to load proxy port:', e);
+      setPortError(errorMessage(e, 'Failed to load proxy port'));
     } finally {
       if (!signal?.aborted) setPortLoading(false);
     }
@@ -64,7 +61,7 @@ export default function SettingsPage() {
       cacheSet('settings-outbound-proxy', config);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Failed to load outbound proxy config:', e);
+      setOutboundError(errorMessage(e, 'Failed to load outbound proxy config'));
     } finally {
       if (!signal?.aborted) setOutboundLoading(false);
     }
@@ -78,48 +75,67 @@ export default function SettingsPage() {
     return () => ctrl.abort();
   }, [loadProxyPort, loadOutboundProxy]);
 
-  const handleLanguageReset = () => {
-    setLanguage('en');
-    localStorage.removeItem('ccswitch_language');
-  };
-
   const handlePortSave = async () => {
     setPortError(null);
+    if (!Number.isInteger(proxyPort) || proxyPort < 1024 || proxyPort > 65535) {
+      setPortError('Route port must be an integer between 1024 and 65535.');
+      return;
+    }
+    setSavingPort(true);
     try {
       await setProxyPort(proxyPort);
-      localStorage.setItem('ccswitch_proxy_port', proxyPort.toString());
+      cacheSet('settings-proxy-port', proxyPort);
       setPortSaved(true);
       setTimeout(() => setPortSaved(false), 2000);
     } catch (e) {
       setPortError(e instanceof Error ? e.message : 'Failed to save proxy port');
+    } finally {
+      setSavingPort(false);
     }
   };
 
   const handleOutboundSave = async () => {
     setOutboundError(null);
+    if (outboundProxy.enabled && !outboundProxy.host.trim()) {
+      setOutboundError('Proxy host is required when the outbound proxy is enabled.');
+      return;
+    }
+    if (!Number.isInteger(outboundProxy.port) || outboundProxy.port < 1 || outboundProxy.port > 65535) {
+      setOutboundError('Proxy port must be an integer between 1 and 65535.');
+      return;
+    }
+    setSavingOutbound(true);
     try {
       await setProxyConfig(outboundProxy);
+      cacheSet('settings-outbound-proxy', outboundProxy);
       setOutboundSaved(true);
       setTimeout(() => setOutboundSaved(false), 2000);
     } catch (e) {
       setOutboundError(e instanceof Error ? e.message : 'Failed to save outbound proxy');
+    } finally {
+      setSavingOutbound(false);
     }
   };
 
   const handleOutboundReset = async () => {
     setOutboundError(null);
+    setSavingOutbound(true);
     try {
       await deleteProxyConfig();
-      setOutboundProxy({
+      const resetConfig: ProxyConfig = {
         enabled: false,
         proxy_type: 'http',
         host: '127.0.0.1',
         port: 10809,
-      });
+      };
+      setOutboundProxy(resetConfig);
+      cacheSet('settings-outbound-proxy', resetConfig);
       setOutboundSaved(true);
       setTimeout(() => setOutboundSaved(false), 2000);
     } catch (e) {
       setOutboundError(e instanceof Error ? e.message : 'Failed to reset outbound proxy');
+    } finally {
+      setSavingOutbound(false);
     }
   };
 
@@ -134,49 +150,12 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
             <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-              <CardTitle className="text-[15px] font-bold tracking-tight">Language</CardTitle>
-              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Choose the interface language.</p>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="inline-flex rounded-xl border border-white/5 bg-black/20 p-1 shadow-inner">
-                  {[
-                    ['en', 'English'],
-                    ['zh', '中文'],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setLanguage(value as Language)}
-                      className={cn(
-                        "rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200",
-                        language === value
-                          ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.3)]"
-                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <Button variant="outline" size="sm" onClick={handleLanguageReset} className="rounded-xl border-white/10 hover:bg-white/5">
-                  <RotateCcw className="h-3.5 w-3.5 mr-2" />
-                  Reset
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
-            <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
               <CardTitle className="text-[15px] font-bold tracking-tight">Local Route Port</CardTitle>
               <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the local Claude Code endpoint port.</p>
             </CardHeader>
             <CardContent className="space-y-5 pt-6">
               {portError && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm font-medium text-destructive shadow-sm">
-                  {portError}
-                </div>
+                <ErrorAlert message={portError} />
               )}
 
               {portLoading ? (
@@ -198,9 +177,9 @@ export default function SettingsPage() {
                       className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
-                  <Button onClick={handlePortSave} disabled={portLoading} className="h-10 rounded-xl shadow-sm px-6">
+                  <Button onClick={handlePortSave} disabled={portLoading || savingPort} className="h-10 rounded-xl shadow-sm px-6">
                     {portSaved ? <Check className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                    {portSaved ? 'Saved' : 'Save Port'}
+                    {savingPort ? 'Saving...' : portSaved ? 'Saved' : 'Save Port'}
                   </Button>
                 </div>
               )}
@@ -218,9 +197,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5 pt-6">
               {outboundError && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm font-medium text-destructive shadow-sm">
-                  {outboundError}
-                </div>
+                <ErrorAlert message={outboundError} />
               )}
 
               {outboundLoading ? (
@@ -280,11 +257,11 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-3">
-                    <Button onClick={handleOutboundSave} className="h-10 rounded-xl shadow-sm px-6">
+                    <Button onClick={handleOutboundSave} disabled={savingOutbound} className="h-10 rounded-xl shadow-sm px-6">
                       {outboundSaved ? <Check className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                      {outboundSaved ? 'Saved' : 'Save Outbound Proxy'}
+                      {savingOutbound ? 'Saving...' : outboundSaved ? 'Saved' : 'Save Outbound Proxy'}
                     </Button>
-                    <Button variant="outline" onClick={handleOutboundReset} className="h-10 rounded-xl border-white/10 hover:bg-white/5">
+                    <Button variant="outline" onClick={handleOutboundReset} disabled={savingOutbound} className="h-10 rounded-xl border-white/10 hover:bg-white/5">
                       <RotateCcw className="h-3.5 w-3.5 mr-2" />
                       Reset
                     </Button>
@@ -306,7 +283,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-base font-bold tracking-tight text-foreground">CC Switch Web</div>
-                <div className="mt-0.5 text-xs font-semibold text-primary/80 bg-primary/10 w-fit px-2 py-0.5 rounded-md">Version 0.1.0</div>
+                <div className="mt-0.5 text-xs font-semibold text-primary/80 bg-primary/10 w-fit px-2 py-0.5 rounded-md">Version {__APP_VERSION__}</div>
               </div>
             </div>
             <div className="h-[1px] bg-gradient-to-r from-white/10 to-transparent" />

@@ -85,7 +85,6 @@ impl ProviderAdapter for GeminiAdapter {
     ) -> Result<UsageParseResult, ProviderError> {
         response::transform(body, is_streaming)
     }
-
 }
 
 #[cfg(test)]

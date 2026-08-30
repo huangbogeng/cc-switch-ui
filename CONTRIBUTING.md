@@ -15,17 +15,17 @@ Thank you for your interest in contributing to CC Switch Web! Please read our [C
 
 ### Prerequisites
 
-- Node.js 18+ and pnpm 8+
+- Node.js 24.15+ and npm
 - Rust 1.85+ and Cargo
 
 ### Quick Start
 
 ```bash
 # Install frontend dependencies
-cd cc-switch-ui && pnpm install
+cd cc-switch-ui && npm install
 
 # Start development server (proxies API to :5007)
-pnpm dev
+npm run dev
 
 # In another terminal, start the backend
 cargo run --bin cc-switch-server
@@ -35,9 +35,9 @@ cargo run --bin cc-switch-server
 
 Frontend (in `cc-switch-ui/`):
 ```bash
-pnpm dev          # Dev server with hot reload
-pnpm build        # Production build
-pnpm lint         # ESLint check
+npm run dev       # Dev server with hot reload
+npm run build     # Production build
+npm run lint      # ESLint check
 ```
 
 Backend (in project root):
@@ -93,17 +93,17 @@ chore(deps): update dependencies
 
 ### 前提条件
 
-- Node.js 18+ 和 pnpm 8+
+- Node.js 24.15+ 和 npm
 - Rust 1.85+ 和 Cargo
 
 ### 快速开始
 
 ```bash
 # 安装前端依赖
-cd cc-switch-ui && pnpm install
+cd cc-switch-ui && npm install
 
 # 启动开发服务器（API 代理到 :5007）
-pnpm dev
+npm run dev
 
 # 另一个终端启动后端
 cargo run --bin cc-switch-server
@@ -113,9 +113,9 @@ cargo run --bin cc-switch-server
 
 前端（在 `cc-switch-ui/` 目录）：
 ```bash
-pnpm dev          # 热重载开发服务器
-pnpm build        # 生产构建
-pnpm lint         # ESLint 检查
+npm run dev       # 热重载开发服务器
+npm run build     # 生产构建
+npm run lint      # ESLint 检查
 ```
 
 后端（项目根目录）：

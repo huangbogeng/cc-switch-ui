@@ -18,5 +18,9 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // These pages intentionally fetch and reset local form state on lifecycle changes.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

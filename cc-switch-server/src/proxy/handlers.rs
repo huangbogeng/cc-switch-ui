@@ -87,7 +87,10 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         if let Err(e) = state.db.save_live_backup(APP_TYPE, &provider_id, &raw) {
             log::warn!("[ProxyAPI] failed to save live backup: {}", e);
         } else {
-            log::info!("[ProxyAPI] saved live backup for provider_id={}", provider_id);
+            log::info!(
+                "[ProxyAPI] saved live backup for provider_id={}",
+                provider_id
+            );
         }
     }
 
@@ -117,13 +120,7 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     }
 
     match server
-        .start(
-            registry,
-            account_id,
-            db,
-            provider_id,
-            APP_TYPE,
-        )
+        .start(registry, account_id, db, provider_id, APP_TYPE)
         .await
     {
         Ok(_actual_addr) => {
@@ -269,7 +266,10 @@ pub async fn proxy_set_target(
     if proxy_running {
         let guard = state.proxy_server.read().await;
         if let Some(proxy) = guard.as_ref() {
-            match proxy.hot_switch_provider(&state.db, &payload.provider_id).await {
+            match proxy
+                .hot_switch_provider(&state.db, &payload.provider_id)
+                .await
+            {
                 Ok(()) => {
                     log::info!(
                         "[ProxyAPI] proxy_set_target hot-switch success provider_id={}",

@@ -52,10 +52,19 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
-        // Passthrough - no transformation needed
+        let base = input.upstream_url.trim_end_matches('/');
+        let path = input.path.as_str();
+        let upstream_url = if path.is_empty() || base.ends_with(path) {
+            base.to_string()
+        } else {
+            format!("{base}{path}")
+        };
+
+        // Anthropic payloads are passed through unchanged; only the incoming
+        // request path is resolved against a provider's base URL.
         Ok(TransformOutput {
             body: input.body,
-            upstream_url: input.upstream_url,
+            upstream_url,
             headers: vec![],
             method: "POST".to_string(),
         })
@@ -68,7 +77,6 @@ impl ProviderAdapter for ClaudeAdapter {
     ) -> Result<UsageParseResult, ProviderError> {
         response::transform(body, is_streaming)
     }
-
 }
 
 #[cfg(test)]
@@ -93,5 +101,39 @@ mod tests {
         assert_eq!(output.method, "POST");
         assert_eq!(output.upstream_url, "https://api.anthropic.com/v1/messages");
         assert_eq!(output.body["model"], "claude-3");
+    }
+
+    #[test]
+    fn appends_messages_path_to_bare_anthropic_base_url() {
+        let adapter = ClaudeAdapter::new();
+        let output = adapter
+            .transform_request(TransformInput {
+                body: json!({"model":"anthropic/claude-sonnet-4.6"}),
+                upstream_url: "https://api.orcarouter.ai".to_string(),
+                path: "/v1/messages".to_string(),
+                prompt_cache_key: None,
+                requested_stream: true,
+                codex_fast_mode: false,
+            })
+            .expect("transform should succeed");
+
+        assert_eq!(output.upstream_url, "https://api.orcarouter.ai/v1/messages");
+    }
+
+    #[test]
+    fn does_not_duplicate_messages_path_for_full_endpoint() {
+        let adapter = ClaudeAdapter::new();
+        let output = adapter
+            .transform_request(TransformInput {
+                body: json!({}),
+                upstream_url: "https://api.orcarouter.ai/v1/messages".to_string(),
+                path: "/v1/messages".to_string(),
+                prompt_cache_key: None,
+                requested_stream: true,
+                codex_fast_mode: false,
+            })
+            .expect("transform should succeed");
+
+        assert_eq!(output.upstream_url, "https://api.orcarouter.ai/v1/messages");
     }
 }

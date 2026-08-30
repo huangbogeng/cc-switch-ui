@@ -373,8 +373,16 @@ export interface ProxyUsageSummaryResponse {
   sources: UsageSourceItem[];
 }
 
-export async function getProxyUsageSummary(signal?: AbortSignal) {
-  return api<ProxyUsageSummaryResponse>('/usage/summary', { signal });
+export async function getProxyUsageSummary(
+  start_date?: number,
+  end_date?: number,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  if (start_date !== undefined) params.set('start_date', String(start_date));
+  if (end_date !== undefined) params.set('end_date', String(end_date));
+  const query = params.toString();
+  return api<ProxyUsageSummaryResponse>(`/usage/summary${query ? `?${query}` : ''}`, { signal });
 }
 
 // Model pricing
@@ -506,8 +514,16 @@ export async function syncSessionUsage() {
   });
 }
 
-export async function getDataSourceBreakdown(signal?: AbortSignal) {
-  return api<DataSourceSummary[]>('/usage/sources', { signal });
+export async function getDataSourceBreakdown(
+  start_date?: number,
+  end_date?: number,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  if (start_date !== undefined) params.set('start_date', String(start_date));
+  if (end_date !== undefined) params.set('end_date', String(end_date));
+  const query = params.toString();
+  return api<DataSourceSummary[]>(`/usage/sources${query ? `?${query}` : ''}`, { signal });
 }
 
 // MCP Servers

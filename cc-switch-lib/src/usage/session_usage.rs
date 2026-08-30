@@ -3,9 +3,9 @@
 //! Parses token usage from ~/.claude/projects/*/*.jsonl session files,
 //! enabling usage statistics for direct-connect (non-proxy) users.
 
+use crate::config::get_claude_config_dir;
 use crate::database::{DataSourceSummary, Database, SessionSyncResult};
 use crate::error::AppError;
-use crate::config::get_claude_config_dir;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -171,8 +171,14 @@ fn sync_single_file(db: &Database, file_path: &Path) -> Result<(u32, u32), AppEr
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
                 .to_string(),
-            input_tokens: usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
-            output_tokens: usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+            input_tokens: usage
+                .get("input_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+            output_tokens: usage
+                .get("output_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
             cache_read_tokens: usage
                 .get("cache_read_input_tokens")
                 .and_then(|v| v.as_i64())
@@ -185,7 +191,10 @@ fn sync_single_file(db: &Database, file_path: &Path) -> Result<(u32, u32), AppEr
                 .get("stop_reason")
                 .and_then(|v| v.as_str())
                 .map(String::from),
-            timestamp: value.get("timestamp").and_then(|v| v.as_str()).map(String::from),
+            timestamp: value
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         };
 
         // Dedup by message_id: prefer entry with stop_reason (final state)
@@ -241,8 +250,6 @@ fn should_skip_session_insert(
     model: &str,
     input_tokens: i64,
     output_tokens: i64,
-    _cache_read_tokens: i64,
-    _cache_creation_tokens: i64,
     created_at: i64,
 ) -> Result<bool, AppError> {
     // Exact match by request_id
@@ -316,8 +323,6 @@ fn insert_session_log_entry(
         &msg.model,
         msg.input_tokens,
         msg.output_tokens,
-        msg.cache_read_tokens,
-        msg.cache_creation_tokens,
         created_at,
     )? {
         return Ok(false);
@@ -397,17 +402,23 @@ fn update_sync_state(
 }
 
 /// Get data source breakdown for the usage page
-pub fn get_data_source_breakdown(db: &Database) -> Result<Vec<DataSourceSummary>, AppError> {
+pub fn get_data_source_breakdown(
+    db: &Database,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+) -> Result<Vec<DataSourceSummary>, AppError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT COALESCE(l.data_source, 'proxy') as ds,
                 COUNT(*) as cnt,
                 COALESCE(SUM(CAST(l.total_cost_usd AS REAL)), 0) as cost
          FROM proxy_request_logs l
+         WHERE (?1 IS NULL OR l.created_at >= ?1)
+           AND (?2 IS NULL OR l.created_at <= ?2)
          GROUP BY ds
          ORDER BY cnt DESC",
     )?;
-    let rows = stmt.query_map([], |row| {
+    let rows = stmt.query_map(rusqlite::params![start_date, end_date], |row| {
         Ok(DataSourceSummary {
             data_source: row.get(0)?,
             request_count: row.get::<_, i64>(1)? as u32,
@@ -476,7 +487,8 @@ fn find_pricing(conn: &rusqlite::Connection, model_id: &str) -> Option<(f64, f64
                 row.get::<_, f64>(3).unwrap_or(0.0),
             ))
         },
-    ).ok()
+    )
+    .ok()
 }
 
 fn try_find_pricing(conn: &rusqlite::Connection, model_id: &str) -> Option<(f64, f64, f64, f64)> {
@@ -493,5 +505,6 @@ fn try_find_pricing(conn: &rusqlite::Connection, model_id: &str) -> Option<(f64,
                 row.get::<_, f64>(3).unwrap_or(0.0),
             ))
         },
-    ).ok()
+    )
+    .ok()
 }

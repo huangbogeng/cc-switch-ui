@@ -20,7 +20,9 @@ pub mod settings;
 pub mod skills;
 pub mod usage;
 
-pub use database::{Database, FailoverQueueItem, McpServerRecord, ProxyConfig, ProxyType, SkillRecord};
+pub use database::{
+    Database, FailoverQueueItem, McpServerRecord, ProxyConfig, ProxyType, SkillRecord,
+};
 pub use error::AppError;
 pub use oauth::{CodexOAuthManager, CopilotAuthManager};
 pub use providers::{ProviderAdapter, ProviderRegistry};

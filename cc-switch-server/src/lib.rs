@@ -21,7 +21,7 @@ use axum::{
 };
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
-use tower_http::{cors::CorsLayer, services::fs::ServeDir, trace::TraceLayer};
+use tower_http::{services::fs::ServeDir, trace::TraceLayer};
 
 use cc_switch_lib::config::get_app_config_dir;
 use cc_switch_lib::database::Database;
@@ -43,7 +43,7 @@ pub struct ServerLaunchOptions {
 impl Default for ServerLaunchOptions {
     fn default() -> Self {
         Self {
-            host: "0.0.0.0".to_string(),
+            host: "127.0.0.1".to_string(),
             port: 5007,
             proxy_port: None,
             admin_token: None,
@@ -366,32 +366,17 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/mcp/servers", get(mcp::list_mcp_servers))
         .route("/api/mcp/servers", post(mcp::save_mcp_server))
         .route("/api/mcp/servers/import", post(mcp::import_mcp_servers))
-        .route(
-            "/api/mcp/servers/sync",
-            post(mcp::sync_mcp_servers),
-        )
-        .route(
-            "/api/mcp/servers/:id/toggle",
-            post(mcp::toggle_mcp_server),
-        )
-        .route(
-            "/api/mcp/servers/:id",
-            delete(mcp::delete_mcp_server),
-        )
+        .route("/api/mcp/servers/sync", post(mcp::sync_mcp_servers))
+        .route("/api/mcp/servers/:id/toggle", post(mcp::toggle_mcp_server))
+        .route("/api/mcp/servers/:id", delete(mcp::delete_mcp_server))
         .route("/api/skills", get(skills::list_skills))
         .route("/api/skills", post(skills::save_skill))
         .route("/api/skills/import", post(skills::import_skills))
         .route("/api/skills/sync", post(skills::sync_skills))
-        .route(
-            "/api/skills/:id/toggle",
-            post(skills::toggle_skill),
-        )
+        .route("/api/skills/:id/toggle", post(skills::toggle_skill))
         .route("/api/skills/:id", delete(skills::delete_skill))
         .route("/api/usage/summary", get(usage::get_usage_summary))
-        .route(
-            "/api/usage/provider-stats",
-            get(usage::get_provider_stats),
-        )
+        .route("/api/usage/provider-stats", get(usage::get_provider_stats))
         .route("/api/usage/model-stats", get(usage::get_model_stats))
         .route(
             "/api/usage/request-logs",
@@ -402,7 +387,10 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             get(usage::get_request_log_detail),
         )
         .route("/api/usage/pricing", get(usage::get_model_pricing_handler))
-        .route("/api/usage/pricing", put(usage::upsert_model_pricing_handler))
+        .route(
+            "/api/usage/pricing",
+            put(usage::upsert_model_pricing_handler),
+        )
         .route(
             "/api/usage/pricing/:model_id",
             delete(usage::delete_model_pricing_handler),
@@ -414,7 +402,6 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             app_state.clone(),
             auth_middleware,
         ))
-        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 
@@ -428,4 +415,14 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
     axum::serve(listener, app)
         .await
         .map_err(|e| format!("server failed: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServerLaunchOptions;
+
+    #[test]
+    fn server_binds_to_loopback_by_default() {
+        assert_eq!(ServerLaunchOptions::default().host, "127.0.0.1");
+    }
 }

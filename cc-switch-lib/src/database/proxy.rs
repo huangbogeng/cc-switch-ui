@@ -182,7 +182,9 @@ mod tests {
             );",
         )
         .unwrap();
-        Database { conn: Mutex::new(conn) }
+        Database {
+            conn: Mutex::new(conn),
+        }
     }
 
     fn insert_provider(db: &Database, id: &str, app_type: &str) {

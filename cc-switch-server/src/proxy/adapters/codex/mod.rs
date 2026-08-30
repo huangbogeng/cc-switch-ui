@@ -10,8 +10,8 @@ use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::oauth::codex::CodexOAuthManager;
 use cc_switch_lib::providers::{
-    resolve_managed_account_id, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter,
-    ProviderError, StreamingResponseFormat, TransformInput, TransformOutput, UsageParseResult,
+    resolve_managed_account_id, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError,
+    StreamingResponseFormat, TransformInput, TransformOutput, UsageParseResult,
 };
 use std::sync::Arc;
 

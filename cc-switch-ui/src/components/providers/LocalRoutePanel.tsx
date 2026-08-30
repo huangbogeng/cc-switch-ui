@@ -3,6 +3,8 @@ import type { Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Select } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { providerApiFormat, providerBaseUrl, providerHost } from '@/lib/provider';
 
 interface LocalRoutePanelProps {
@@ -10,7 +12,9 @@ interface LocalRoutePanelProps {
   currentProviderId: string | null;
   proxyRunning: boolean;
   proxyTargetId: string | null;
-  onStartProxy: () => void;
+  busy: boolean;
+  onTargetChange: (providerId: string) => void;
+  onStartProxy: (providerId: string) => void;
   onStopProxy: () => void;
 }
 
@@ -19,12 +23,13 @@ export function LocalRoutePanel({
   currentProviderId,
   proxyRunning,
   proxyTargetId,
+  busy,
+  onTargetChange,
   onStartProxy,
   onStopProxy,
 }: LocalRoutePanelProps) {
   const currentProvider = providers.find((provider) => provider.id === currentProviderId) ?? null;
-  const targetProvider =
-    providers.find((provider) => provider.id === proxyTargetId) ?? currentProvider;
+  const targetProvider = providers.find((provider) => provider.id === proxyTargetId) ?? null;
   const targetMatchesSelection =
     !proxyRunning || !currentProvider || !targetProvider || currentProvider.id === targetProvider.id;
 
@@ -104,19 +109,37 @@ export function LocalRoutePanel({
                 </div>
               </div>
 
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="route-target">Route Target</Label>
+                <Select
+                  id="route-target"
+                  value={proxyTargetId ?? ''}
+                  onChange={(event) => onTargetChange(event.target.value)}
+                  disabled={busy}
+                >
+                  <option value="" disabled>Select a provider</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.name}</option>
+                  ))}
+                </Select>
+                <p className="text-xs text-slate-300/65">
+                  This target is independent from the direct Provider selection.
+                </p>
+              </div>
+
               <div className="mt-4">
                 {proxyRunning ? (
-                  <Button variant="destructive" className="w-full" onClick={onStopProxy}>
-                    Stop Route
+                  <Button variant="destructive" className="w-full" onClick={onStopProxy} disabled={busy}>
+                    {busy ? 'Updating...' : 'Stop Route'}
                   </Button>
                 ) : (
                   <Button
                     className="w-full bg-amber-600 text-white hover:bg-amber-700"
-                    onClick={onStartProxy}
-                    disabled={!currentProvider}
+                    onClick={() => proxyTargetId && onStartProxy(proxyTargetId)}
+                    disabled={!proxyTargetId || busy}
                   >
                     <Zap className="mr-2 h-4 w-4" />
-                    Start Route
+                    {busy ? 'Starting...' : 'Start Route'}
                   </Button>
                 )}
               </div>
@@ -133,9 +156,9 @@ export function LocalRoutePanel({
                 </div>
               )}
 
-              {!proxyRunning && currentProvider && (
+              {!proxyRunning && targetProvider && (
                 <div className="mt-4 rounded-xl border border-amber-500/15 bg-amber-500/8 px-3 py-2 text-xs text-amber-100/85">
-                  Starting the route will use <span className="font-semibold">{currentProvider.name}</span> as the takeover target.
+                  Starting the route will use <span className="font-semibold">{targetProvider.name}</span> as the takeover target.
                 </div>
               )}
             </div>

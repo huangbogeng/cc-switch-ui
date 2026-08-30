@@ -8,8 +8,8 @@ use bytes::Bytes;
 use cc_switch_lib::database::Provider;
 use cc_switch_lib::oauth::CopilotAuthManager;
 use cc_switch_lib::providers::{
-    resolve_managed_account_id, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter,
-    ProviderError, TransformInput, TransformOutput, UsageParseResult,
+    resolve_managed_account_id, AuthInfo, AuthStrategy, BoxFuture, ProviderAdapter, ProviderError,
+    TransformInput, TransformOutput, UsageParseResult,
 };
 use std::sync::Arc;
 
@@ -80,7 +80,6 @@ impl ProviderAdapter for CopilotAdapter {
     ) -> Result<UsageParseResult, ProviderError> {
         response::transform(body, is_streaming)
     }
-
 }
 
 #[cfg(test)]

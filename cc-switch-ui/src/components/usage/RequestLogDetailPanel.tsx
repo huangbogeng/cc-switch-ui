@@ -3,7 +3,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRequestLogDetail } from '@/lib/useUsage';
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { useDialog } from '@/lib/useDialog';
 
 interface Props {
   logId: number | null;
@@ -12,13 +13,17 @@ interface Props {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
   };
   return (
-    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCopy}>
+    <Button aria-label="Copy value" variant="ghost" size="icon" className="h-6 w-6" onClick={() => void handleCopy()}>
       {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
     </Button>
   );
@@ -37,14 +42,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function RequestLogDetailPanel({ logId, onClose }: Props) {
   const { data, isLoading } = useRequestLogDetail(logId);
+  const titleId = useId();
+  const dialogRef = useDialog(true, onClose);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-background border-l border-border shadow-xl animate-in slide-in-from-right">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="relative w-full max-w-lg bg-background border-l border-border shadow-xl animate-in slide-in-from-right">
         <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
-          <CardTitle className="text-sm font-medium">Request Detail</CardTitle>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <CardTitle id={titleId} className="text-sm font-medium">Request Detail</CardTitle>
+          <Button aria-label="Close request detail" variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>

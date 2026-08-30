@@ -16,14 +16,15 @@ function formatCompact(value: number): string {
 interface Props {
   trend: ProxyUsageTrend[];
   loading: boolean;
+  title?: string;
 }
 
-export default function UsageTrendChart({ trend, loading }: Props) {
+export default function UsageTrendChart({ trend, loading, title = '30-Day Token Trend' }: Props) {
   if (loading) {
     return (
       <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
         <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-          <CardTitle className="text-sm font-semibold text-muted-foreground">30-Day Trend</CardTitle>
+          <CardTitle className="text-sm font-semibold text-muted-foreground">{title}</CardTitle>
         </CardHeader>
         <CardContent className="p-6">
           <div className="h-[320px] animate-pulse rounded-2xl bg-white/5" />
@@ -38,7 +39,7 @@ export default function UsageTrendChart({ trend, loading }: Props) {
         <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
             <TrendingUp className="h-4 w-4" />
-            30-Day Trend
+            {title}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
@@ -95,7 +96,7 @@ export default function UsageTrendChart({ trend, loading }: Props) {
         <CardTitle className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
             <TrendingUp className="h-4 w-4" />
-            <span>30-Day Token Trend</span>
+            <span>{title}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <LegendChip label="Input" value={formatCompact(totalInput)} tone="primary" />

@@ -63,5 +63,4 @@ impl ProviderAdapter for ClaudeAuthAdapter {
     ) -> Result<UsageParseResult, ProviderError> {
         response::transform(body, is_streaming)
     }
-
 }

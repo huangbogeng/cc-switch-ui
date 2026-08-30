@@ -1,8 +1,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
 use super::types::{
-    parse_interval, POLLING_SAFETY_MARGIN_SECS, CachedAccessToken,
-    compute_expires_at_ms, parse_jwt_claims,
+    compute_expires_at_ms, parse_interval, parse_jwt_claims, CachedAccessToken,
+    POLLING_SAFETY_MARGIN_SECS,
 };
 use super::*;
 

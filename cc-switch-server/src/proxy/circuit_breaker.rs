@@ -27,9 +27,12 @@ impl CircuitBreaker {
         }
     }
 
-    #[allow(dead_code)]
     pub fn state(&self) -> CircuitState {
         self.state
+    }
+
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
     }
 
     pub fn allow_request(&mut self) -> bool {

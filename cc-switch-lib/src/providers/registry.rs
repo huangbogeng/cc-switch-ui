@@ -157,7 +157,10 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register(Arc::new(TestAdapter("openai_responses")));
 
-        let provider = provider("local-responses", json!({ "apiFormat": "openai_responses" }));
+        let provider = provider(
+            "local-responses",
+            json!({ "apiFormat": "openai_responses" }),
+        );
         let adapter = registry
             .find_for_provider(&provider)
             .expect("adapter should exist");

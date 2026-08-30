@@ -234,10 +234,7 @@ pub async fn switch_provider(
         );
     } else {
         // Direct-live path: backfill current live settings, then apply selected provider.
-        log::info!(
-            "[Providers] switch_provider id={} path=direct_live",
-            id
-        );
+        log::info!("[Providers] switch_provider id={} path=direct_live", id);
 
         // (a) Backfill: save current live config to old provider's DB record
         let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
@@ -249,9 +246,7 @@ pub async fn switch_provider(
                         match state.db.get_provider(old_id, app_type) {
                             Ok(Some(mut old_provider)) => {
                                 old_provider.settings_config = backfill_settings;
-                                if let Err(e) =
-                                    state.db.save_provider(app_type, &old_provider)
-                                {
+                                if let Err(e) = state.db.save_provider(app_type, &old_provider) {
                                     warnings.push(format!(
                                         "Backfill warning: failed to save old provider config: {}",
                                         e

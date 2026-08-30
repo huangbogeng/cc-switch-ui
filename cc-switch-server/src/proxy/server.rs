@@ -1,11 +1,11 @@
 //! Proxy server implementation
 
 use super::failover_switch::FailoverSwitchManager;
-use super::handlers::provider_codex_account_id;
 use super::forwarder::{ForwardResult, Forwarder};
-use super::types::ProxyState;
+use super::handlers::provider_codex_account_id;
 use super::provider_router::{ProviderRouter, SelectProvidersError};
 use super::types::ProxyConfig;
+use super::types::ProxyState;
 use axum::{
     body::Body,
     extract::Request,
@@ -70,7 +70,10 @@ impl ProxyServer {
             app_type: app_type.to_string(),
             codex_account_id,
             registry,
-            provider_router: Arc::new(RwLock::new(ProviderRouter::new(false))),
+            provider_router: Arc::new(RwLock::new(ProviderRouter::with_database(
+                false,
+                db.clone(),
+            ))),
             failover_switch: Arc::new(FailoverSwitchManager::new(db.clone())),
         });
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
@@ -165,7 +168,10 @@ async fn handle_proxy(
         "[Proxy] >>> {} {} | headers: {:?}",
         method,
         uri,
-        req.headers().iter().map(|(k, v)| format!("{k:?}: {:?}", v.to_str().unwrap_or("(binary)"))).collect::<Vec<_>>()
+        req.headers()
+            .iter()
+            .map(|(k, v)| format!("{k:?}: {:?}", v.to_str().unwrap_or("(binary)")))
+            .collect::<Vec<_>>()
     );
 
     let current_provider = match resolve_current_provider(&runtime_state) {
@@ -211,11 +217,12 @@ async fn handle_proxy(
                 .and_then(|value| value.as_bool())
                 .unwrap_or(false)
         });
-    let provider_candidates = match {
+    let candidate_result = {
         let mut router = runtime_state.provider_router.write().await;
         router.set_auto_failover_enabled(auto_failover_enabled);
         router.select_providers(&runtime_state.app_type, &current_provider, &all_providers)
-    } {
+    };
+    let provider_candidates = match candidate_result {
         Ok(candidates) => candidates,
         Err(SelectProvidersError::AllCandidatesCircuitOpen) => {
             return Response::builder()
@@ -292,7 +299,10 @@ async fn handle_proxy(
                  response,
                  provider_id,
              }| {
-                log::info!("[Proxy] <<< success provider={provider_id} status={}", response.status());
+                log::info!(
+                    "[Proxy] <<< success provider={provider_id} status={}",
+                    response.status()
+                );
                 response
             },
         )

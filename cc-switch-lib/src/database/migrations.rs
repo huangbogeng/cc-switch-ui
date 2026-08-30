@@ -95,10 +95,7 @@ fn migrate_proxy_request_logs_schema(conn: &Connection) -> Result<(), AppError> 
         )?;
     }
     if !has_column("model") {
-        conn.execute(
-            "ALTER TABLE proxy_request_logs ADD COLUMN model TEXT",
-            [],
-        )?;
+        conn.execute("ALTER TABLE proxy_request_logs ADD COLUMN model TEXT", [])?;
     }
     if !has_column("input_tokens") {
         conn.execute(
@@ -152,7 +149,7 @@ pub fn migrate_session_log_schema(conn: &Connection) -> Result<(), AppError> {
             last_modified INTEGER NOT NULL DEFAULT 0,
             last_line_offset INTEGER NOT NULL DEFAULT 0,
             last_synced_at INTEGER NOT NULL DEFAULT (unixepoch())
-        );"
+        );",
     )?;
     Ok(())
 }
@@ -161,8 +158,7 @@ pub fn migrate_session_log_schema(conn: &Connection) -> Result<(), AppError> {
 const SCHEMA_VERSION: u32 = 3;
 
 pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
-    let current_version: u32 =
-        conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
     if current_version >= SCHEMA_VERSION {
         return Ok(());
@@ -182,7 +178,7 @@ pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
             "UPDATE proxy_request_logs
              SET provider_id = LOWER(SUBSTR(model, 1, INSTR(model || '-', '-') - 1))
-             WHERE provider_id = '_session' AND model != '';"
+             WHERE provider_id = '_session' AND model != '';",
         )?;
     }
 

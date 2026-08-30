@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   listProviders, getCurrentProviderId,
   getProxyStatus,
@@ -13,6 +13,9 @@ import UsageTrendChart from '@/components/usage/UsageTrendChart';
 import { sortProviders } from '@/lib/provider';
 import { useCopilotUsage, useUsageSummary } from '@/lib/useUsage';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
+import { resolveUsageRange } from '@/lib/usageRange';
+import { ErrorAlert } from '@/components/ErrorAlert';
+import { errorMessage } from '@/lib/errors';
 
 interface DashboardProxyStatus {
   running: boolean;
@@ -42,8 +45,10 @@ export default function DashboardPage() {
   const [proxyStatus, setProxyStatus] = useState<DashboardProxyStatus | null>(
     cached?.proxyStatus ?? null,
   );
+  const [error, setError] = useState('');
+  const usageRange = useMemo(() => resolveUsageRange({ preset: '30d' }), []);
   const { data: usage } = useCopilotUsage();
-  const { data: usageSummary, isLoading: usageSummaryLoading } = useUsageSummary();
+  const usageSummaryQuery = useUsageSummary(usageRange.startDate, usageRange.endDate);
 
   const loadProviders = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -55,7 +60,7 @@ export default function DashboardPage() {
       setCurrentProviderId(current.current_provider_id);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Providers error:', e);
+      setError(errorMessage(e, 'Failed to load providers'));
     } finally {
       if (!signal?.aborted) setLoadingProviders(false);
     }
@@ -67,11 +72,12 @@ export default function DashboardPage() {
       setProxyStatus(status);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Proxy status error:', e);
+      setError(errorMessage(e, 'Failed to load local route status'));
     }
   }, []);
 
   const loadAll = useCallback(async (signal?: AbortSignal) => {
+    setError('');
     await Promise.all([
       loadProviders(signal),
       loadProxyStatus(signal),
@@ -108,6 +114,9 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Read-only runtime overview. Manage providers and local route from the Providers page."
       />
+      {(error || usageSummaryQuery.error) && (
+        <ErrorAlert message={error || errorMessage(usageSummaryQuery.error, 'Failed to load usage summary')} />
+      )}
       <div className="space-y-8">
         <DashboardHeroCard
           currentProvider={currentProvider}
@@ -116,7 +125,7 @@ export default function DashboardPage() {
         />
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.25fr)_360px]">
           <div className={usage ? '' : 'xl:col-span-2'}>
-            <UsageTrendChart trend={usageSummary?.trend ?? []} loading={usageSummaryLoading} />
+            <UsageTrendChart trend={usageSummaryQuery.data?.trend ?? []} loading={usageSummaryQuery.isLoading} />
           </div>
           {usage && <UsageCard usage={usage} />}
         </div>

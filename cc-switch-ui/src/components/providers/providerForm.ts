@@ -116,7 +116,11 @@ export function formFromProvider(provider: Provider): ProviderFormData {
   };
 }
 
-export function buildProvider(formData: ProviderFormData, selectedPreset: ProviderPreset | null): Provider {
+export function buildProvider(
+  formData: ProviderFormData,
+  selectedPreset: ProviderPreset | null,
+  existingProvider?: Provider,
+): Provider {
   const authMode = selectedPreset?.authMode || formData.authMode;
   const id = formData.id.trim();
   const name = formData.name.trim();
@@ -126,7 +130,11 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
   const notes = formData.notes.trim();
   const apiTimeoutMs = formData.apiTimeoutMs.trim();
   const promptCacheKey = formData.promptCacheKey.trim();
-  const env: Record<string, string> = selectedPreset ? { ...selectedPreset.settingsConfig.env } : {};
+  const env: Record<string, string> = existingProvider
+    ? providerEnv(existingProvider)
+    : selectedPreset
+      ? { ...selectedPreset.settingsConfig.env }
+      : {};
 
   if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
   if (authMode === 'api_key') {
@@ -147,17 +155,29 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
     delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
   }
 
+  const existingMeta = existingProvider?.meta && typeof existingProvider.meta === 'object'
+    ? existingProvider.meta as Record<string, unknown>
+    : {};
   const meta: Record<string, unknown> = {
+    ...existingMeta,
     authMode,
     apiFormat: formData.apiFormat,
     apiKeyField: formData.apiKeyField,
     isFullUrl: formData.isFullUrl,
   };
 
-  if (promptCacheKey) meta.promptCacheKey = promptCacheKey;
+  if (promptCacheKey) {
+    meta.promptCacheKey = promptCacheKey;
+  } else {
+    delete meta.promptCacheKey;
+  }
   if (authMode === 'oauth_proxy') {
     meta.providerType = selectedPreset?.providerType || 'codex_oauth';
-    if (formData.codexFastMode) meta.codexFastMode = true;
+    if (formData.codexFastMode) {
+      meta.codexFastMode = true;
+    } else {
+      delete meta.codexFastMode;
+    }
     meta.authBinding = {
       source: 'managed_account',
       authProvider: 'codex_oauth',
@@ -169,16 +189,21 @@ export function buildProvider(formData: ProviderFormData, selectedPreset: Provid
         accountId: formData.codexAccountId.trim(),
       };
     }
+  } else {
+    delete meta.providerType;
+    delete meta.authBinding;
+    delete meta.codexFastMode;
   }
 
   return {
+    ...existingProvider,
     id,
     name,
     settingsConfig: { env },
     websiteUrl: selectedPreset?.websiteUrl || websiteUrl || undefined,
     notes: notes || undefined,
     meta,
-    inFailoverQueue: false,
+    inFailoverQueue: existingProvider?.inFailoverQueue ?? false,
   };
 }
 

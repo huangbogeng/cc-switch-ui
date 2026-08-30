@@ -2,8 +2,7 @@
 
 use crate::database::types::{
     DailyUsage, LogFilters, ModelPricing, ModelStats, PaginatedLogs, ProviderStats,
-    ProviderUsageSummary, ProxyRequestLogRecord, RequestLogDetail, UsageRecord,
-    UsageSourceItem,
+    ProviderUsageSummary, ProxyRequestLogRecord, RequestLogDetail, UsageRecord, UsageSourceItem,
 };
 use crate::error::AppError;
 use rusqlite::params;
@@ -60,12 +59,11 @@ impl super::Database {
 
     pub fn get_usage_summary_by_provider(
         &self,
-        since_timestamp: Option<i64>,
+        start_date: Option<i64>,
+        end_date: Option<i64>,
     ) -> Result<Vec<ProviderUsageSummary>, AppError> {
         let conn = self.conn();
-        let where_clause = since_timestamp
-            .map(|_| "WHERE created_at >= ?1")
-            .unwrap_or("");
+        let (where_clause, params_list) = build_ts_where("created_at", start_date, end_date);
 
         let sql = format!(
             "SELECT provider_id, model, SUM(input_tokens) as total_input,
@@ -78,11 +76,9 @@ impl super::Database {
         );
 
         let mut stmt = conn.prepare(&sql)?;
-        let mut rows = if let Some(ts) = since_timestamp {
-            stmt.query(params![ts])?
-        } else {
-            stmt.query([])?
-        };
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_list.iter().map(|param| param.as_ref()).collect();
+        let mut rows = stmt.query(param_refs.as_slice())?;
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {
@@ -97,20 +93,27 @@ impl super::Database {
         Ok(results)
     }
 
-    pub fn get_usage_daily_trend(&self, days: i32) -> Result<Vec<DailyUsage>, AppError> {
+    pub fn get_usage_daily_trend(
+        &self,
+        start_date: Option<i64>,
+        end_date: Option<i64>,
+    ) -> Result<Vec<DailyUsage>, AppError> {
         let conn = self.conn();
-        let mut stmt = conn.prepare(
+        let (where_clause, params_list) = build_ts_where("created_at", start_date, end_date);
+        let sql = format!(
             "SELECT date(created_at, 'unixepoch') as day,
                     SUM(input_tokens) as total_input, SUM(output_tokens) as total_output,
                     COUNT(*) as request_count
              FROM proxy_request_logs
-             WHERE created_at >= ?1
+             {}
              GROUP BY day
              ORDER BY day DESC",
-        )?;
-
-        let cutoff = chrono::Utc::now().timestamp() - (days as i64 * 86400);
-        let mut rows = stmt.query(params![cutoff])?;
+            where_clause
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_list.iter().map(|param| param.as_ref()).collect();
+        let mut rows = stmt.query(param_refs.as_slice())?;
 
         let mut results = Vec::new();
         while let Some(row) = rows.next()? {
@@ -130,7 +133,11 @@ impl super::Database {
         start_date: Option<i64>,
         end_date: Option<i64>,
     ) -> Result<Vec<ProviderStats>, AppError> {
-        log::info!("[DB] get_usage_provider_stats start={:?} end={:?}", start_date, end_date);
+        log::info!(
+            "[DB] get_usage_provider_stats start={:?} end={:?}",
+            start_date,
+            end_date
+        );
         let _start = std::time::Instant::now();
         let results = {
             let conn = self.conn();
@@ -170,11 +177,18 @@ impl super::Database {
 
         // Fallback to usage_records if proxy_request_logs is empty
         if results.is_empty() {
-            log::info!("[DB] proxy_request_logs empty, falling back to usage_records ({}ms)", _start.elapsed().as_millis());
+            log::info!(
+                "[DB] proxy_request_logs empty, falling back to usage_records ({}ms)",
+                _start.elapsed().as_millis()
+            );
             return self.get_usage_provider_stats_fallback(start_date, end_date);
         }
 
-        log::info!("[DB] get_usage_provider_stats done: {} providers ({}ms)", results.len(), _start.elapsed().as_millis());
+        log::info!(
+            "[DB] get_usage_provider_stats done: {} providers ({}ms)",
+            results.len(),
+            _start.elapsed().as_millis()
+        );
         Ok(results)
     }
 
@@ -185,7 +199,11 @@ impl super::Database {
         end_date: Option<i64>,
     ) -> Result<Vec<ProviderStats>, AppError> {
         let _start = std::time::Instant::now();
-        log::info!("[DB] get_usage_provider_stats_fallback start={:?} end={:?}", start_date, end_date);
+        log::info!(
+            "[DB] get_usage_provider_stats_fallback start={:?} end={:?}",
+            start_date,
+            end_date
+        );
         let conn = self.conn();
         let (where_clause, params_list) = build_ts_where("request_timestamp", start_date, end_date);
         let sql = format!(
@@ -214,7 +232,11 @@ impl super::Database {
                 fail_count: 0,
             });
         }
-        log::info!("[DB] get_usage_provider_stats_fallback done: {} providers ({}ms)", results.len(), _start.elapsed().as_millis());
+        log::info!(
+            "[DB] get_usage_provider_stats_fallback done: {} providers ({}ms)",
+            results.len(),
+            _start.elapsed().as_millis()
+        );
         Ok(results)
     }
 
@@ -224,7 +246,11 @@ impl super::Database {
         start_date: Option<i64>,
         end_date: Option<i64>,
     ) -> Result<Vec<ModelStats>, AppError> {
-        log::info!("[DB] get_usage_model_stats start={:?} end={:?}", start_date, end_date);
+        log::info!(
+            "[DB] get_usage_model_stats start={:?} end={:?}",
+            start_date,
+            end_date
+        );
         let _start = std::time::Instant::now();
         let conn = self.conn();
         let (where_clause, params_list) = build_ts_where("created_at", start_date, end_date);
@@ -255,7 +281,11 @@ impl super::Database {
                 total_output_tokens: row.get(3)?,
             });
         }
-        log::info!("[DB] get_usage_model_stats done: {} models ({}ms)", results.len(), _start.elapsed().as_millis());
+        log::info!(
+            "[DB] get_usage_model_stats done: {} models ({}ms)",
+            results.len(),
+            _start.elapsed().as_millis()
+        );
         Ok(results)
     }
 
@@ -266,7 +296,11 @@ impl super::Database {
         page: u32,
         page_size: u32,
     ) -> Result<PaginatedLogs, AppError> {
-        log::info!("[DB] get_request_logs_paginated page={} size={}", page, page_size);
+        log::info!(
+            "[DB] get_request_logs_paginated page={} size={}",
+            page,
+            page_size
+        );
         let _start = std::time::Instant::now();
         let conn = self.conn();
 
@@ -336,18 +370,26 @@ impl super::Database {
                 });
             }
 
-            log::info!("[DB] get_request_logs_paginated done: {} rows, total={} ({}ms)", data.len(), total, _start.elapsed().as_millis());
-            return Ok(PaginatedLogs {
+            log::info!(
+                "[DB] get_request_logs_paginated done: {} rows, total={} ({}ms)",
+                data.len(),
+                total,
+                _start.elapsed().as_millis()
+            );
+            Ok(PaginatedLogs {
                 data,
                 total,
                 page,
                 page_size,
-            });
+            })
         }
     }
 
     /// Get detail for a single request log by id.
-    pub fn get_request_log_detail(&self, log_id: i64) -> Result<Option<RequestLogDetail>, AppError> {
+    pub fn get_request_log_detail(
+        &self,
+        log_id: i64,
+    ) -> Result<Option<RequestLogDetail>, AppError> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT l.id, l.app_type, l.provider_id, l.request_path,
@@ -425,6 +467,36 @@ impl super::Database {
         Ok(results)
     }
 
+    /// Aggregate usage by source within an optional timestamp range.
+    pub fn get_usage_by_source_range(
+        &self,
+        start_date: Option<i64>,
+        end_date: Option<i64>,
+    ) -> Result<Vec<UsageSourceItem>, AppError> {
+        let conn = self.conn();
+        let (where_clause, params_list) = build_ts_where("created_at", start_date, end_date);
+        let sql = format!(
+            "SELECT app_type, COUNT(*) as request_count
+             FROM proxy_request_logs
+             {}
+             GROUP BY app_type
+             ORDER BY request_count DESC",
+            where_clause
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_list.iter().map(|param| param.as_ref()).collect();
+        let mut rows = stmt.query(param_refs.as_slice())?;
+        let mut results = Vec::new();
+        while let Some(row) = rows.next()? {
+            results.push(UsageSourceItem {
+                app_type: row.get(0)?,
+                request_count: row.get(1)?,
+            });
+        }
+        Ok(results)
+    }
+
     // ── Model pricing CRUD ──
 
     pub fn get_model_pricing(&self) -> Result<Vec<ModelPricing>, AppError> {
@@ -471,7 +543,10 @@ impl super::Database {
 
     pub fn delete_model_pricing(&self, model_id: &str) -> Result<(), AppError> {
         let conn = self.conn();
-        conn.execute("DELETE FROM model_pricing WHERE model_id = ?1", params![model_id])?;
+        conn.execute(
+            "DELETE FROM model_pricing WHERE model_id = ?1",
+            params![model_id],
+        )?;
         Ok(())
     }
 }
@@ -501,9 +576,7 @@ fn build_ts_where(
 }
 
 /// Build WHERE conditions and params from LogFilters.
-fn build_log_filters(
-    filters: &LogFilters,
-) -> (Vec<String>, Vec<Box<dyn rusqlite::types::ToSql>>) {
+fn build_log_filters(filters: &LogFilters) -> (Vec<String>, Vec<Box<dyn rusqlite::types::ToSql>>) {
     let mut conditions: Vec<String> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
@@ -534,4 +607,58 @@ fn build_log_filters(
     }
 
     (conditions, params)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::Database;
+    use rusqlite::{params, Connection};
+    use std::sync::Mutex;
+
+    fn database_with_usage() -> Database {
+        let database = Database {
+            conn: Mutex::new(Connection::open_in_memory().unwrap()),
+        };
+        database.create_tables().unwrap();
+        let conn = database.conn();
+        for (timestamp, provider, source) in [
+            (100_i64, "old", "proxy"),
+            (200_i64, "included", "session_log"),
+            (300_i64, "new", "proxy"),
+        ] {
+            conn.execute(
+                "INSERT INTO proxy_request_logs
+                 (app_type, provider_id, request_path, model, input_tokens, output_tokens,
+                  success, data_source, created_at)
+                 VALUES (?1, ?2, '/v1/messages', 'model', 10, 5, 1, ?3, ?4)",
+                params![source, provider, source, timestamp],
+            )
+            .unwrap();
+        }
+        drop(conn);
+        database
+    }
+
+    #[test]
+    fn usage_summary_queries_apply_both_range_boundaries() {
+        let database = database_with_usage();
+
+        let summary = database
+            .get_usage_summary_by_provider(Some(150), Some(250))
+            .unwrap();
+        let trend = database
+            .get_usage_daily_trend(Some(150), Some(250))
+            .unwrap();
+        let sources = database
+            .get_usage_by_source_range(Some(150), Some(250))
+            .unwrap();
+
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].provider_id, "included");
+        assert_eq!(trend.len(), 1);
+        assert_eq!(trend[0].request_count, 1);
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].app_type, "session_log");
+        assert_eq!(sources[0].request_count, 1);
+    }
 }

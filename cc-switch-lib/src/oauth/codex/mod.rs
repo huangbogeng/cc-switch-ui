@@ -31,11 +31,10 @@ pub(crate) mod types;
 pub use types::{CodexOAuthError, CodexOAuthStatus};
 
 use types::{
-    compute_expires_at_ms, extract_identity_from_tokens, parse_interval,
-    CachedAccessToken, CodexAccountData, DeviceCodeResponse, DevicePollSuccess, OAuthTokenResponse,
-    PendingDeviceCode, CODEX_CLIENT_ID, CODEX_USER_AGENT, DEVICE_AUTH_TOKEN_URL,
-    DEVICE_AUTH_USERCODE_URL, DEVICE_CODE_DEFAULT_EXPIRES_IN, DEVICE_REDIRECT_URI,
-    DEVICE_VERIFICATION_URL, OAUTH_TOKEN_URL,
+    compute_expires_at_ms, extract_identity_from_tokens, parse_interval, CachedAccessToken,
+    CodexAccountData, DeviceCodeResponse, DevicePollSuccess, OAuthTokenResponse, PendingDeviceCode,
+    CODEX_CLIENT_ID, CODEX_USER_AGENT, DEVICE_AUTH_TOKEN_URL, DEVICE_AUTH_USERCODE_URL,
+    DEVICE_CODE_DEFAULT_EXPIRES_IN, DEVICE_REDIRECT_URI, DEVICE_VERIFICATION_URL, OAUTH_TOKEN_URL,
 };
 
 /// Codex OAuth 认证管理器（多账号）
