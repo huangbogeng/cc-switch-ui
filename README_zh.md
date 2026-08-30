@@ -162,7 +162,7 @@ Rust workspace 包含三个 crate：
 
 ## 开发
 
-环境要求：Node.js 20.19+（或 22.12+）、npm 与 Rust 1.85+（项目工具链由 `rust-toolchain.toml` 固定）。
+环境要求：Node.js 24.15+、npm 与 Rust 1.85+（项目工具链由 `rust-toolchain.toml` 固定）。
 
 ### 从源码运行
 

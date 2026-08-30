@@ -162,7 +162,7 @@ The frontend lives in `cc-switch-ui/` and is built with React, TypeScript, and V
 
 ## Development
 
-Requirements: Node.js 20.19+ (or 22.12+), npm, and Rust 1.85+ (`rust-toolchain.toml` pins the project toolchain).
+Requirements: Node.js 24.15+, npm, and Rust 1.85+ (`rust-toolchain.toml` pins the project toolchain).
 
 ### Run from source
 

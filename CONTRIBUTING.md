@@ -15,7 +15,7 @@ Thank you for your interest in contributing to CC Switch Web! Please read our [C
 
 ### Prerequisites
 
-- Node.js 20.19+ (or 22.12+) and npm
+- Node.js 24.15+ and npm
 - Rust 1.85+ and Cargo
 
 ### Quick Start
@@ -93,7 +93,7 @@ chore(deps): update dependencies
 
 ### 前提条件
 
-- Node.js 20.19+（或 22.12+）和 npm
+- Node.js 24.15+ 和 npm
 - Rust 1.85+ 和 Cargo
 
 ### 快速开始
