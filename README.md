@@ -1,314 +1,233 @@
 # CC Switch UI
 
-**Managing Claude Code Provider configurations has never been easier.**
+**A browser-first provider manager and local routing service for Claude Code.**
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[**中文文档**](README_zh.md)
+[中文文档](README_zh.md)
 
----
+CC Switch UI manages Claude Code providers, OAuth accounts, MCP servers, Skills, usage data, and a local protocol-converting proxy from one web interface. It is a Web/Rust fork of [cc-switch](https://github.com/farion1231/cc-switch), designed for headless machines and browser-based administration.
 
-## 🎯 What It Solves
+> The admin API listens on `127.0.0.1` by default. Only use `--host 0.0.0.0` on a trusted network and protect the admin token.
 
-Configuring API Providers for Claude Code traditionally requires manually editing JSON files, memorizing various API endpoints, and handling complex OAuth authorization flows. 
+## Contents
 
-**CC Switch UI lets you manage all of this in a browser-first workflow:**
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Supported providers](#supported-providers)
+- [Quick start](#quick-start)
+- [Configuration and data](#configuration-and-data)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Project scope](#project-scope)
 
-- **One-click Provider Switching:** Instantly switch between 50+ model providers without ever touching a config file.
-- **Built-in Presets:** 50+ pre-configured providers (DeepSeek, OpenAI, Anthropic, Google, Copilot, Codex, MiniMax, etc.).
-- **Dual Authentication Support:** Supports both API Key and OAuth authentication flows.
-- **Direct Config + Local Route:** Manage direct provider config and local route takeover separately.
-- **Real-time Live Sync:** Changes are immediately synchronized with your local Claude Code configuration and take effect instantly.
+## How it works
 
----
+CC Switch UI keeps direct provider selection and local routing as two separate controls:
 
-## 📌 Project Status (2026-06-01)
+| Mode | What Claude Code uses | When to use it |
+|------|------------------------|----------------|
+| **Direct configuration** | The selected provider's endpoint and credentials are written to `~/.claude/settings.json` | Simple provider switching without a local proxy |
+| **Local route** | Claude Code connects to the local proxy, which forwards to the selected route target | Protocol conversion, request logs, circuit breaking, or failover |
 
-- **All core features complete**: Providers (50+ presets), local route takeover, MCP Servers, Skills, Proxy, OAuth, Usage tracking.
-- Backend database module modularized into domain sub-modules (`providers`, `mcp`, `skills`, `proxy`, `usage`, `migrations`, `types`).
-- Proxy streaming pipeline modularized under `cc-switch-server/src/proxy/streaming/`.
-- Usage supports both proxy-mode logs and Claude local session-log sync (`~/.claude/projects/*/*.jsonl`).
-- Custom providers now support endpoint detection, model list fetch, and protocol-specific routing (`anthropic`, `openai_chat`, `openai_responses`).
+Changing the route target does not overwrite the selected direct provider. Stopping the local route restores a consistent direct configuration.
 
----
+## Features
 
-## 🚀 Supported Providers
+- **Provider management:** maintained presets, custom compatible endpoints, endpoint detection, model discovery, and one-click switching.
+- **Local routing:** Anthropic, OpenAI Chat, OpenAI Responses, and Gemini adapters; streaming conversion; circuit breaker; and failover queue.
+- **OAuth accounts:** device-code flows and multi-account management for Codex and GitHub Copilot, including GHES support.
+- **MCP servers:** CRUD, import, per-server enable/disable, and merge-safe synchronization to `~/.claude.json`.
+- **Claude Code Skills:** CRUD, collections, import, and synchronization from `~/.cc-switch/skills/` to `~/.claude/skills/`.
+- **Usage monitoring:** proxy request logs plus optional import of Claude Code session JSONL files, with source breakdown and trend charts.
+- **Live configuration:** merge-only updates preserve unrelated fields in Claude Code configuration files.
 
-50+ providers with presets, including:
+## Supported providers
 
-| Provider | Type | Auth Method | Description |
-|----------|------|-------------|-------------|
-| **Anthropic** | Official | API Key | Claude Opus, Sonnet, Haiku models |
-| **OpenAI** | Official | API Key | GPT series, o-series models |
-| **DeepSeek** | Official | API Key | DeepSeek V4, R1 models |
-| **Google Gemini** | Official | API Key | Gemini 2.5, 2.0 models |
-| **Copilot** | GitHub | OAuth | GPT, Claude via GitHub Copilot |
-| **Codex** | OpenAI | OAuth | ChatGPT Plus/Pro subscription |
-| **MiniMax** | Official | API Key | M2.7 and other models |
-| **SiliconFlow** | Aggregator | API Key | Various models |
-| **OpenRouter** | Aggregator | API Key | 200+ Models available |
+The UI includes seven maintained presets and also accepts custom compatible endpoints.
 
----
+| Provider | Type | Authentication | Notes |
+|----------|------|----------------|-------|
+| DeepSeek | Official | API key | DeepSeek chat and reasoning models |
+| Codex | OpenAI | OAuth | ChatGPT Plus/Pro subscription |
+| MiniMax | Official | API key | MiniMax models |
+| SiliconFlow | Aggregator | API key | Multi-model catalog |
+| OpenRouter | Aggregator | API key | Multi-provider model catalog |
+| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | Aggregator | API key | Native Anthropic API and multi-provider model catalog |
+| Gemini Native | Google | API key | Native Gemini API format |
 
-## 🏁 Quick Start
+To use OrcaRouter, [create an account or obtain an API key through the project link](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21), then select the built-in **OrcaRouter** preset. The preset can fetch the current model list from the service.
 
-### Easy Installation (Linux & macOS)
+Custom providers can use `anthropic`, `openai_chat`, `openai_responses`, or Gemini-compatible protocols. For an unknown endpoint, use **Detect endpoint type** and **Fetch models** in the provider editor.
 
-The easiest way to install CC Switch UI is using our installation script:
+## Quick start
+
+### 1. Install on Linux or macOS
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/install.sh | bash
 ```
 
-After installation, simply run:
+The installer places the application under `~/.local/share/cc-switch-ui` and keeps user data in `~/.cc-switch`.
+
+For other platforms, download a build from [GitHub Releases](https://github.com/huangbogeng/cc-switch-ui/releases) or build from source.
+
+### 2. Start the service
 
 ```bash
-cc-switch-ui
-```
-
-The installer places the application under `~/.local/share/cc-switch-ui` by default. User data stays in `~/.cc-switch`, including the SQLite database.
-
-### CLI Commands
-
-`cc-switch-ui start` launches the backend server and serves frontend static assets (`/ui`) in one process (production mode).
-
-```bash
-# Start with defaults: 0.0.0.0:5007, proxy 15721
+# Defaults: admin UI on 127.0.0.1:5007, local proxy on 15721
 cc-switch-ui start
-
-# Custom bind/proxy ports
-cc-switch-ui start --host 127.0.0.1 --port 5007 --proxy-port 15721
-
-# Health check
-cc-switch-ui status
-
-# Show version
-cc-switch-ui version
-
-# Diagnose installation/path/permission issues
-cc-switch-ui doctor
 ```
 
-### Build from Source
+Open [http://localhost:5007/ui](http://localhost:5007/ui) and sign in with the admin token printed in the startup log.
 
-If you prefer to build from source:
+Useful CLI commands:
 
 ```bash
-# Build frontend assets first (required for /ui in production mode)
-cd cc-switch-ui && npm ci && npm run build && cd ..
-
-# Build and run CLI entrypoint
-cargo build --release
-cargo run -p cc-switch-cli -- start
+cc-switch-ui status   # Check service health
+cc-switch-ui doctor   # Diagnose installation, PATH, and permission issues
+cc-switch-ui version  # Print the installed version
+cc-switch-ui stop     # Stop the managed service
 ```
 
-### 2. Access the Web UI
+To listen beyond the local machine, opt in explicitly:
 
-Open your browser and navigate to: **http://localhost:5007/ui**
+```bash
+cc-switch-ui start --host 0.0.0.0 --port 5007 --proxy-port 15721
+```
 
-*(Note: An admin token is required for the first login, which can be found printed in your terminal startup logs.)*
+### 3. Add and switch a provider
 
-### 3. Add a Provider
+1. Open **Providers**.
+2. Choose a preset or create a custom provider.
+3. Enter the required API key or complete OAuth authorization.
+4. Save the provider and select **Switch**.
 
-1. Go to the **Providers** page in the dashboard.
-2. Select a preset or configure a custom endpoint.
-3. Enter your API Key if required.
-4. Optionally use **Detect endpoint type** and **Fetch models** for custom endpoints.
-5. Click **Save** and switch to it.
+Claude Code immediately uses the selected direct provider.
 
-Claude Code will immediately start using the selected direct Provider.
+### 4. Optional: enable the local route
 
-### 4. Optional: Enable Local Route Takeover
+1. In **Providers**, choose a **Route Target** in the **Local Route** panel.
+2. Start the local route.
 
-1. Stay on the **Providers** page.
-2. Pick a **Route Target** in the `Local Route` panel.
-3. Start the local route.
+Claude Code now sends requests to the local proxy, which adapts and forwards them to the route target. Stop the route to return to direct configuration.
 
-Once started, Claude Code traffic goes to the local route first, then the route forwards requests to the selected target provider.
+## Configuration and data
 
----
+### Environment variables
 
-## ✨ Features
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CC_SWITCH_ADMIN_TOKEN` | Generated at startup | Admin token for the Web UI and API |
+| `CC_SWITCH_PROXY_PORT` | `15721` | Local proxy listening port |
+| `CC_SWITCH_UI_DIR` | Auto-detected | Directory containing built frontend assets |
 
-### 🔌 Provider Management
-- 50+ built-in Provider presets for quick setup.
-- Support for custom Provider configurations.
-- One-click switching with real-time configuration sync.
-- Endpoint-type detection for custom URLs.
-- Model list fetch for OpenAI-compatible `/models` endpoints.
-- Failover queue with circuit breaker.
+The admin host and port can be changed with `cc-switch-ui start --host ... --port ...`. CLI settings are persisted in `~/.cc-switch/cli.json`.
 
-### 🔑 OAuth Authentication
-- **Codex**: Device code OAuth flow for ChatGPT Plus/Pro subscription.
-- **GitHub Copilot**: Device code OAuth flow with multi-account and GHES support.
-- Multi-account management for both Codex and Copilot.
+### Managed paths
 
-### 🛠 MCP Servers
-- Full CRUD management for MCP servers with JSON editor.
-- Sync to `~/.claude.json` preserving other root fields.
-- Import from existing Claude Code config.
-- Enable/disable toggle per server.
+| Path | Purpose |
+|------|---------|
+| `~/.cc-switch/cc-switch.db` | Providers, accounts, routes, MCP, Skills metadata, and usage data |
+| `~/.cc-switch/cli.json` | CLI host and port settings |
+| `~/.cc-switch/skills/` | Skills source of truth managed by CC Switch UI |
+| `~/.claude/settings.json` | Active Claude Code provider configuration |
+| `~/.claude.json` | Claude Code MCP server configuration |
+| `~/.claude/skills/` | Enabled Claude Code Skills |
 
-### 📦 Skills
-- Full CRUD management for Claude Code skills.
-- Sync from SSOT (`~/.cc-switch/skills/`) to `~/.claude/skills/`.
-- Import from `~/.claude/skills/` and `~/.claude/plugins/`.
-- Collection grouping and enable/disable toggle.
+Back up `~/.cc-switch` before migrating or removing an installation. API keys and OAuth credentials are sensitive data.
 
-### 🌐 Local Proxy Server
-- HTTP proxy on port 15721 (configurable).
-- Provider adapter chain with request/response format conversion.
-- Separate route target selection and route start/stop control.
-- Circuit breaker per provider, failover queue.
-- Streaming response transformation (Anthropic ↔ OpenAI formats).
-
-### ⚡ Live Config
-- Automatically writes direct configurations to Claude Code when switching Providers.
-- Local route takeover can replace direct config at runtime without changing the selected direct provider.
-- Merge-only env updates preserve other settings in `settings.json`.
-- Completely eliminates the need to manually edit config files.
-
-### 📊 Usage Monitoring (Current Behavior)
-- Request logs and trend charts are sourced from `proxy_request_logs`.
-- Session usage sync is available via `POST /api/usage/sync-session` and can import Claude local JSONL sessions.
-- Data source breakdown is available via `GET /api/usage/sources` (`proxy` / `session_log`).
-- Model pricing is used for session-synced records; proxy-ingested records currently keep `total_cost_usd` empty/zero unless cost is filled later in the pipeline.
-
----
-
-## 🏗 Architecture
-
-CC Switch UI is a browser-first Web architecture with a Rust workspace backend:
+## Architecture
 
 ```mermaid
-graph TD
-    %% Define Styles
-    classDef frontend fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#f8fafc
-    classDef backend fill:#1e1e1e,stroke:#f97316,stroke-width:2px,color:#f8fafc
-    classDef library fill:#27272a,stroke:#10b981,stroke-width:2px,color:#f8fafc
-    classDef ext fill:#172554,stroke:#6366f1,stroke-width:1px,color:#cbd5e1
-
-    %% Nodes
-    UI["💻 Browser (React UI)<br/>http://localhost:5007/ui"]:::frontend
-    
-    subgraph CC_Switch_Server ["cc-switch-server (Rust + Axum)"]
-        API["🔌 REST API<br/>/api/*"]:::backend
-        OAuth["🔐 OAuth Handler<br/>codex / copilot"]:::backend
-        Proxy["🌐 Local Proxy<br/>:15721"]:::backend
-    end
-    
-    subgraph CC_Switch_Lib ["cc-switch-lib (Rust Core)"]
-        DB[("🗄️ SQLite DB<br/>rusqlite")]:::library
-        LiveConfig["⚡ Live Config<br/>File Sync"]:::library
-        OAuthCore["🔑 OAuth Core<br/>Token Mgt"]:::library
-        McpSkills["🛠 MCP & Skills<br/>CRUD + Sync"]:::library
-    end
-    
-    ClaudeCode["🤖 Claude Code<br/>CLI Tool"]:::ext
-    ProviderAPI["☁️ Provider API<br/>Anthropic/OpenAI/etc."]:::ext
-
-    %% Connections
-    UI -- "HTTP /api/*" --> API
-    UI -- "OAuth Redirects" --> OAuth
-    
-    API -.-> DB
-    API -.-> LiveConfig
-    API -.-> McpSkills
-    OAuth -.-> OAuthCore
-    Proxy -.-> OAuthCore
-    
-    LiveConfig -- "Writes settings.json" --> ClaudeCode
-    ClaudeCode -- "Sends Prompts" --> Proxy
-    Proxy -- "Forwards Requests" --> ProviderAPI
+flowchart LR
+    Browser[React Web UI] -->|REST /api| Server[Axum server]
+    Server --> Core[cc-switch-lib]
+    Core --> DB[(SQLite)]
+    Core --> Config[Claude config files]
+    Claude[Claude Code] -->|direct mode| Provider[Provider API]
+    Claude -->|local route mode| Proxy[Local proxy]
+    Proxy -->|adapt, stream, fail over| Provider
 ```
 
----
+The Rust workspace contains three crates:
 
-## ⚙️ Configuration
+- `cc-switch-cli`: installation-facing command-line entry point and service lifecycle.
+- `cc-switch-server`: REST API, OAuth callbacks, static UI hosting, and local proxy.
+- `cc-switch-lib`: persistence, live configuration, MCP/Skills synchronization, and OAuth core logic.
 
-| Environment Variable | Default Value | Description |
-|----------------------|---------------|-------------|
-| `CC_SWITCH_ADMIN_TOKEN` | *Auto-generated* | Admin password for Web UI |
-| `CC_SWITCH_PROXY_PORT` | `15721` | Port for the local proxy server |
-| `CC_SWITCH_TEST_HOME` | `-` | Home directory for testing purposes |
+The frontend lives in `cc-switch-ui/` and is built with React, TypeScript, and Vite.
 
----
+## Development
 
-## 🛠 Development
+Requirements: Node.js 20.19+ (or 22.12+), npm, and Rust 1.85+ (`rust-toolchain.toml` pins the project toolchain).
 
-### Frontend (React + TypeScript + Vite)
+### Run from source
+
+```bash
+# Terminal 1: backend API
+cargo run -p cc-switch-server
+
+# Terminal 2: frontend development server
+cd cc-switch-ui
+npm ci
+npm run dev
+```
+
+For a production-style build served by the CLI:
 
 ```bash
 cd cc-switch-ui
-npm install
-npm run dev        # Start dev server on http://localhost:5173
-npm run build      # Production build
-npm run lint       # Run ESLint checks
+npm ci
+npm run build
+cd ..
+cargo run -p cc-switch-cli -- start
 ```
 
-### Backend (Rust + Axum)
+### Quality checks
 
 ```bash
-cargo run -p cc-switch-server     # Run backend server directly
-cargo fmt && cargo clippy      # Formatting and linting
-cargo test                     # Run tests
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+cd cc-switch-ui
+npm test
+npm run lint
+npm run build
 ```
 
-### Project Structure
+### Repository layout
 
 ```text
-cc-switch-ui/          # React frontend workspace
-  └── src/
-      ├── api/         # API client layer
-      ├── components/  # Reusable UI components
-      └── pages/       # Dashboard (read-only), Providers, MCP, Skills, Usage, etc.
-cc-switch-server/      # Axum HTTP server (Rust)
-  └── src/
-      ├── handlers/    # REST API handlers (providers, mcp, skills, etc.)
-      └── proxy/       # HTTP proxy server with streaming conversion
-cc-switch-lib/         # Shared core library (Rust)
-  └── src/
-      ├── database/    # SQLite persistence (modularized)
-      │   ├── types.rs
-      │   ├── providers.rs
-      │   ├── mcp.rs
-      │   ├── skills.rs
-      │   ├── proxy.rs
-      │   ├── usage.rs
-      │   └── migrations.rs
-      ├── oauth/       # OAuth handling (Codex + Copilot)
-      ├── mcp.rs       # MCP sync logic
-      ├── skills.rs    # Skills sync + import logic
-      ├── config.rs    # Configuration management
-      └── live.rs      # Live Config sync to settings.json
+cc-switch-cli/       CLI and service lifecycle
+cc-switch-lib/       Shared domain logic and SQLite persistence
+cc-switch-server/    REST API, OAuth handlers, and local proxy
+cc-switch-ui/        React frontend
+install.sh           Linux/macOS installer
 ```
 
----
+Provider and proxy changes should keep protocol-specific behavior inside adapter boundaries, preserve switch/start/stop live-config consistency, and include tests for request, response, streaming, usage, and failure behavior where applicable.
 
-## 🔄 Differences from the Original cc-switch
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before submitting a change.
 
-This project is a fork of the excellent [cc-switch](https://github.com/farion1231/cc-switch). Here are the main differences:
+## Project scope
 
-| Feature | cc-switch (Original) | CC Switch UI (This Project) |
-|---------|----------------------|------------------------------|
-| **Deployment** | Tauri Desktop App | Pure Web Service |
-| **System Tray** | Supported | Not Supported |
-| **MCP Management**| Supported | Supported |
-| **Skills Management**| Not Supported | Supported |
-| **Cloud Sync** | Supported | Not Supported |
-| **Multi-Account OAuth**| Not Supported | Supported |
-| **Core Focus** | Full feature set | Headless server for Claude Code CLI |
+| Capability | cc-switch | CC Switch UI |
+|------------|-----------|--------------|
+| Deployment | Tauri desktop application | Browser UI and headless Web service |
+| System tray | Yes | No |
+| Tool focus | Multiple AI coding tools | Claude Code CLI |
+| MCP and Skills | Yes | Yes, Claude Code focused |
+| Cloud sync | Yes | No |
+| OAuth accounts | Multiple providers | Codex and GitHub Copilot multi-account support |
 
----
+## Acknowledgements
 
-## 🙏 Acknowledgements
+CC Switch UI is built from the open-source [cc-switch](https://github.com/farion1231/cc-switch) project. Thanks to its maintainers and contributors.
 
-Built upon the excellent open-source project [cc-switch](https://github.com/farion1231/cc-switch).
+## License
 
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE).

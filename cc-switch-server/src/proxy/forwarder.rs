@@ -6,9 +6,7 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use cc_switch_lib::providers::{
-    AuthStrategy, StreamingResponseFormat, TransformInput,
-};
+use cc_switch_lib::providers::{AuthStrategy, StreamingResponseFormat, TransformInput};
 use futures::StreamExt;
 use reqwest::Method;
 use serde_json::{json, Value};
@@ -20,9 +18,7 @@ use super::failover_switch::FailoverSwitchManager;
 use super::headers::{copy_forward_headers, copy_response_headers};
 use super::provider_router::ProviderRouter;
 use super::session::{build_prompt_cache_key, extract_session_id};
-use super::streaming::{
-    openai_chat_sse_to_anthropic_with_usage, responses_sse_to_anthropic,
-};
+use super::streaming::{openai_chat_sse_to_anthropic_with_usage, responses_sse_to_anthropic};
 use super::types::{ProxyConfig, ProxyState, ProxyStatus};
 
 /// Forwarder handles proxying requests to OpenAI API with Codex OAuth auth
@@ -107,11 +103,7 @@ impl Forwarder {
                 log::error!("[Proxy] Failed to read request body for {}: {}", path, e);
                 StatusCode::BAD_REQUEST
             })?;
-        log::debug!(
-            "[Proxy] body_read path={} size={} bytes",
-            path,
-            body.len()
-        );
+        log::debug!("[Proxy] body_read path={} size={} bytes", path, body.len());
 
         let mut last_response: Option<(String, Response)> = None;
         let mut last_status: Option<StatusCode> = None;
@@ -149,7 +141,10 @@ impl Forwarder {
                     "[Proxy] Failed to parse request body for {}: {} | body_preview={}",
                     path,
                     e,
-                    String::from_utf8_lossy(&body).chars().take(200).collect::<String>()
+                    String::from_utf8_lossy(&body)
+                        .chars()
+                        .take(200)
+                        .collect::<String>()
                 );
                 StatusCode::BAD_REQUEST
             })?;
@@ -282,6 +277,7 @@ impl Forwarder {
         Err(final_status)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn forward_once(
         &self,
         state: Arc<ProxyState>,
@@ -372,7 +368,7 @@ impl Forwarder {
             } else {
                 ""
             },
-            format!("{:?}", auth_info.strategy),
+            format_args!("{:?}", auth_info.strategy),
             requested_stream,
         );
 
@@ -428,7 +424,11 @@ impl Forwarder {
 
         // Send request
         let upstream_res = upstream_req.send().await.map_err(|e| {
-            log::error!("[Proxy] upstream HTTP error url={}: {}", transform_output.upstream_url, e);
+            log::error!(
+                "[Proxy] upstream HTTP error url={}: {}",
+                transform_output.upstream_url,
+                e
+            );
             StatusCode::BAD_GATEWAY
         })?;
 
@@ -756,4 +756,3 @@ fn unix_timestamp() -> i64 {
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
 }
-

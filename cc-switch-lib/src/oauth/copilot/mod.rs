@@ -27,17 +27,17 @@ mod storage;
 pub(crate) mod types;
 
 pub use types::{
-    CopilotAuthError, CopilotAuthStatus, CopilotEndpoints, CopilotModel,
-    CopilotToken, CopilotUsageResponse, GitHubAccount, GitHubDeviceCodeResponse, GitHubUser,
-    QuotaDetail, QuotaSnapshots, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
-    COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
+    CopilotAuthError, CopilotAuthStatus, CopilotEndpoints, CopilotModel, CopilotToken,
+    CopilotUsageResponse, GitHubAccount, GitHubDeviceCodeResponse, GitHubUser, QuotaDetail,
+    QuotaSnapshots, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID,
+    COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
 use types::{
     composite_account_id, copilot_api_base, copilot_token_url, copilot_usage_url, github_client_id,
     github_device_code_url, github_oauth_token_url, github_user_url, is_ghes,
-    normalize_github_domain, CopilotModelsResponse, CopilotTokenResponse,
-    GitHubAccountData, GitHubOAuthResponse, DEFAULT_GITHUB_DOMAIN,
+    normalize_github_domain, CopilotModelsResponse, CopilotTokenResponse, GitHubAccountData,
+    GitHubOAuthResponse, DEFAULT_GITHUB_DOMAIN,
 };
 
 /// Copilot 认证管理器（支持多账号）

@@ -19,7 +19,8 @@ const DEFAULT_REFETCH_MS = 30_000;
 
 export const usageKeys = {
   all: ['usage'] as const,
-  summary: () => [...usageKeys.all, 'summary'] as const,
+  summary: (startDate?: number, endDate?: number) =>
+    [...usageKeys.all, 'summary', startDate ?? 0, endDate ?? 0] as const,
   providerStats: (startDate?: number, endDate?: number) =>
     [...usageKeys.all, 'provider-stats', startDate ?? 0, endDate ?? 0] as const,
   modelStats: (startDate?: number, endDate?: number) =>
@@ -29,35 +30,51 @@ export const usageKeys = {
   logDetail: (id: number) =>
     [...usageKeys.all, 'detail', id] as const,
   copilotUsage: () => [...usageKeys.all, 'copilot-usage'] as const,
+  sources: (startDate?: number, endDate?: number) =>
+    [...usageKeys.all, 'sources', startDate ?? 0, endDate ?? 0] as const,
 };
 
-export function useUsageSummary(refetchInterval = DEFAULT_REFETCH_MS) {
+export function useUsageSummary(
+  startDate?: number,
+  endDate?: number,
+  refetchInterval = DEFAULT_REFETCH_MS,
+) {
   return useQuery({
-    queryKey: usageKeys.summary(),
-    queryFn: ({ signal }) => getProxyUsageSummary(signal),
+    queryKey: usageKeys.summary(startDate, endDate),
+    queryFn: ({ signal }) => getProxyUsageSummary(startDate, endDate, signal),
     refetchInterval,
   });
 }
 
-export function useProviderStats(startDate?: number, endDate?: number) {
+export function useProviderStats(
+  startDate?: number,
+  endDate?: number,
+  refetchInterval = DEFAULT_REFETCH_MS,
+) {
   return useQuery({
     queryKey: usageKeys.providerStats(startDate, endDate),
     queryFn: ({ signal }) => getProviderStats(startDate, endDate, signal),
+    refetchInterval,
   });
 }
 
-export function useModelStats(startDate?: number, endDate?: number) {
+export function useModelStats(
+  startDate?: number,
+  endDate?: number,
+  refetchInterval = DEFAULT_REFETCH_MS,
+) {
   return useQuery({
     queryKey: usageKeys.modelStats(startDate, endDate),
     queryFn: ({ signal }) => getModelStats(startDate, endDate, signal),
+    refetchInterval,
   });
 }
 
-export function useRequestLogs(params: LogsQueryParams) {
+export function useRequestLogs(params: LogsQueryParams, refetchInterval = DEFAULT_REFETCH_MS) {
   return useQuery({
     queryKey: usageKeys.logs(params),
     queryFn: ({ signal }) => getRequestLogs(params, signal),
-    refetchInterval: DEFAULT_REFETCH_MS,
+    refetchInterval,
   });
 }
 
@@ -111,10 +128,14 @@ export function useSyncSession() {
   });
 }
 
-export function useDataSourceBreakdown() {
+export function useDataSourceBreakdown(
+  startDate?: number,
+  endDate?: number,
+  refetchInterval = DEFAULT_REFETCH_MS,
+) {
   return useQuery({
-    queryKey: [...usageKeys.all, 'sources'] as const,
-    queryFn: ({ signal }) => getDataSourceBreakdown(signal),
-    refetchInterval: 30_000,
+    queryKey: usageKeys.sources(startDate, endDate),
+    queryFn: ({ signal }) => getDataSourceBreakdown(startDate, endDate, signal),
+    refetchInterval,
   });
 }

@@ -26,7 +26,7 @@ struct Cli {
 enum Commands {
     /// Start server (backend + hosted frontend)
     Start {
-        /// Bind host (defaults to saved config or 0.0.0.0)
+        /// Bind host (defaults to saved config or 127.0.0.1)
         #[arg(long)]
         host: Option<String>,
         /// Bind port for admin/API server (defaults to saved config or 5007)
@@ -98,7 +98,7 @@ struct CliConfig {
 impl Default for CliConfig {
     fn default() -> Self {
         Self {
-            host: "0.0.0.0".to_string(),
+            host: "127.0.0.1".to_string(),
             port: 5007,
             proxy_port: 15721,
         }
@@ -310,9 +310,7 @@ fn run_clean(clean_live: bool) -> i32 {
                 Ok(raw) => {
                     let mut value: serde_json::Value =
                         serde_json::from_str(&raw).unwrap_or_default();
-                    let env = value
-                        .get_mut("env")
-                        .and_then(|v| v.as_object_mut());
+                    let env = value.get_mut("env").and_then(|v| v.as_object_mut());
                     if let Some(env) = env {
                         // Only strip proxy-routing fields; keep legitimate user config.
                         let base_url = env
@@ -325,9 +323,7 @@ fn run_clean(clean_live: bool) -> i32 {
                             env.remove("ANTHROPIC_API_KEY");
                             println!("  stripped proxy fields from live config");
                         } else {
-                            println!(
-                                "  live config base URL is not proxy — left untouched"
-                            );
+                            println!("  live config base URL is not proxy — left untouched");
                         }
                         match cc_switch_lib::config::write_json_file(&live_path, &value) {
                             Ok(()) => println!("  updated: {}", live_path.display()),
@@ -339,7 +335,11 @@ fn run_clean(clean_live: bool) -> i32 {
                     }
                 }
                 Err(e) => {
-                    eprintln!("  ERROR reading live config ({}): {}", live_path.display(), e);
+                    eprintln!(
+                        "  ERROR reading live config ({}): {}",
+                        live_path.display(),
+                        e
+                    );
                     errors += 1;
                 }
             }

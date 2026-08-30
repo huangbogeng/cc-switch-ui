@@ -1,300 +1,233 @@
 # CC Switch UI
 
-**让 Claude Code 的 Provider 配置管理更简单。**
+**面向 Claude Code 的浏览器 Provider 管理器与本地路由服务。**
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[**English Version**](README.md)
+[English](README.md)
 
----
+CC Switch UI 在一个 Web 界面中管理 Claude Code 的 Provider、OAuth 账号、MCP Server、Skills、用量数据与本地协议转换代理。项目基于 [cc-switch](https://github.com/farion1231/cc-switch) 演进，采用 Web + Rust 架构，适合无头服务器和浏览器管理场景。
 
-## 🎯 它解决了什么问题
+> 管理接口默认只监听 `127.0.0.1`。仅应在可信网络中使用 `--host 0.0.0.0`，并妥善保管 admin token。
 
-传统配置 Claude Code 的 API Provider 需要手动编辑 JSON 文件、记住各种 API 端点、并且还要处理复杂的 OAuth 授权。
+## 目录
 
-**CC Switch UI 让这一切都能以浏览器为中心轻松完成：**
+- [工作方式](#工作方式)
+- [功能](#功能)
+- [支持的 Provider](#支持的-provider)
+- [快速开始](#快速开始)
+- [配置与数据](#配置与数据)
+- [架构](#架构)
+- [开发](#开发)
+- [项目定位](#项目定位)
 
-- **一键切换 Provider：** 无需手动编辑配置，一键即可在 50+ 模型供应商之间切换。
-- **内置丰富预设：** 50+ 种 Provider 预设（DeepSeek、OpenAI、Anthropic、Google、Copilot、Codex、MiniMax 等）。
-- **双重认证支持：** 支持 API Key 和 OAuth 两种认证方式。
-- **实时配置同步：** 切换配置后自动写入 Claude Code 本地配置文件，立即生效。
+## 工作方式
 
----
+CC Switch UI 将“直接 Provider”和“本地路由”作为两个彼此独立的控制项：
 
-## 📌 当前进度（2026-05-14）
+| 模式 | Claude Code 实际使用的配置 | 适用场景 |
+|------|----------------------------|----------|
+| **直接配置** | 将所选 Provider 的端点与凭证写入 `~/.claude/settings.json` | 不经过本地代理，快速切换 Provider |
+| **本地路由** | Claude Code 连接本地代理，再由代理转发到路由目标 | 协议转换、请求日志、熔断或故障转移 |
 
-- **核心功能已全部完成**：Provider（50+ 预设）、MCP 服务器、Skills、代理、OAuth、用量追踪。
-- 后端数据库模块已按领域拆分（`providers`、`mcp`、`skills`、`proxy`、`usage`、`migrations`、`types`）。
-- 代理流式转换链路已模块化到 `cc-switch-server/src/proxy/streaming/`。
-- 用量统计已支持两条路径：代理日志 + Claude 本地会话日志同步（`~/.claude/projects/*/*.jsonl`）。
-- 当前重点：推进 Phase 2（`forwarder.rs` 拆分），同时避免把文件拆得过度细碎。
+修改路由目标不会覆盖当前选择的直接 Provider；停止本地路由后，系统会恢复一致的直接配置。
 
----
+## 功能
 
-## 🚀 支持的 Provider
+- **Provider 管理：** 内置预设、自定义兼容端点、端点检测、模型发现和一键切换。
+- **本地路由：** Anthropic、OpenAI Chat、OpenAI Responses 与 Gemini 适配器，支持流式转换、熔断器和故障转移队列。
+- **OAuth 账号：** Codex 与 GitHub Copilot 设备码授权及多账号管理，并支持 GHES。
+- **MCP Server：** CRUD、导入、独立启停，以及合并式同步到 `~/.claude.json`。
+- **Claude Code Skills：** CRUD、集合管理、导入，并从 `~/.cc-switch/skills/` 同步到 `~/.claude/skills/`。
+- **用量监控：** 代理请求日志及可选的 Claude Code 本地会话 JSONL 导入，提供来源拆分和趋势图。
+- **实时配置：** 采用合并式写入，保留 Claude Code 配置文件中的无关字段。
 
-50+ 个 Provider 预设，包括：
+## 支持的 Provider
+
+UI 内置 7 个持续维护的预设，同时支持自定义兼容端点。
 
 | Provider | 类型 | 认证方式 | 说明 |
-|----------|------|---------|------|
-| **Anthropic** | 官方 | API Key | Claude Opus, Sonnet, Haiku 系列 |
-| **OpenAI** | 官方 | API Key | GPT 系列、o 系列模型 |
-| **DeepSeek** | 官方 | API Key | DeepSeek V4、R1 模型 |
-| **Google Gemini** | 官方 | API Key | Gemini 2.5、2.0 模型 |
-| **Copilot** | GitHub | OAuth | 通过 GitHub Copilot 使用 GPT/Claude |
-| **Codex** | OpenAI | OAuth | ChatGPT Plus/Pro 订阅 |
-| **MiniMax** | 官方 | API Key | M2.7 及其他模型 |
-| **SiliconFlow** | 聚合平台 | API Key | 支持多种模型 |
-| **OpenRouter** | 聚合平台 | API Key | 200+ 模型可选 |
+|----------|------|----------|------|
+| DeepSeek | 官方 | API Key | DeepSeek 对话与推理模型 |
+| Codex | OpenAI | OAuth | ChatGPT Plus/Pro 订阅 |
+| MiniMax | 官方 | API Key | MiniMax 模型 |
+| SiliconFlow | 聚合平台 | API Key | 多模型目录 |
+| OpenRouter | 聚合平台 | API Key | 多供应商模型目录 |
+| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | 聚合平台 | API Key | Anthropic 原生接口与多供应商模型目录 |
+| Gemini Native | Google | API Key | Gemini 原生 API 格式 |
 
----
+使用 OrcaRouter 时，可通过[项目专属链接注册或获取 API Key](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21)，然后选择内置的 **OrcaRouter** 预设。该预设可以从服务端获取当前模型列表。
 
-## 🏁 快速开始
+自定义 Provider 可选择 `anthropic`、`openai_chat`、`openai_responses` 或 Gemini 兼容协议。面对未知端点时，可在 Provider 编辑器中使用**检测端点类型**与**获取模型**。
 
-### 一键安装 (Linux & macOS)
+## 快速开始
 
-最简单的安装方式是使用我们的自动安装脚本：
+### 1. 在 Linux 或 macOS 上安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/main/install.sh | bash
 ```
 
-安装完成后，直接运行即可启动服务：
+安装脚本默认将程序放在 `~/.local/share/cc-switch-ui`，用户数据保存在 `~/.cc-switch`。
+
+其他平台可从 [GitHub Releases](https://github.com/huangbogeng/cc-switch-ui/releases) 下载构建产物，或按照后文从源码构建。
+
+### 2. 启动服务
 
 ```bash
-cc-switch-ui
-```
-
-安装脚本默认把程序放在 `~/.local/share/cc-switch-ui`。用户数据仍保留在 `~/.cc-switch`，包括 SQLite 数据库。
-
-### CLI 命令
-
-`cc-switch-ui start` 会在一个进程里同时启动后端服务，并托管前端静态资源（`/ui`，生产模式）。
-
-```bash
-# 默认启动：0.0.0.0:5007，代理端口 15721
+# 默认：管理界面监听 127.0.0.1:5007，本地代理监听 15721
 cc-switch-ui start
-
-# 自定义监听地址和代理端口
-cc-switch-ui start --host 127.0.0.1 --port 5007 --proxy-port 15721
-
-# 健康检查
-cc-switch-ui status
-
-# 查看版本
-cc-switch-ui version
-
-# 诊断安装/PATH/权限问题
-cc-switch-ui doctor
 ```
 
-### 源码编译
+打开 [http://localhost:5007/ui](http://localhost:5007/ui)，使用启动日志中打印的 admin token 登录。
 
-如果你更倾向于从源码编译：
+常用 CLI 命令：
 
 ```bash
-# 先构建前端静态资源（生产模式 /ui 必需）
-cd cc-switch-ui && npm ci && npm run build && cd ..
-
-# 编译并启动 CLI 入口
-cargo build --release
-cargo run -p cc-switch-cli -- start
+cc-switch-ui status   # 检查服务状态
+cc-switch-ui doctor   # 诊断安装、PATH 与权限问题
+cc-switch-ui version  # 查看安装版本
+cc-switch-ui stop     # 停止托管服务
 ```
 
-### 访问 Web UI
+如果确实需要从其他设备访问，请显式开放监听：
 
-打开浏览器并访问：**http://localhost:5007/ui**
+```bash
+cc-switch-ui start --host 0.0.0.0 --port 5007 --proxy-port 15721
+```
 
-*（注：首次登录需要使用 admin token，可以在控制台的启动日志中找到。）*
+### 3. 添加并切换 Provider
 
-### 3. 添加 Provider
+1. 打开 **Providers** 页面。
+2. 选择预设，或新建自定义 Provider。
+3. 填写 API Key，或完成 OAuth 授权。
+4. 保存后点击**切换**。
 
-1. 进入仪表盘的 **Providers** 页面。
-2. 选择一个内置预设，或者配置自定义的 API 端点。
-3. 填入你的 API Key。
-4. 点击保存并一键切换。
+Claude Code 会立即使用所选的直接 Provider。
 
-Claude Code 将会立即开始使用你新选中的 Provider。
+### 4. 可选：启用本地路由
 
----
+1. 在 **Providers** 页面的**本地路由**区域选择**路由目标**。
+2. 启动本地路由。
 
-## ✨ 功能特性
+此后 Claude Code 的请求会先进入本地代理，再经过适配后转发到路由目标。停止路由即可回到直接配置。
 
-### 🔌 Provider 管理
-- 50+ 内置 Provider 预设，快速上手。
-- 支持自定义 Provider 配置。
-- 一键无缝切换，配置实时生效。
-- 故障转移队列和熔断器。
+## 配置与数据
 
-### 🔑 OAuth 认证
-- **Codex**：设备码 OAuth 流程，支持 ChatGPT Plus/Pro 订阅。
-- **GitHub Copilot**：设备码 OAuth 流程，支持多账号和 GHES。
-- Codex 和 Copilot 均支持多账号管理。
+### 环境变量
 
-### 🛠 MCP 服务器
-- 完整 CRUD 管理，支持 JSON 编辑器。
-- 同步到 `~/.claude.json`，保留其他根字段。
-- 从现有 Claude Code 配置导入。
-- 每个服务器独立启用/禁用。
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `CC_SWITCH_ADMIN_TOKEN` | 启动时生成 | Web UI 与 API 的管理 token |
+| `CC_SWITCH_PROXY_PORT` | `15721` | 本地代理监听端口 |
+| `CC_SWITCH_UI_DIR` | 自动检测 | 前端构建产物所在目录 |
 
-### 📦 Skills
-- Claude Code Skills 的完整 CRUD 管理。
-- 从 SSOT（`~/.cc-switch/skills/`）同步到 `~/.claude/skills/`。
-- 从 `~/.claude/skills/` 和 `~/.claude/plugins/` 导入。
-- 按集合（collection）分组，支持启用/禁用。
+管理接口的 host 与 port 可通过 `cc-switch-ui start --host ... --port ...` 修改。CLI 配置会持久化到 `~/.cc-switch/cli.json`。
 
-### 🌐 本地代理服务器
-- HTTP 代理，监听端口 15721（可配置）。
-- Provider 适配器链，请求/响应格式转换。
-- 每个 Provider 独立熔断器，故障转移队列。
-- 流式响应转换（Anthropic ↔ OpenAI 格式互转）。
+### 管理的路径
 
-### ⚡ Live Config (实时配置)
-- 切换 Provider 时自动将配置写入 Claude Code。
-- 仅合并 env 字段，保留 `settings.json` 中的其他配置。
-- 彻底告别手动编辑配置文件的烦恼。
+| 路径 | 用途 |
+|------|------|
+| `~/.cc-switch/cc-switch.db` | Provider、账号、路由、MCP、Skills 元数据与用量数据 |
+| `~/.cc-switch/cli.json` | CLI host 与 port 配置 |
+| `~/.cc-switch/skills/` | CC Switch UI 管理的 Skills 单一事实源 |
+| `~/.claude/settings.json` | Claude Code 当前 Provider 配置 |
+| `~/.claude.json` | Claude Code MCP Server 配置 |
+| `~/.claude/skills/` | 已启用的 Claude Code Skills |
 
-### 📊 用量监控（当前实现口径）
-- 请求日志与趋势图主要来自 `proxy_request_logs`。
-- 支持通过 `POST /api/usage/sync-session` 手动同步 Claude 本地 JSONL 会话日志。
-- 支持通过 `GET /api/usage/sources` 查看数据来源占比（`proxy` / `session_log`）。
-- `model_pricing` 当前用于 session 同步数据的成本计算；proxy 侧写入记录目前 `total_cost_usd` 仍可能为空/0（后续链路可继续补齐）。
+迁移或移除安装前，请备份 `~/.cc-switch`。API Key 与 OAuth 凭证属于敏感数据。
 
----
-
-## 🏗 技术架构
-
-CC Switch UI 采用浏览器优先的 Web 架构，后端为 Rust workspace：
+## 架构
 
 ```mermaid
-graph TD
-    %% Define Styles
-    classDef frontend fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#f8fafc
-    classDef backend fill:#1e1e1e,stroke:#f97316,stroke-width:2px,color:#f8fafc
-    classDef library fill:#27272a,stroke:#10b981,stroke-width:2px,color:#f8fafc
-    classDef ext fill:#172554,stroke:#6366f1,stroke-width:1px,color:#cbd5e1
-
-    %% Nodes
-    UI["💻 Browser (React UI)<br/>http://localhost:5007/ui"]:::frontend
-    
-    subgraph CC_Switch_Server ["cc-switch-server (Rust + Axum)"]
-        API["🔌 REST API<br/>/api/*"]:::backend
-        OAuth["🔐 OAuth 认证处理<br/>codex / copilot"]:::backend
-        Proxy["🌐 本地代理<br/>:15721"]:::backend
-    end
-    
-    subgraph CC_Switch_Lib ["cc-switch-lib (Rust Core)"]
-        DB[("🗄️ SQLite 数据库<br/>rusqlite")]:::library
-        LiveConfig["⚡ 实时配置同步<br/>文件写入"]:::library
-        OAuthCore["🔑 OAuth 核心逻辑<br/>令牌管理"]:::library
-        McpSkills["🛠 MCP & Skills<br/>CRUD + 同步"]:::library
-    end
-    
-    ClaudeCode["🤖 Claude Code<br/>CLI 工具"]:::ext
-    ProviderAPI["☁️ 供应商 API<br/>Anthropic/OpenAI/等"]:::ext
-
-    %% Connections
-    UI -- "HTTP /api/*" --> API
-    UI -- "OAuth 重定向" --> OAuth
-    
-    API -.-> DB
-    API -.-> LiveConfig
-    API -.-> McpSkills
-    OAuth -.-> OAuthCore
-    Proxy -.-> OAuthCore
-    
-    LiveConfig -- "写入 settings.json" --> ClaudeCode
-    ClaudeCode -- "发送提示词" --> Proxy
-    Proxy -- "转发请求" --> ProviderAPI
+flowchart LR
+    Browser[React Web UI] -->|REST /api| Server[Axum Server]
+    Server --> Core[cc-switch-lib]
+    Core --> DB[(SQLite)]
+    Core --> Config[Claude 配置文件]
+    Claude[Claude Code] -->|直接模式| Provider[Provider API]
+    Claude -->|本地路由模式| Proxy[本地代理]
+    Proxy -->|适配、流式转换、故障转移| Provider
 ```
 
----
+Rust workspace 包含三个 crate：
 
-## ⚙️ 配置说明
+- `cc-switch-cli`：面向安装用户的命令行入口与服务生命周期管理。
+- `cc-switch-server`：REST API、OAuth 回调、前端静态资源托管和本地代理。
+- `cc-switch-lib`：持久化、实时配置、MCP/Skills 同步与 OAuth 核心逻辑。
 
-| 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
-| `CC_SWITCH_ADMIN_TOKEN` | *自动生成* | Web UI 管理员密码 |
-| `CC_SWITCH_PROXY_PORT` | `15721` | 本地代理服务器监听端口 |
-| `CC_SWITCH_TEST_HOME` | `-` | 用于测试的系统 home 目录 |
+前端位于 `cc-switch-ui/`，使用 React、TypeScript 与 Vite。
 
----
+## 开发
 
-## 🛠 开发指南
+环境要求：Node.js 20.19+（或 22.12+）、npm 与 Rust 1.85+（项目工具链由 `rust-toolchain.toml` 固定）。
 
-### 前端 (React + TypeScript + Vite)
+### 从源码运行
+
+```bash
+# 终端 1：后端 API
+cargo run -p cc-switch-server
+
+# 终端 2：前端开发服务器
+cd cc-switch-ui
+npm ci
+npm run dev
+```
+
+如需由 CLI 托管前端构建产物：
 
 ```bash
 cd cc-switch-ui
-pnpm install
-pnpm dev        # 启动开发服务器 (http://localhost:5173)
-pnpm build      # 生产环境构建
-pnpm lint       # 运行 ESLint 检查
+npm ci
+npm run build
+cd ..
+cargo run -p cc-switch-cli -- start
 ```
 
-### 后端 (Rust + Axum)
+### 质量检查
 
 ```bash
-cargo run -p cc-switch-server     # 直接运行后端服务器
-cargo fmt && cargo clippy      # 代码格式化和 Lint 检查
-cargo test                     # 运行测试
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+cd cc-switch-ui
+npm test
+npm run lint
+npm run build
 ```
 
-### 项目目录结构
+### 仓库结构
 
 ```text
-cc-switch-ui/          # React 前端工作区
-  └── src/
-      ├── api/         # API 客户端层
-      ├── components/  # 可复用 UI 组件
-      └── pages/       # Dashboard, Providers, MCP, Skills 等
-cc-switch-server/      # Axum HTTP 服务器 (Rust)
-  └── src/
-      ├── handlers/    # REST API 处理函数 (providers, mcp, skills 等)
-      └── proxy/       # HTTP 代理服务器及流式转换
-cc-switch-lib/         # 共享核心库 (Rust)
-  └── src/
-      ├── database/    # SQLite 持久化（已模块化）
-      │   ├── types.rs
-      │   ├── providers.rs
-      │   ├── mcp.rs
-      │   ├── skills.rs
-      │   ├── proxy.rs
-      │   ├── usage.rs
-      │   └── migrations.rs
-      ├── oauth/       # OAuth 认证逻辑 (Codex + Copilot)
-      ├── mcp.rs       # MCP 同步逻辑
-      ├── skills.rs    # Skills 同步 + 导入逻辑
-      ├── config.rs    # 配置管理模块
-      └── live.rs      # Live Config 同步到 settings.json
+cc-switch-cli/       CLI 与服务生命周期
+cc-switch-lib/       共享领域逻辑与 SQLite 持久化
+cc-switch-server/    REST API、OAuth 处理与本地代理
+cc-switch-ui/        React 前端
+install.sh           Linux/macOS 安装脚本
 ```
 
----
+修改 Provider 或代理行为时，应将协议特定逻辑限制在适配器边界内，保证切换/启动/停止过程中的实时配置一致性，并根据影响范围覆盖请求、响应、流式传输、用量与失败行为测试。
 
-## 🔄 与原版 cc-switch 的区别
+提交修改前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
-本项目是优秀开源项目 [cc-switch](https://github.com/farion1231/cc-switch) 的分支。主要区别如下：
+## 项目定位
 
-| 特性 | cc-switch (原版) | CC Switch UI (本项目) |
-|------|-----------------|----------------------|
-| **部署方式** | Tauri 桌面应用 | 纯 Web 服务 |
-| **系统托盘** | 支持 | 不支持 |
-| **MCP 管理** | 支持 | 支持 |
-| **Skills 管理** | 不支持 | 支持 |
-| **云同步**   | 支持 | 不支持 |
-| **多账号 OAuth** | 不支持 | 支持 |
-| **核心定位** | 全功能集合 | 无头服务器，专为 Claude Code CLI 设计 |
+| 能力 | cc-switch | CC Switch UI |
+|------|-----------|--------------|
+| 部署方式 | Tauri 桌面应用 | 浏览器 UI 与无头 Web 服务 |
+| 系统托盘 | 支持 | 不支持 |
+| 工具定位 | 多种 AI 编程工具 | Claude Code CLI |
+| MCP 与 Skills | 支持 | 支持，聚焦 Claude Code |
+| 云同步 | 支持 | 不支持 |
+| OAuth 账号 | 多 Provider | Codex 与 GitHub Copilot 多账号 |
 
----
+## 致谢
 
-## 🙏 致谢
+CC Switch UI 基于开源项目 [cc-switch](https://github.com/farion1231/cc-switch) 开发，感谢原项目维护者与贡献者。
 
-本项目基于优秀的开源项目 [cc-switch](https://github.com/farion1231/cc-switch) 进行开发。
-
----
-
-## 📄 License
+## License
 
 本项目基于 [MIT License](LICENSE) 开源。

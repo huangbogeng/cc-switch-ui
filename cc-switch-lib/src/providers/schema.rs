@@ -36,7 +36,9 @@ fn env_obj(settings_config: &Value) -> Option<&Map<String, Value>> {
 }
 
 fn env_obj_mut(settings_config: &mut Value) -> Option<&mut Map<String, Value>> {
-    settings_config.get_mut("env").and_then(Value::as_object_mut)
+    settings_config
+        .get_mut("env")
+        .and_then(Value::as_object_mut)
 }
 
 fn non_empty_env_str(env: &Map<String, Value>, key: &str) -> Option<String> {
@@ -145,7 +147,7 @@ pub fn normalize_provider_schema(provider: &mut Provider) {
     let keep_empty = env
         .get(keep.as_str())
         .and_then(Value::as_str)
-        .map_or(true, |s| s.trim().is_empty());
+        .is_none_or(|s| s.trim().is_empty());
     if keep_empty {
         if let Some(other_val) = env
             .get(drop.as_str())
@@ -160,7 +162,7 @@ pub fn normalize_provider_schema(provider: &mut Provider) {
     let keep_empty_after_merge = env
         .get(keep.as_str())
         .and_then(Value::as_str)
-        .map_or(true, |s| s.trim().is_empty());
+        .is_none_or(|s| s.trim().is_empty());
     if keep_empty_after_merge {
         env.remove(keep.as_str());
     }
@@ -168,7 +170,7 @@ pub fn normalize_provider_schema(provider: &mut Provider) {
     let drop_empty = env
         .get(drop.as_str())
         .and_then(Value::as_str)
-        .map_or(true, |s| s.trim().is_empty());
+        .is_none_or(|s| s.trim().is_empty());
     if drop_empty {
         env.remove(drop.as_str());
     }
@@ -221,7 +223,11 @@ mod tests {
             json!({"apiKeyField":"ANTHROPIC_AUTH_TOKEN"}),
         );
         normalize_provider_schema(&mut p);
-        let env = p.settings_config.get("env").and_then(Value::as_object).unwrap();
+        let env = p
+            .settings_config
+            .get("env")
+            .and_then(Value::as_object)
+            .unwrap();
         assert_eq!(
             env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
             Some("new")
@@ -242,7 +248,11 @@ mod tests {
             json!({"apiKeyField":"ANTHROPIC_AUTH_TOKEN"}),
         );
         normalize_provider_schema(&mut p);
-        let env = p.settings_config.get("env").and_then(Value::as_object).unwrap();
+        let env = p
+            .settings_config
+            .get("env")
+            .and_then(Value::as_object)
+            .unwrap();
         assert_eq!(env.get("ANTHROPIC_AUTH_TOKEN"), None);
         assert_eq!(env.get("ANTHROPIC_API_KEY"), None);
     }

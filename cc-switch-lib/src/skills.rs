@@ -37,10 +37,8 @@ pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppEr
     let target_dir = get_claude_skills_dir();
 
     // Index enabled skills by directory name
-    let enabled_dirs: std::collections::HashSet<String> = skills
-        .iter()
-        .map(|s| s.directory.clone())
-        .collect();
+    let enabled_dirs: std::collections::HashSet<String> =
+        skills.iter().map(|s| s.directory.clone()).collect();
 
     // Phase 1: Cleanup orphaned skills in target dir
     if target_dir.exists() {
@@ -50,10 +48,7 @@ pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppEr
             if !path.is_dir() {
                 continue;
             }
-            let dir_name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let dir_name = entry.file_name().to_string_lossy().to_string();
             if dir_name.starts_with('.') {
                 continue;
             }
@@ -118,11 +113,9 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), AppError> {
         if path.is_dir() {
             copy_dir_recursive(&path, &dest_path)?;
         } else {
-            fs::copy(&path, &dest_path).map_err(|e| {
-                AppError::IoContext {
-                    context: format!("copy {:?} -> {:?}", path.display(), dest_path.display()),
-                    source: e,
-                }
+            fs::copy(&path, &dest_path).map_err(|e| AppError::IoContext {
+                context: format!("copy {:?} -> {:?}", path.display(), dest_path.display()),
+                source: e,
             })?;
         }
     }
@@ -177,9 +170,13 @@ pub fn ensure_skill_ssot(skill: &SkillRecord) -> Result<(), AppError> {
     );
 
     fs::write(skill_dir.join("SKILL.md"), &content)
-        .map_err(|e| AppError::io(&skill_dir.join("SKILL.md"), e))?;
+        .map_err(|e| AppError::io(skill_dir.join("SKILL.md"), e))?;
 
-    log::info!("Created SSOT for skill '{}' at {}", skill.directory, skill_dir.display());
+    log::info!(
+        "Created SSOT for skill '{}' at {}",
+        skill.directory,
+        skill_dir.display()
+    );
     Ok(())
 }
 
@@ -206,14 +203,14 @@ fn scan_for_skills(
     }
 
     // Skip cache directory — these are cached copies of marketplace plugins
-    if current.file_name().map_or(false, |n| n == "cache") {
+    if current.file_name().is_some_and(|n| n == "cache") {
         return Ok(());
     }
 
     // Check if this is a skill directory: parent directory is named "skills"
     if current.join("SKILL.md").exists() {
         let parent_name = current.parent().and_then(|p| p.file_name());
-        if parent_name.map_or(false, |n| n == "skills") {
+        if parent_name.is_some_and(|n| n == "skills") {
             if let Some(dir_name) = current.file_name().map(|n| n.to_string_lossy().to_string()) {
                 if !dir_name.starts_with('.') {
                     result.push((current.to_path_buf(), dir_name));
@@ -247,7 +244,7 @@ fn scan_for_skills(
 fn derive_collection(source_dir: &Path) -> String {
     // Walk up looking for a parent named "skills"
     for ancestor in source_dir.ancestors() {
-        if ancestor.file_name().map_or(false, |n| n == "skills") {
+        if ancestor.file_name().is_some_and(|n| n == "skills") {
             // The parent of "skills" is the plugin dir (or a version dir for cached plugins)
             if let Some(parent) = ancestor.parent() {
                 let plugin_name = parent.file_name().map(|n| n.to_string_lossy().to_string());
@@ -329,7 +326,11 @@ fn import_skill_from_dir(
     };
     db.save_skill(&skill)?;
 
-    log::info!("Imported skill '{}' from {}", dir_name, source_dir.display());
+    log::info!(
+        "Imported skill '{}' from {}",
+        dir_name,
+        source_dir.display()
+    );
     Ok(1)
 }
 
@@ -360,8 +361,8 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
     // Phase 1: Scan ~/.claude/skills/
     let claude_skills_dir = get_claude_skills_dir();
     if claude_skills_dir.exists() {
-        for entry in fs::read_dir(&claude_skills_dir)
-            .map_err(|e| AppError::io(&claude_skills_dir, e))?
+        for entry in
+            fs::read_dir(&claude_skills_dir).map_err(|e| AppError::io(&claude_skills_dir, e))?
         {
             let entry = entry.map_err(|e| AppError::io(&claude_skills_dir, e))?;
             let path = entry.path();
@@ -374,13 +375,15 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
                 if needs_backfill.contains(&dir_name) {
                     let coll = derive_collection(&path);
                     if !coll.is_empty() {
-                        db.get_all_skills(app_type).ok().and_then(|skills| {
-                            skills.into_iter().find(|s| s.directory == dir_name)
-                        }).map(|mut s| {
-                            s.collection = Some(coll);
-                            let _ = db.save_skill(&s);
+                        if let Some(mut skill) = db
+                            .get_all_skills(app_type)
+                            .ok()
+                            .and_then(|skills| skills.into_iter().find(|s| s.directory == dir_name))
+                        {
+                            skill.collection = Some(coll);
+                            let _ = db.save_skill(&skill);
                             imported += 1;
-                        });
+                        }
                     }
                 }
                 continue;
@@ -402,13 +405,15 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
             if needs_backfill.contains(dir_name) {
                 let coll = derive_collection(skill_dir);
                 if !coll.is_empty() {
-                    db.get_all_skills(app_type).ok().and_then(|skills| {
-                        skills.into_iter().find(|s| s.directory == *dir_name)
-                    }).map(|mut s| {
-                        s.collection = Some(coll);
-                        let _ = db.save_skill(&s);
+                    if let Some(mut skill) = db
+                        .get_all_skills(app_type)
+                        .ok()
+                        .and_then(|skills| skills.into_iter().find(|s| s.directory == *dir_name))
+                    {
+                        skill.collection = Some(coll);
+                        let _ = db.save_skill(&skill);
                         imported += 1;
-                    });
+                    }
                 }
             }
             continue;
@@ -445,10 +450,7 @@ mod tests {
 
         assert!(dest.join("top.txt").exists());
         assert!(dest.join("sub").join("nested.txt").exists());
-        assert_eq!(
-            fs::read_to_string(dest.join("top.txt")).unwrap(),
-            "top"
-        );
+        assert_eq!(fs::read_to_string(dest.join("top.txt")).unwrap(), "top");
         assert_eq!(
             fs::read_to_string(dest.join("sub").join("nested.txt")).unwrap(),
             "nested"

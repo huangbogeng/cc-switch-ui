@@ -15,9 +15,7 @@ const APP_TYPE: &str = "claude_code";
 
 pub async fn list_mcp_servers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.db.get_all_mcp_servers(APP_TYPE) {
-        Ok(servers) => {
-            Json(json!({ "servers": servers })).into_response()
-        }
+        Ok(servers) => Json(json!({ "servers": servers })).into_response(),
         Err(e) => {
             log::error!("Failed to list MCP servers: {}", e);
             (
@@ -36,7 +34,11 @@ pub async fn save_mcp_server(
     let mut server = body;
     server.app_type = APP_TYPE.to_string();
 
-    log::info!("[MCP] save_mcp_server id={} name={}", server.id, server.name);
+    log::info!(
+        "[MCP] save_mcp_server id={} name={}",
+        server.id,
+        server.name
+    );
     match state.db.save_mcp_server(&server) {
         Ok(()) => Json(json!({ "success": true })).into_response(),
         Err(e) => {
@@ -99,20 +101,28 @@ pub async fn toggle_mcp_server(
                 let mut toggled = server.clone();
                 toggled.enabled = !toggled.enabled;
                 match state.db.save_mcp_server(&toggled) {
-                    Ok(()) => Json(json!({ "success": true, "enabled": toggled.enabled })).into_response(),
+                    Ok(()) => {
+                        Json(json!({ "success": true, "enabled": toggled.enabled })).into_response()
+                    }
                     Err(e) => (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(json!({"error": e.to_string()})),
-                    ).into_response(),
+                    )
+                        .into_response(),
                 }
             } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "MCP server not found"}))).into_response()
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "MCP server not found"})),
+                )
+                    .into_response()
             }
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 

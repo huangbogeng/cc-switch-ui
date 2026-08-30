@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { RefreshCw, ListFilter, Activity, BarChart3, DollarSign } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { resolveUsageRange } from '@/lib/usageRange';
 import type { UsageRangeSelection } from '@/lib/usageRange';
-import { useUsageSummary, useProviderStats, useModelStats, useSyncSession } from '@/lib/useUsage';
+import { useUsageSummary, useProviderStats, useModelStats, useSyncSession, useDataSourceBreakdown } from '@/lib/useUsage';
 import UsageSummaryCards from '@/components/usage/UsageSummaryCards';
 import UsageTrendChart from '@/components/usage/UsageTrendChart';
 import UsageDateRangePicker from '@/components/usage/UsageDateRangePicker';
@@ -17,6 +17,9 @@ import DataSourceBar from '@/components/usage/DataSourceBar';
 import type { LogsQueryParams } from '@/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { usageKeys } from '@/lib/useUsage';
+import { ErrorAlert } from '@/components/ErrorAlert';
+import { errorMessage } from '@/lib/errors';
+import { formatRangeLabel } from '@/lib/usageRange';
 
 export default function UsagePage() {
   const queryClient = useQueryClient();
@@ -32,27 +35,21 @@ export default function UsagePage() {
     [resolved],
   );
 
-  const { data: summary, isLoading: summaryLoading } = useUsageSummary(refreshMs);
-  const { data: providerStats, isLoading: providerLoading } = useProviderStats(
+  const summaryQuery = useUsageSummary(resolved.startDate, resolved.endDate, refreshMs);
+  const providerQuery = useProviderStats(
     resolved.startDate,
     resolved.endDate,
+    refreshMs,
   );
-  const { data: modelStats, isLoading: modelLoading } = useModelStats(
+  const modelQuery = useModelStats(
     resolved.startDate,
     resolved.endDate,
+    refreshMs,
   );
+  const sourcesQuery = useDataSourceBreakdown(resolved.startDate, resolved.endDate, refreshMs);
 
   // Session sync for direct-connect mode
   const syncMutation = useSyncSession();
-  const [syncDone, setSyncDone] = useState(false);
-
-  useEffect(() => {
-    if (syncDone) return;
-    syncMutation.mutate(undefined, {
-      onSettled: () => setSyncDone(true),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncDone]);
 
   // Cycle through refresh intervals
   const REFRESH_OPTIONS = [0, 5_000, 10_000, 30_000, 60_000] as const;
@@ -64,6 +61,8 @@ export default function UsagePage() {
   };
 
   const refreshLabel = refreshMs > 0 ? `${refreshMs / 1000}s` : 'OFF';
+  const queryError = summaryQuery.error ?? providerQuery.error ?? modelQuery.error ?? sourcesQuery.error;
+  const rangeLabel = formatRangeLabel(range, resolved);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -97,10 +96,21 @@ export default function UsagePage() {
         }
       />
 
-      <UsageSummaryCards data={summary} loading={summaryLoading} />
-      <UsageTrendChart trend={summary?.trend ?? []} loading={summaryLoading} />
+      {queryError && (
+        <ErrorAlert message={errorMessage(queryError, 'Failed to load usage data')} />
+      )}
+      {syncMutation.error && (
+        <ErrorAlert message={errorMessage(syncMutation.error, 'Failed to sync session logs')} />
+      )}
 
-      <DataSourceBar />
+      <UsageSummaryCards data={summaryQuery.data} loading={summaryQuery.isLoading} />
+      <UsageTrendChart
+        trend={summaryQuery.data?.trend ?? []}
+        loading={summaryQuery.isLoading}
+        title={`${rangeLabel} Token Trend`}
+      />
+
+      <DataSourceBar sources={sourcesQuery.data} />
 
       <Tabs defaultValue="logs" className="w-full">
         <TabsList className="bg-muted/50">
@@ -123,15 +133,19 @@ export default function UsagePage() {
         </TabsList>
 
         <TabsContent value="logs" className="mt-4">
-          <RequestLogTable params={logParams} />
+          <RequestLogTable
+            key={`${resolved.startDate}:${resolved.endDate}`}
+            params={logParams}
+            refreshMs={refreshMs}
+          />
         </TabsContent>
 
         <TabsContent value="providers" className="mt-4">
-          <ProviderStatsTable data={providerStats?.providers} loading={providerLoading} />
+          <ProviderStatsTable data={providerQuery.data?.providers} loading={providerQuery.isLoading} />
         </TabsContent>
 
         <TabsContent value="models" className="mt-4">
-          <ModelStatsTable data={modelStats?.models} loading={modelLoading} />
+          <ModelStatsTable data={modelQuery.data?.models} loading={modelQuery.isLoading} />
         </TabsContent>
 
         <TabsContent value="pricing" className="mt-4">

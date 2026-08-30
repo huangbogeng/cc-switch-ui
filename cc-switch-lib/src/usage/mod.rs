@@ -7,4 +7,4 @@ mod parser;
 mod session_usage;
 
 pub use parser::UsageParser;
-pub use session_usage::{sync_claude_session_logs, get_data_source_breakdown};
+pub use session_usage::{get_data_source_breakdown, sync_claude_session_logs};

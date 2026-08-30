@@ -45,10 +45,7 @@ pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppEr
         .as_object_mut()
         .ok_or_else(|| AppError::Config("~/.claude.json root is not an object".into()))?;
 
-    root_obj.insert(
-        "mcpServers".into(),
-        Value::Object(mcp_servers_map),
-    );
+    root_obj.insert("mcpServers".into(), Value::Object(mcp_servers_map));
 
     write_claude_mcp_json(&root)?;
 
@@ -73,8 +70,8 @@ fn strip_internal_fields(spec: &Value) -> Value {
     let mut cleaned = serde_json::Map::new();
     for (key, value) in obj.iter() {
         match key.as_str() {
-            "enabled" | "source" | "id" | "name" | "description"
-            | "tags" | "homepage" | "docs" | "apps" => continue,
+            "enabled" | "source" | "id" | "name" | "description" | "tags" | "homepage" | "docs"
+            | "apps" => continue,
             _ => {
                 cleaned.insert(key.clone(), value.clone());
             }

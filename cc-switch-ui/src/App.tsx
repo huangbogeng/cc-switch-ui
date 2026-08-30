@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -15,9 +15,31 @@ import { cn } from '@/lib/utils';
 type Page = 'dashboard' | 'providers' | 'mcp' | 'skills' | 'oauth' | 'usage' | 'settings';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
 
+const pages = new Set<Page>(['dashboard', 'providers', 'mcp', 'skills', 'oauth', 'usage', 'settings']);
+
+function pageFromHash(): Page {
+  const value = window.location.hash.replace(/^#\/?/, '') as Page;
+  return pages.has(value) ? value : 'dashboard';
+}
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(!!localStorage.getItem('ccswitch_token'));
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [currentPage, setCurrentPage] = useState<Page>(pageFromHash);
+
+  useEffect(() => {
+    const handleNavigation = () => setCurrentPage(pageFromHash());
+    window.addEventListener('hashchange', handleNavigation);
+    window.addEventListener('popstate', handleNavigation);
+    return () => {
+      window.removeEventListener('hashchange', handleNavigation);
+      window.removeEventListener('popstate', handleNavigation);
+    };
+  }, []);
+
+  const navigate = (page: Page) => {
+    window.history.pushState(null, '', `#${page}`);
+    setCurrentPage(page);
+  };
 
   const handleLogin = () => setAuthenticated(true);
   const handleLogout = () => {
@@ -67,7 +89,8 @@ export default function App() {
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setCurrentPage(item.id)}
+                onClick={() => navigate(item.id)}
+                aria-current={currentPage === item.id ? 'page' : undefined}
                 className={cn(
                   "group relative grid min-w-max grid-cols-[16px_minmax(0,1fr)] items-center gap-3.5 rounded-xl px-3 py-2.5 text-left transition-all duration-200 lg:min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                   currentPage === item.id

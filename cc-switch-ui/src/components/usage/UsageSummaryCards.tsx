@@ -47,7 +47,7 @@ interface Props {
 }
 
 export default function UsageSummaryCards({ data, loading }: Props) {
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
@@ -55,6 +55,10 @@ export default function UsageSummaryCards({ data, loading }: Props) {
         ))}
       </div>
     );
+  }
+
+  if (!data) {
+    return <div className="py-8 text-center text-sm text-muted-foreground">Usage summary unavailable</div>;
   }
 
   const { totals } = data;

@@ -18,6 +18,7 @@ interface ProviderCardProps {
   onSwitch: (id: string) => void;
   onEdit: (provider: Provider) => void;
   onDelete: (id: string) => void;
+  busy?: boolean;
 }
 
 export function ProviderCard({
@@ -26,6 +27,7 @@ export function ProviderCard({
   onSwitch,
   onEdit,
   onDelete,
+  busy = false,
 }: ProviderCardProps) {
   const authMode = providerAuthMode(provider);
   const apiFormat = providerApiFormat(provider);
@@ -110,11 +112,12 @@ export function ProviderCard({
                 !active ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.2)] hover:shadow-[0_0_20px_rgba(var(--primary),0.3)]' : ''
               }`}
               onClick={() => onSwitch(provider.id)}
+              disabled={active || busy}
             >
               {active ? 'Selected' : 'Select'}
             </Button>
             <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors" onClick={() => onEdit(provider)}>
+              <Button aria-label={`Edit ${provider.name}`} size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors" onClick={() => onEdit(provider)} disabled={busy}>
                 <PencilLine className="h-3.5 w-3.5" />
               </Button>
               <Button
@@ -122,6 +125,8 @@ export function ProviderCard({
                 variant="ghost"
                 className="h-8 w-8 rounded-lg text-destructive/80 hover:text-destructive hover:bg-destructive/10 transition-colors"
                 onClick={() => onDelete(provider.id)}
+                aria-label={`Delete ${provider.name}`}
+                disabled={busy}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>

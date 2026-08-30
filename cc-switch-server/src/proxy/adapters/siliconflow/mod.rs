@@ -66,5 +66,4 @@ impl ProviderAdapter for SiliconFlowAdapter {
     ) -> Result<UsageParseResult, ProviderError> {
         response::transform(body, is_streaming)
     }
-
 }

@@ -30,16 +30,15 @@ Please verify that you've completed the following / 请确认你已完成以下�
 - [ ] I have performed a self-review of my own code / 我已经对自己的代码进行了自我审查
 - [ ] I have commented my code, particularly in hard-to-understand areas / 我在代码难以理解的地方添加了注释
 - [ ] I have made corresponding changes to the documentation (if needed) / 我已经更新了相关的文档 (如果需要)
-- [ ] My changes generate no new warnings (e.g. `cargo clippy` and `pnpm lint` pass) / 我的更改没有产生新的警告
+- [ ] My changes generate no new warnings (e.g. `cargo clippy` and `npm run lint` pass) / 我的更改没有产生新的警告
 - [ ] Any dependent changes have been merged and published / 任何依赖的更改都已经合并发布
 
 ## 🧭 Provider Protocol Compliance / Provider 协议符合性
 <!-- 
 Required when this PR changes provider/proxy/usage/live-config behavior.
 当 PR 涉及 provider/proxy/usage/live-config 行为时必填。
-Reference / 参考:
-- docs/architecture/provider-development-protocol.md
-- docs/architecture/provider-checklist.md
+The provider contract is summarized in the Development section of README.md.
+Provider 开发约束汇总在 README.md 的“开发”章节。
 -->
 
 - [ ] N/A (this PR does not touch provider/proxy/usage/live-config paths)

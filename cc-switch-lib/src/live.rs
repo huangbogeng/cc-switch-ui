@@ -147,7 +147,6 @@ pub fn settings_for_live(
 
 /// Write Claude settings to disk (atomic write)
 fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
-
     let path = get_claude_settings_path();
     write_json_file(&path, settings)
 }
@@ -236,11 +235,13 @@ mod tests {
         assert_eq!(live.get("api_key"), None);
         // Env content matches input
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
             Some("sk-test-key")
         );
 
@@ -279,7 +280,8 @@ mod tests {
         );
         // Env content matches input
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
 
@@ -322,17 +324,16 @@ mod tests {
             live.get("project").and_then(Value::as_str),
             Some("my-project")
         );
-        assert_eq!(
-            live.get("theme").and_then(Value::as_str),
-            Some("dark")
-        );
+        assert_eq!(live.get("theme").and_then(Value::as_str), Some("dark"));
         // Env is replaced by second write
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
             Some("real-key")
         );
         // PROXY_MANAGED from first write env is gone (env was replaced)

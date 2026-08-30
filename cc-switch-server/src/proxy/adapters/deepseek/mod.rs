@@ -67,5 +67,4 @@ impl ProviderAdapter for DeepSeekAdapter {
     fn streaming_response_format(&self) -> StreamingResponseFormat {
         StreamingResponseFormat::OpenAIChat
     }
-
 }

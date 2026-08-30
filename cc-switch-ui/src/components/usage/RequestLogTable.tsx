@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import type { RequestLogDetail } from '@/api';
 import { useRequestLogs } from '@/lib/useUsage';
@@ -13,15 +13,19 @@ function fmtDate(ts: number): string {
 
 interface Props {
   params: LogsQueryParams;
+  refreshMs?: number;
 }
 
-export default function RequestLogTable({ params }: Props) {
+export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
   const [page, setPage] = useState(0);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const pageSize = 20;
 
-  const queryParams = { ...params, page, page_size: pageSize };
-  const { data, isLoading, isError } = useRequestLogs(queryParams);
+  const queryParams = useMemo(
+    () => ({ ...params, page, page_size: pageSize }),
+    [params, page],
+  );
+  const { data, isLoading, isError } = useRequestLogs(queryParams, refreshMs);
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0;
 
@@ -35,6 +39,7 @@ export default function RequestLogTable({ params }: Props) {
         </div>
         <div className="flex items-center gap-1">
           <Button
+            aria-label="Previous log page"
             variant="ghost"
             size="sm"
             disabled={page <= 0}
@@ -46,6 +51,7 @@ export default function RequestLogTable({ params }: Props) {
             {page + 1} / {Math.max(totalPages, 1)}
           </span>
           <Button
+            aria-label="Next log page"
             variant="ghost"
             size="sm"
             disabled={totalPages <= 1 || page >= totalPages - 1}
@@ -118,7 +124,10 @@ function RequestLogRow({ log, onClick }: { log: RequestLogDetail; onClick: () =>
   };
 
   return (
-    <tr className="border-b border-white/5 transition-colors hover:bg-white/[0.05] cursor-pointer" onClick={onClick}>
+    <tr
+      className="cursor-pointer border-b border-white/5 transition-colors hover:bg-white/[0.05] focus-within:bg-white/[0.05]"
+      onClick={onClick}
+    >
       <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{fmtDate(log.created_at)}</td>
       <td className="px-3 py-2 font-medium text-foreground truncate max-w-[120px]" title={log.provider_id}>
         {log.provider_id}
@@ -132,6 +141,7 @@ function RequestLogRow({ log, onClick }: { log: RequestLogDetail; onClick: () =>
       <td className="px-3 py-2">{statusBadge()}</td>
       <td className="px-3 py-2 text-right text-xs text-muted-foreground tabular-nums whitespace-nowrap">
         {log.input_tokens != null ? `${log.input_tokens.toLocaleString()} / ${log.output_tokens?.toLocaleString() ?? '?'}` : '—'}
+        <button type="button" className="sr-only" onClick={onClick}>Open request detail</button>
       </td>
     </tr>
   );

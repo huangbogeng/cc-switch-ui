@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -16,17 +16,21 @@ const SkillItem = memo(function SkillItem({
   skill,
   onToggle,
   onDelete,
+  onEdit,
+  busy,
 }: {
   skill: Skill;
   onToggle: (skill: Skill) => void;
   onDelete: (id: string) => void;
+  onEdit: (skill: Skill) => void;
+  busy: boolean;
 }) {
   return (
     <div className="group flex items-start justify-between px-4 py-2.5 hover:bg-accent/30">
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{skill.name || skill.id}</span>
-          <button onClick={() => onToggle(skill)} className="cursor-pointer">
+          <button aria-label={`${skill.enabled ? 'Disable' : 'Enable'} ${skill.name || skill.id}`} disabled={busy} onClick={() => onToggle(skill)} className="cursor-pointer disabled:cursor-wait disabled:opacity-60">
             <Badge
               variant={skill.enabled ? 'default' : 'outline'}
               className="text-[10px] px-1.5 py-0 hover:opacity-80"
@@ -47,14 +51,28 @@ const SkillItem = memo(function SkillItem({
           )}
         </div>
       </div>
+      <div className="ml-2 flex shrink-0 items-center gap-1">
       <Button
+        aria-label={`Edit ${skill.name || skill.id}`}
+        variant="ghost"
+        size="icon"
+        onClick={() => onEdit(skill)}
+        disabled={busy}
+        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        aria-label={`Delete ${skill.name || skill.id}`}
         variant="ghost"
         size="icon"
         onClick={() => onDelete(skill.id)}
-        className="ml-2 h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400"
+        disabled={busy}
+        className="h-7 w-7 text-muted-foreground hover:text-red-400"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
+      </div>
     </div>
   );
 });
@@ -65,12 +83,16 @@ export function SkillGroup({
   isSearching,
   onToggle,
   onDelete,
+  onEdit,
+  busySkillId,
 }: {
   collection: string;
   skills: Skill[];
   isSearching: boolean;
   onToggle: (skill: Skill) => void;
   onDelete: (id: string) => void;
+  onEdit: (skill: Skill) => void;
+  busySkillId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -108,6 +130,8 @@ export function SkillGroup({
               skill={skill}
               onToggle={onToggle}
               onDelete={onDelete}
+              onEdit={onEdit}
+              busy={busySkillId === skill.id}
             />
           ))}
           {limitReached && (

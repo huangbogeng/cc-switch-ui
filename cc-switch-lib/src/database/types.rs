@@ -29,6 +29,19 @@ pub struct Provider {
     pub in_failover_queue: bool,
 }
 
+/// Persisted health snapshot for a provider's circuit breaker.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderHealth {
+    pub provider_id: String,
+    pub app_type: String,
+    pub circuit_state: String,
+    pub consecutive_failures: u32,
+    pub last_success_at: Option<i64>,
+    pub last_failure_at: Option<i64>,
+    pub updated_at: i64,
+}
+
 /// Proxy configuration for OAuth authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,7 +85,9 @@ pub struct McpServerRecord {
     pub enabled: bool,
 }
 
-fn default_enabled() -> bool { true }
+fn default_enabled() -> bool {
+    true
+}
 
 /// Skill record for database storage
 #[derive(Debug, Clone, Serialize, Deserialize)]

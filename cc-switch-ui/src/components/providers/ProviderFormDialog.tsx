@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
   type EndpointDetectionResult,
   type FetchedModel,
 } from '@/api';
+import { useDialog } from '@/lib/useDialog';
 
 interface ProviderFormDialogProps {
   open: boolean;
@@ -50,6 +51,8 @@ export function ProviderFormDialog({
   const [detectingApiFormat, setDetectingApiFormat] = useState(false);
   const [endpointDetection, setEndpointDetection] = useState<EndpointDetectionResult | null>(null);
   const [detectEndpointError, setDetectEndpointError] = useState('');
+  const titleId = useId();
+  const dialogRef = useDialog(open, onCancel, !saving);
 
   useEffect(() => {
     setFormData(initialFormData);
@@ -59,15 +62,16 @@ export function ProviderFormDialog({
     setDetectEndpointError('');
   }, [initialFormData, open]);
 
+  const modelOptions = useMemo(
+    () => fetchedModels.map((model) => model.id).filter((value, index, list) => list.indexOf(value) === index),
+    [fetchedModels]
+  );
+
   if (!open) return null;
 
   const usesOAuthProxy = formData.authMode === 'oauth_proxy';
   const showApiKey = !usesOAuthProxy;
   const showEndpoint = !usesOAuthProxy || !!formData.baseUrl;
-  const modelOptions = useMemo(
-    () => fetchedModels.map((model) => model.id).filter((value, index, list) => list.indexOf(value) === index),
-    [fetchedModels]
-  );
   const canFetchModels = !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
   const canDetectEndpointType = canFetchModels && !usesOAuthProxy;
 
@@ -113,10 +117,10 @@ export function ProviderFormDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
-      <Card className="w-full max-w-2xl overflow-hidden [contain:layout_paint]">
+      <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-2xl overflow-hidden [contain:layout_paint]">
         <CardContent className="max-h-[90vh] overflow-y-auto overscroll-contain p-6 [scrollbar-gutter:stable] [will-change:scroll-position]">
           <div className="mb-5">
-            <h2 className="text-xl font-semibold leading-7 text-foreground">
+            <h2 id={titleId} className="text-xl font-semibold leading-7 text-foreground">
               {editingId ? 'Edit Provider' : selectedPreset ? `Add ${selectedPreset.name}` : 'Add Custom Provider'}
             </h2>
             <p className="mt-1 text-sm leading-5 text-muted-foreground">
@@ -525,7 +529,7 @@ export function ProviderFormDialog({
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={onCancel}>
+              <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>

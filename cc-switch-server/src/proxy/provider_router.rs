@@ -1,11 +1,14 @@
 use super::circuit_breaker::CircuitBreaker;
+use cc_switch_lib::database::Database;
 use cc_switch_lib::database::Provider;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub struct ProviderRouter {
     auto_failover_enabled: bool,
     breakers: HashMap<String, CircuitBreaker>,
+    db: Option<Arc<Database>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,10 +17,20 @@ pub enum SelectProvidersError {
 }
 
 impl ProviderRouter {
+    #[cfg(test)]
     pub fn new(auto_failover_enabled: bool) -> Self {
         Self {
             auto_failover_enabled,
             breakers: HashMap::new(),
+            db: None,
+        }
+    }
+
+    pub fn with_database(auto_failover_enabled: bool, db: Arc<Database>) -> Self {
+        Self {
+            auto_failover_enabled,
+            breakers: HashMap::new(),
+            db: Some(db),
         }
     }
 
@@ -62,23 +75,56 @@ impl ProviderRouter {
 
     pub fn record_success(&mut self, app_type: &str, provider_id: &str) {
         let key = breaker_key(app_type, provider_id);
-        if let Some(breaker) = self.breakers.get_mut(&key) {
+        let (state, consecutive_failures) = {
+            let breaker = self.breakers.entry(key).or_insert_with(default_breaker);
             breaker.record_success();
-        }
-        // TODO: integrate provider health persistence update when provider health schema is available.
+            (breaker.state(), breaker.consecutive_failures())
+        };
+        self.persist_health(app_type, provider_id, state, consecutive_failures, true);
     }
 
     pub fn record_failure(&mut self, app_type: &str, provider_id: &str) {
         let key = breaker_key(app_type, provider_id);
-        let breaker = self.breakers.entry(key).or_insert_with(default_breaker);
-        breaker.record_failure();
-        // TODO: integrate provider health persistence update when provider health schema is available.
+        let (state, consecutive_failures) = {
+            let breaker = self.breakers.entry(key).or_insert_with(default_breaker);
+            breaker.record_failure();
+            (breaker.state(), breaker.consecutive_failures())
+        };
+        self.persist_health(app_type, provider_id, state, consecutive_failures, false);
     }
 
     pub fn allow_provider_request(&mut self, app_type: &str, provider_id: &str) -> bool {
         let key = breaker_key(app_type, provider_id);
         let breaker = self.breakers.entry(key).or_insert_with(default_breaker);
         breaker.allow_request()
+    }
+
+    fn persist_health(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+        state: super::circuit_breaker::CircuitState,
+        consecutive_failures: u32,
+        succeeded: bool,
+    ) {
+        let Some(db) = &self.db else {
+            return;
+        };
+        let state = format!("{state:?}").to_ascii_lowercase();
+        if let Err(error) = db.record_provider_health(
+            app_type,
+            provider_id,
+            &state,
+            consecutive_failures,
+            succeeded,
+        ) {
+            log::warn!(
+                "[Proxy] Failed to persist provider health app_type={} provider={}: {}",
+                app_type,
+                provider_id,
+                error
+            );
+        }
     }
 }
 

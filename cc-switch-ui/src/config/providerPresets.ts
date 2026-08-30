@@ -131,6 +131,27 @@ export const providerPresets: ProviderPreset[] = [
     description: 'Access 100+ AI models via unified API',
   },
   {
+    id: 'orcarouter',
+    name: 'OrcaRouter',
+    websiteUrl: 'https://www.orcarouter.ai',
+    apiKeyUrl: 'https://www.orcarouter.ai/console',
+    modelsUrl: 'https://api.orcarouter.ai/v1/models',
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: 'https://api.orcarouter.ai',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_MODEL: 'anthropic/claude-sonnet-4.6',
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'anthropic/claude-sonnet-4.6',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'anthropic/claude-sonnet-4.6',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'anthropic/claude-opus-4.7',
+      },
+    },
+    icon: 'orcarouter',
+    iconColor: '#0891B2',
+    description: 'Multi-provider gateway with native Anthropic API support',
+    apiFormat: 'anthropic',
+  },
+  {
     id: 'gemini-native',
     name: 'Gemini Native',
     websiteUrl: 'https://ai.google.dev',

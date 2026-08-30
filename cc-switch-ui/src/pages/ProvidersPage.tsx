@@ -57,6 +57,7 @@ export default function ProvidersPage() {
     active_target_provider_id: string | null;
   } | null>(null);
   const [proxyError, setProxyError] = useState('');
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   const providerList = sortProviders(providers);
 
@@ -64,8 +65,9 @@ export default function ProvidersPage() {
     try {
       const [providerData, currentData] = await Promise.all([
         listProviders({ signal }),
-        getCurrentProviderId({ signal }).catch(() => ({ current_provider_id: null })),
+        getCurrentProviderId({ signal }),
       ]);
+      setError('');
       setProviders(providerData.providers);
       setCurrentProviderId(currentData.current_provider_id);
       cacheSet('providers', {
@@ -83,10 +85,12 @@ export default function ProvidersPage() {
   const loadProxyStatus = useCallback(async (signal?: AbortSignal) => {
     try {
       const status = await getProxyStatus({ signal });
+      setProxyError('');
       setProxyStatus(status);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       setProxyStatus(null);
+      setProxyError(e instanceof Error ? e.message : 'Failed to load local route status');
     }
   }, []);
 
@@ -95,10 +99,11 @@ export default function ProvidersPage() {
 
     Promise.all([
       listProviders({ signal: ctrl.signal }),
-      getCurrentProviderId({ signal: ctrl.signal }).catch(() => ({ current_provider_id: null })),
+      getCurrentProviderId({ signal: ctrl.signal }),
     ])
       .then(([providerData, currentData]) => {
         if (ctrl.signal.aborted) return;
+        setError('');
         setProviders(providerData.providers);
         setCurrentProviderId(currentData.current_provider_id);
         cacheSet('providers', {
@@ -123,7 +128,11 @@ export default function ProvidersPage() {
     const ctrl = new AbortController();
     getCodexOAuthStatus({ signal: ctrl.signal })
       .then((status) => setCodexAccounts(status.accounts))
-      .catch(() => setCodexAccounts([]));
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        setCodexAccounts([]);
+        setError(e instanceof Error ? e.message : 'Failed to load Codex accounts');
+      });
     return () => ctrl.abort();
   }, []);
 
@@ -135,6 +144,7 @@ export default function ProvidersPage() {
 
   const handleStartProxy = async (providerId: string) => {
     try {
+      setPendingAction('route');
       setProxyError('');
       await setProxyTarget(providerId);
       const result = await startProxy();
@@ -142,36 +152,49 @@ export default function ProvidersPage() {
       await loadProxyStatus();
     } catch (e) {
       setProxyError(e instanceof Error ? e.message : 'Failed to start local route');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleStopProxy = async () => {
     try {
+      setPendingAction('route');
       setProxyError('');
       const result = await stopProxy();
       if (!result.success) throw new Error(result.error);
       await loadProxyStatus();
     } catch (e) {
       setProxyError(e instanceof Error ? e.message : 'Failed to stop local route');
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleProxyTargetChange = async (providerId: string) => {
+    try {
+      setPendingAction('route');
+      setProxyError('');
+      await setProxyTarget(providerId);
+      await loadProxyStatus();
+    } catch (e) {
+      setProxyError(e instanceof Error ? e.message : 'Failed to update route target');
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleSwitch = async (id: string) => {
     try {
+      setPendingAction(`switch:${id}`);
       await switchProvider(id);
       setCurrentProviderId(id);
-      if (proxyStatus?.running) {
-        const shouldSwitchTarget = confirm(
-          'Local route takeover is active.\n\nAlso switch the active route target to this provider?'
-        );
-        if (shouldSwitchTarget) {
-          await setProxyTarget(id);
-        }
-      }
       await applyProviders();
       await loadProxyStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Switch failed');
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -200,12 +223,24 @@ export default function ProvidersPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (id === currentProviderId) {
+      setError('Select another direct Provider before deleting this one.');
+      return;
+    }
+    if (proxyStatus?.running && id === proxyStatus.active_target_provider_id) {
+      setError('Choose another route target or stop the local route before deleting this Provider.');
+      return;
+    }
     if (!confirm('Delete this provider?')) return;
     try {
+      setPendingAction(`delete:${id}`);
       await deleteProvider(id);
-      applyProviders();
+      await applyProviders();
+      await loadProxyStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -220,6 +255,23 @@ export default function ProvidersPage() {
       if (!id || !name) {
         throw new Error('Provider ID and name are required.');
       }
+      if (formData.baseUrl.trim()) {
+        let endpoint: URL;
+        try {
+          endpoint = new URL(formData.baseUrl.trim());
+        } catch {
+          throw new Error('Base URL must be a valid absolute URL.');
+        }
+        if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
+          throw new Error('Base URL must use HTTP or HTTPS.');
+        }
+      }
+      if (formData.apiTimeoutMs.trim()) {
+        const timeout = Number(formData.apiTimeoutMs);
+        if (!Number.isInteger(timeout) || timeout <= 0) {
+          throw new Error('API timeout must be a positive integer in milliseconds.');
+        }
+      }
       if (formData.authMode !== 'oauth_proxy' && !formData.apiKey.trim()) {
         const providerName = selectedPreset?.name || name;
         const shouldContinue = confirm(
@@ -230,7 +282,8 @@ export default function ProvidersPage() {
           return;
         }
       }
-      await saveProvider(buildProvider(formData, selectedPreset));
+      const existingProvider = editingId ? providers[editingId] : undefined;
+      await saveProvider(buildProvider(formData, selectedPreset, existingProvider));
       setShowForm(false);
       await applyProviders();
     } catch (e) {
@@ -246,7 +299,7 @@ export default function ProvidersPage() {
         title="Providers"
         description="Manage provider configs. Local route control is separated below."
         action={
-          <Button onClick={handleAdd}>
+          <Button onClick={handleAdd} disabled={pendingAction !== null || saving}>
             <Plus className="h-4 w-4" />
             Add Provider
           </Button>
@@ -270,15 +323,10 @@ export default function ProvidersPage() {
           providers={providerList}
           currentProviderId={currentProviderId}
           proxyRunning={proxyStatus?.running ?? false}
-          proxyTargetId={proxyStatus?.active_target_provider_id ?? null}
-          onStartProxy={() => {
-            const startId = currentProviderId ?? providerList[0]?.id ?? '';
-            if (!startId) {
-              setProxyError('Select a provider before starting the local route');
-              return;
-            }
-            void handleStartProxy(startId);
-          }}
+          proxyTargetId={proxyStatus?.active_target_provider_id ?? currentProviderId ?? providerList[0]?.id ?? null}
+          busy={pendingAction !== null}
+          onTargetChange={(providerId) => void handleProxyTargetChange(providerId)}
+          onStartProxy={(providerId) => void handleStartProxy(providerId)}
           onStopProxy={handleStopProxy}
         />
       )}
@@ -314,6 +362,7 @@ export default function ProvidersPage() {
               onSwitch={handleSwitch}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              busy={pendingAction !== null}
             />
           ))}
         </div>

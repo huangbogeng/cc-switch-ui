@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { SkillGroup } from '@/components/skills/SkillGroup';
 import { SkillFormDialog } from '@/components/skills/SkillFormDialog';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
+import { ErrorAlert } from '@/components/ErrorAlert';
 
 const DEFAULT_COLLECTION = 'Other';
 
@@ -37,6 +38,9 @@ export default function SkillsPage() {
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
 
   const loadSkills = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -73,19 +77,26 @@ export default function SkillsPage() {
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Delete this skill?')) return;
     try {
+      setPendingSkillId(id);
+      setError('');
+      setNotice('');
       await deleteSkill(id);
       await loadSkills();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
+    } finally {
+      setPendingSkillId(null);
     }
   }, [loadSkills]);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
+      setNotice('');
       await syncSkills();
       setError('');
       await loadSkills();
+      setNotice('Skills synced to Claude Code.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sync failed');
     } finally {
@@ -96,8 +107,10 @@ export default function SkillsPage() {
   const handleImport = async () => {
     setImporting(true);
     try {
+      setNotice('');
       const res = await importSkills();
       setError('');
+      setNotice(`Imported ${res.imported} skill${res.imported === 1 ? '' : 's'}.`);
       if (res.imported > 0) {
         await loadSkills();
       }
@@ -110,12 +123,21 @@ export default function SkillsPage() {
 
   const handleToggle = useCallback(async (skill: Skill) => {
     try {
+      setPendingSkillId(skill.id);
+      setError('');
+      setNotice('');
       const res = await toggleSkill(skill.id);
-      setSkills((prev) =>
-        prev.map((s) => (s.id === skill.id ? { ...s, enabled: res.enabled } : s)),
-      );
+      setSkills((prev) => {
+        const next = prev.map((item) =>
+          item.id === skill.id ? { ...item, enabled: res.enabled } : item,
+        );
+        cacheSet('skills', next);
+        return next;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Toggle failed');
+    } finally {
+      setPendingSkillId(null);
     }
   }, []);
 
@@ -135,13 +157,13 @@ export default function SkillsPage() {
         description="Skills synced to ~/.claude/skills/"
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={importing}>
+            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={importing || syncing || pendingSkillId !== null}>
               <Download className={importing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {importing ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5" disabled={syncing}>
+            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5" disabled={syncing || importing || pendingSkillId !== null}>
               <RefreshCw className={syncing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {syncing ? 'Syncing...' : 'Sync'}
             </Button>
-            <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
+            <Button size="sm" onClick={() => { setEditingSkill(null); setShowForm(true); }} disabled={syncing || importing || pendingSkillId !== null} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </div>
@@ -149,8 +171,9 @@ export default function SkillsPage() {
       />
 
       {error && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
+        <ErrorAlert message={error} />
       )}
+      {notice && <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">{notice}</div>}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
@@ -189,6 +212,8 @@ export default function SkillsPage() {
                 isSearching={isSearching}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
+                onEdit={(skill) => { setEditingSkill(skill); setShowForm(true); }}
+                busySkillId={pendingSkillId}
               />
             ))}
           </div>
@@ -196,9 +221,10 @@ export default function SkillsPage() {
       )}
 
       <SkillFormDialog
-        key={`skill-form-${showForm}`}
+        key={`skill-form-${showForm}-${editingSkill?.id ?? 'new'}`}
         open={showForm}
-        onClose={() => setShowForm(false)}
+        initialSkill={editingSkill}
+        onClose={() => { setShowForm(false); setEditingSkill(null); }}
         onSaved={loadSkills}
       />
     </div>

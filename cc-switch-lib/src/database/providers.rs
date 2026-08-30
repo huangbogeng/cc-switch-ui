@@ -64,6 +64,16 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         meta_json: r##"{"icon":"openrouter","iconColor":"#7C3AED","apiFormat":"openai_chat","official":true}"##,
     },
     SeedProvider {
+        id: "orcarouter",
+        name: "OrcaRouter",
+        website_url: "https://www.orcarouter.ai",
+        icon: "orcarouter",
+        icon_color: "#0891B2",
+        description: "Multi-provider gateway with native Anthropic API support",
+        settings_json: r#"{"env":{"ANTHROPIC_BASE_URL":"https://api.orcarouter.ai","ANTHROPIC_AUTH_TOKEN":"","ANTHROPIC_MODEL":"anthropic/claude-sonnet-4.6","ANTHROPIC_DEFAULT_HAIKU_MODEL":"anthropic/claude-sonnet-4.6","ANTHROPIC_DEFAULT_SONNET_MODEL":"anthropic/claude-sonnet-4.6","ANTHROPIC_DEFAULT_OPUS_MODEL":"anthropic/claude-opus-4.7"}}"#,
+        meta_json: r##"{"icon":"orcarouter","iconColor":"#0891B2","apiFormat":"anthropic","official":true}"##,
+    },
+    SeedProvider {
         id: "gemini-native",
         name: "Gemini Native",
         website_url: "https://ai.google.dev",
@@ -260,8 +270,7 @@ impl super::Database {
         for seed in SEED_PROVIDERS {
             let settings_config: serde_json::Value =
                 serde_json::from_str(seed.settings_json).unwrap_or(json!({}));
-            let meta: serde_json::Value =
-                serde_json::from_str(seed.meta_json).unwrap_or(json!({}));
+            let meta: serde_json::Value = serde_json::from_str(seed.meta_json).unwrap_or(json!({}));
 
             let provider = Provider {
                 id: seed.id.to_string(),
@@ -326,17 +335,12 @@ impl super::Database {
         let _has_base_url = env.contains_key("ANTHROPIC_BASE_URL");
 
         if !has_anthropic {
-            log::info!(
-                "[Seed] live settings has no Anthropic auth token — skipping live import"
-            );
+            log::info!("[Seed] live settings has no Anthropic auth token — skipping live import");
             return Ok(false);
         }
 
         // Derive a sensible name from the base URL
-        let name = if let Some(base_url) = env
-            .get("ANTHROPIC_BASE_URL")
-            .and_then(|v| v.as_str())
-        {
+        let name = if let Some(base_url) = env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
             if base_url.contains("deepseek") {
                 "DeepSeek (imported)"
             } else if base_url.contains("minimaxi") {
@@ -379,19 +383,14 @@ impl super::Database {
 
         // Check if provider already exists before inserting
         if self.get_provider("default", app_type)?.is_some() {
-            log::info!(
-                "[Seed] 'default' provider already exists — skipping live import"
-            );
+            log::info!("[Seed] 'default' provider already exists — skipping live import");
             return Ok(false);
         }
 
         self.save_provider(app_type, &provider)?;
         // Set as current so the user sees a selected provider on first launch
         let _ = self.set_current_provider("default", app_type);
-        log::info!(
-            "[Seed] imported provider '{}' from live settings",
-            name
-        );
+        log::info!("[Seed] imported provider '{}' from live settings", name);
         Ok(true)
     }
 
@@ -469,14 +468,15 @@ mod tests {
 
         assert!(db.is_providers_empty(app_type).unwrap());
         let count = db.seed_default_providers(app_type).unwrap();
-        assert_eq!(count, 5, "should seed 5 providers");
+        assert_eq!(count, 6, "should seed 6 providers");
 
         let providers = db.list_providers(app_type).unwrap();
-        assert_eq!(providers.len(), 5);
+        assert_eq!(providers.len(), 6);
         assert!(providers.contains_key("deepseek"));
         assert!(providers.contains_key("minimax"));
         assert!(providers.contains_key("siliconflow"));
         assert!(providers.contains_key("openrouter"));
+        assert!(providers.contains_key("orcarouter"));
         assert!(providers.contains_key("gemini-native"));
 
         // Second call is a no-op
@@ -491,13 +491,17 @@ mod tests {
         let app_type = "claude_code";
 
         let first = db.seed_default_providers(app_type).unwrap();
-        assert_eq!(first, 5, "first call seeds 5 providers");
+        assert_eq!(first, 6, "first call seeds 6 providers");
 
         let second = db.seed_default_providers(app_type).unwrap();
         assert_eq!(second, 0, "second call is no-op");
 
         let providers = db.list_providers(app_type).unwrap();
-        assert_eq!(providers.len(), 5, "still exactly 5 providers after two calls");
+        assert_eq!(
+            providers.len(),
+            6,
+            "still exactly 6 providers after two calls"
+        );
     }
 
     #[test]

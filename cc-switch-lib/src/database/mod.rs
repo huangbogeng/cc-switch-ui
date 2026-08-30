@@ -4,6 +4,7 @@
 //! - `types`    — shared data structures exported from lib.rs
 //! - `migrations` — schema creation and migration functions
 //! - `providers`  — provider CRUD
+//! - `health`     — persisted provider circuit-breaker health
 //! - `mcp`        — MCP server CRUD
 //! - `skills`     — skill CRUD
 //! - `proxy`      — proxy config, live backup
@@ -14,18 +15,19 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use std::sync::Mutex;
 
-pub mod migrations;
+pub mod health;
 pub mod mcp;
-pub mod proxy;
+pub mod migrations;
 pub mod providers;
+pub mod proxy;
 pub mod skills;
 pub mod usage;
 
 pub use types::{
     DailyUsage, DataSourceSummary, FailoverQueueItem, LiveBackup, LogFilters, McpServerRecord,
-    ModelPricing, ModelStats, PaginatedLogs, ProxyConfig, ProxyRequestLogRecord,
-    ProxyType, Provider, ProviderStats, ProviderUsageSummary, RequestLogDetail, SessionSyncResult,
-    SkillRecord, UsageRecord, UsageSourceItem,
+    ModelPricing, ModelStats, PaginatedLogs, Provider, ProviderHealth, ProviderStats,
+    ProviderUsageSummary, ProxyConfig, ProxyRequestLogRecord, ProxyType, RequestLogDetail,
+    SessionSyncResult, SkillRecord, UsageRecord, UsageSourceItem,
 };
 
 mod types;
@@ -87,6 +89,18 @@ impl Database {
                 app_type TEXT NOT NULL,
                 url TEXT NOT NULL,
                 added_at INTEGER,
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS provider_health (
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                circuit_state TEXT NOT NULL DEFAULT 'closed',
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                last_success_at INTEGER,
+                last_failure_at INTEGER,
+                updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                PRIMARY KEY (provider_id, app_type),
                 FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
             );
 

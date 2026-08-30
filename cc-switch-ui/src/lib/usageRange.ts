@@ -55,3 +55,27 @@ export function formatRangeLabel(sel: UsageRangeSelection, resolved: ResolvedRan
     new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return `${fmt(resolved.startDate)} – ${fmt(resolved.endDate)}`;
 }
+
+export function toDateInputValue(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function dateInputToTimestamp(value: string, endOfDay = false): number | null {
+  if (!value) return null;
+  const parts = value.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  const date = new Date(
+    year,
+    month - 1,
+    day,
+    endOfDay ? 23 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 59 : 0,
+  );
+  return Math.floor(date.getTime() / 1000);
+}

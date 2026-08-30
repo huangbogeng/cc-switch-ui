@@ -28,7 +28,10 @@ impl super::Database {
         Ok(result)
     }
 
-    pub fn get_enabled_mcp_servers(&self, app_type: &str) -> Result<Vec<McpServerRecord>, AppError> {
+    pub fn get_enabled_mcp_servers(
+        &self,
+        app_type: &str,
+    ) -> Result<Vec<McpServerRecord>, AppError> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, name, server_spec, app_type, enabled

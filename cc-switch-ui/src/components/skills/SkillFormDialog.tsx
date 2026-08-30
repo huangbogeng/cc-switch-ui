@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { saveSkill, type Skill } from '@/api';
+import { useDialog } from '@/lib/useDialog';
 
 function emptyForm(): Skill {
   return {
@@ -21,14 +22,18 @@ export function SkillFormDialog({
   open,
   onClose,
   onSaved,
+  initialSkill,
 }: {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: () => void | Promise<void>;
+  initialSkill?: Skill | null;
 }) {
-  const [form, setForm] = useState<Skill>(emptyForm());
+  const [form, setForm] = useState<Skill>(() => initialSkill ?? emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const titleId = useId();
+  const dialogRef = useDialog(open, onClose, !saving);
 
   if (!open) return null;
 
@@ -44,7 +49,7 @@ export function SkillFormDialog({
       await saveSkill(form);
       setForm(emptyForm());
       onClose();
-      onSaved();
+      await onSaved();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -54,8 +59,9 @@ export function SkillFormDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
-      <Card className="w-full max-w-lg overflow-hidden border-primary/30">
+      <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-lg overflow-hidden border-primary/30">
         <CardContent className="space-y-4 p-6">
+          <h2 id={titleId} className="text-lg font-semibold">{initialSkill ? 'Edit Skill' : 'Add Skill'}</h2>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -65,6 +71,7 @@ export function SkillFormDialog({
                   placeholder="e.g. local:my-skill"
                   value={form.id}
                   onChange={(e) => setForm({ ...form, id: e.target.value })}
+                  disabled={!!initialSkill}
                 />
               </div>
               <div className="space-y-2">
@@ -84,6 +91,7 @@ export function SkillFormDialog({
                 placeholder="e.g. my-skill (directory name in ~/.cc-switch/skills/)"
                 value={form.directory}
                 onChange={(e) => setForm({ ...form, directory: e.target.value })}
+                disabled={!!initialSkill}
               />
             </div>
             <div className="space-y-2">
@@ -93,6 +101,15 @@ export function SkillFormDialog({
                 placeholder="Optional description"
                 value={form.description ?? ''}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="skill-collection">Collection</Label>
+              <Input
+                id="skill-collection"
+                placeholder="e.g. Development"
+                value={form.collection ?? ''}
+                onChange={(e) => setForm({ ...form, collection: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -122,7 +139,7 @@ export function SkillFormDialog({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button size="sm" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </Button>

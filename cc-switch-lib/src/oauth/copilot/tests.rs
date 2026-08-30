@@ -1,9 +1,11 @@
 use super::types::{
-    normalize_github_domain, composite_account_id, copilot_api_base, CopilotAuthStore,
-    CopilotAuthError, GitHubAccountData,
+    composite_account_id, copilot_api_base, normalize_github_domain, CopilotAuthError,
+    CopilotAuthStore, GitHubAccountData,
 };
-use super::{CopilotAuthManager, CopilotAuthStatus, CopilotModel, CopilotToken,
-    GitHubAccount, GitHubUser, DEFAULT_GITHUB_DOMAIN};
+use super::{
+    CopilotAuthManager, CopilotAuthStatus, CopilotModel, CopilotToken, GitHubAccount, GitHubUser,
+    DEFAULT_GITHUB_DOMAIN,
+};
 use std::collections::HashMap;
 use tempfile::tempdir;
 
