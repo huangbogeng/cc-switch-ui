@@ -43,23 +43,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set release version from tag
+      - name: Verify release version matches manifests
         shell: bash
         run: |
-          # Strip 'v' prefix: v0.1.8 → 0.1.8
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Release version: $VERSION"
+          RELEASE_REF="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${RELEASE_REF#v}"
+          CARGO_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          FRONTEND_VERSION="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)",/\1/p' cc-switch-ui/package.json | head -n 1)"
 
-          # Update Rust workspace version (cross-platform: macOS uses BSD sed)
-          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
-          rm -f Cargo.toml.bak
+          if [[ "$CARGO_VERSION" != "$VERSION" || "$FRONTEND_VERSION" != "$VERSION" ]]; then
+            echo "Version mismatch: release=$VERSION cargo=$CARGO_VERSION frontend=$FRONTEND_VERSION"
+            exit 1
+          fi
 
-          # Update frontend version
-          cd cc-switch-ui
-          npm version --no-git-tag-version "$VERSION"
-          cd ..
-
-          echo "✅ Version synced: Cargo.toml + package.json → $VERSION"
+          echo "Version verified: $VERSION"
 
       - name: Setup Node.js (for frontend build)
         uses: actions/setup-node@v4
