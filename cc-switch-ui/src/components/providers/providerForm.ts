@@ -140,7 +140,9 @@ export function buildProvider(
   if (authMode === 'api_key') {
     delete env.ANTHROPIC_AUTH_TOKEN;
     delete env.ANTHROPIC_API_KEY;
-    env[formData.apiKeyField] = apiKey;
+    // Never persist an empty credential field: keyless providers (e.g. the
+    // official Claude subscription) must save a clean env, not a blank token.
+    if (apiKey) env[formData.apiKeyField] = apiKey;
   }
   setOptionalEnv(env, 'ANTHROPIC_MODEL', formData.model);
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_HAIKU_MODEL', formData.haikuModel || formData.model);

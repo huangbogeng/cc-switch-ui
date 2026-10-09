@@ -19,6 +19,13 @@ export interface ProviderPreset {
   iconColor: string;
   description?: string;
   authMode?: 'api_key' | 'oauth_proxy';
+  /**
+   * Provider needs no credentials of its own (e.g. the official Claude
+   * subscription login). The form hides the API-key/base-url fields, skips the
+   * missing-key confirmation, and saves an empty env so switching to it clears
+   * any third-party takeover and falls back to the logged-in subscription.
+   */
+  noAuth?: boolean;
   providerType?: 'codex_oauth';
   requiresOAuth?: boolean;
   codexFastMode?: boolean;
@@ -38,6 +45,7 @@ export const providerPresets: ProviderPreset[] = [
     icon: 'anthropic',
     iconColor: '#D4915D',
     description: 'Anthropic 官方订阅登录（清空第三方接管配置）',
+    noAuth: true,
   },
   {
     id: 'minimax',
