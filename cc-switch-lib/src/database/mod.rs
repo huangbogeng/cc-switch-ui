@@ -217,8 +217,11 @@ impl Database {
     }
 
     /// Get database connection lock
+    ///
+    /// A poisoned lock (from a panic in another thread) still guards a valid
+    /// connection, so recover the guard instead of propagating the panic.
     pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.conn.lock().expect("database lock poisoned")
+        self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 

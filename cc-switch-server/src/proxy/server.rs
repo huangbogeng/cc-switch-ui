@@ -154,6 +154,23 @@ fn build_proxy_router(forwarder: Arc<Forwarder>, runtime_state: Arc<ProxyRuntime
         .layer(TraceLayer::new_for_http())
 }
 
+/// Redact sensitive header values for logging. Authorization-bearing and cookie
+/// headers are masked so credentials never reach the logs.
+fn redact_header(name: &str, value: &axum::http::HeaderValue) -> String {
+    const SENSITIVE: &[&str] = &[
+        "authorization",
+        "proxy-authorization",
+        "x-api-key",
+        "api-key",
+        "cookie",
+        "set-cookie",
+    ];
+    if SENSITIVE.contains(&name.to_ascii_lowercase().as_str()) {
+        return "\"[REDACTED]\"".to_string();
+    }
+    format!("{:?}", value.to_str().unwrap_or("(binary)"))
+}
+
 /// Handle proxy requests
 async fn handle_proxy(
     axum::extract::State((forwarder, runtime_state)): axum::extract::State<(
@@ -170,7 +187,7 @@ async fn handle_proxy(
         uri,
         req.headers()
             .iter()
-            .map(|(k, v)| format!("{k:?}: {:?}", v.to_str().unwrap_or("(binary)")))
+            .map(|(k, v)| format!("{k:?}: {}", redact_header(k.as_str(), v)))
             .collect::<Vec<_>>()
     );
 
@@ -366,5 +383,19 @@ mod tests {
                 "/v1/responses",
                 post(|| async { axum::http::StatusCode::OK }),
             );
+    }
+
+    #[test]
+    fn redacts_sensitive_headers() {
+        use super::redact_header;
+        use axum::http::HeaderValue;
+
+        let secret = HeaderValue::from_static("Bearer super-secret-token");
+        assert_eq!(redact_header("authorization", &secret), "\"[REDACTED]\"");
+        assert_eq!(redact_header("X-Api-Key", &secret), "\"[REDACTED]\"");
+        assert_eq!(redact_header("Cookie", &secret), "\"[REDACTED]\"");
+
+        let plain = HeaderValue::from_static("application/json");
+        assert_eq!(redact_header("content-type", &plain), "\"application/json\"");
     }
 }

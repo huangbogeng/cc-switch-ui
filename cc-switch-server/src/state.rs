@@ -13,6 +13,10 @@ pub struct AppState {
     pub copilot_oauth: Arc<CopilotAuthManager>,
     pub token: String,
     pub proxy_server: Arc<RwLock<Option<ProxyServer>>>,
+    /// Host the local proxy binds to. Defaults to loopback; follows the admin
+    /// `--host` opt-in. The proxy has no auth layer, so exposing it beyond
+    /// loopback hands stored provider credentials to anyone who can reach it.
+    pub proxy_host: String,
     pub proxy_listen_port: u16,
     pub db: Arc<Database>,
 }
