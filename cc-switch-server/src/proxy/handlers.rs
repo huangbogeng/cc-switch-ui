@@ -74,7 +74,7 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         codex_fast_mode: provider_codex_fast_mode(&target_provider),
         model_mapping: provider_model_mapping(&target_provider),
     };
-    let server = ProxyServer::new(config);
+    let mut server = ProxyServer::new(config);
     let listen_port = state.proxy_listen_port;
 
     let account_id = provider_codex_account_id(&target_provider);
@@ -125,6 +125,9 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         }))
         .into_response();
     }
+    // Keep the exact payload that wrote live settings. The route target may
+    // change (or be edited) while running, so it cannot reconstruct this later.
+    server.takeover_env = live_settings.get("env").and_then(Value::as_object).cloned();
     if let Err(msg) = ensure_live_base_url_is_proxy(state.proxy_listen_port) {
         log::error!(
             "[ProxyAPI] proxy_start live settings verification failed: {}",
@@ -174,14 +177,12 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
         }
     };
 
-    // The takeover env written at proxy_start is the cleanup reference; restoring
-    // direct mode removes takeover-only exclusive keys (e.g.
-    // CLAUDE_CODE_AUTO_MODE_SERVER) when the target provider doesn't set them.
-    let takeover_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
-    let previous_env = takeover_settings
-        .get("env")
-        .and_then(|v| v.as_object())
-        .cloned();
+    let previous_env = state
+        .proxy_server
+        .read()
+        .await
+        .as_ref()
+        .and_then(|server| server.takeover_env.clone());
 
     let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, false);
     log::info!(

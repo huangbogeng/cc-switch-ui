@@ -775,6 +775,48 @@ mod tests {
     }
 
     #[test]
+    fn stopping_after_route_change_cleans_the_original_takeover_fields() {
+        let _guard = acquire_env_lock();
+        let test_home = setup_test_home();
+        let kimi = provider_with_env(json!({
+            "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
+            "ANTHROPIC_AUTH_TOKEN": "kimi-key",
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "262144",
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "262144",
+            "CLAUDE_CODE_DISABLE_ARTIFACT": "1"
+        }));
+        let takeover = settings_for_live(&kimi, 15721, true);
+        apply_provider_to_live(&takeover, None).unwrap();
+        let snapshot = env_of(&takeover).clone();
+        // A user edit must survive, while unchanged Kimi fields must be removed.
+        let mut current = read_live_settings_raw().unwrap();
+        current["env"]["CLAUDE_CODE_DISABLE_ARTIFACT"] = json!("0");
+        write_live_settings_raw(&current).unwrap();
+        let new_target = provider_with_env(json!({
+            "ANTHROPIC_BASE_URL": "https://example.com",
+            "ANTHROPIC_AUTH_TOKEN": "new-key"
+        }));
+        apply_provider_to_live(
+            &settings_for_live(&new_target, 15721, false),
+            Some(&snapshot),
+        )
+        .unwrap();
+        let restored = read_live_settings_raw().unwrap();
+        assert_eq!(
+            restored.pointer("/env/CLAUDE_CODE_MAX_CONTEXT_TOKENS"),
+            None
+        );
+        assert_eq!(
+            restored.pointer("/env/CLAUDE_CODE_AUTO_COMPACT_WINDOW"),
+            None
+        );
+        assert_eq!(restored.pointer("/env/CLAUDE_CODE_AUTO_MODE_SERVER"), None);
+        assert_eq!(restored["env"]["CLAUDE_CODE_DISABLE_ARTIFACT"], "0");
+        assert_eq!(restored["env"]["ANTHROPIC_AUTH_TOKEN"], "new-key");
+        cleanup(test_home);
+    }
+
+    #[test]
     fn apply_refuses_non_object_live_file() {
         let _guard = acquire_env_lock();
         let test_home = setup_test_home();
