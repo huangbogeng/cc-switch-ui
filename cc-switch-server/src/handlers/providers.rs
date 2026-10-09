@@ -236,15 +236,27 @@ pub async fn switch_provider(
         // Direct-live path: backfill current live settings, then apply selected provider.
         log::info!("[Providers] switch_provider id={} path=direct_live", id);
 
-        // (a) Backfill: save current live config to old provider's DB record
+        // (a) Capture the previous provider's env BEFORE backfill, then save the
+        // current live config into the old provider's DB record. The captured env
+        // is the reference for exclusive-key cleanup: an exclusive key the user
+        // edited in the live file (value differs from the record) survives the
+        // switch, while one left untouched is removed.
+        let mut previous_env: Option<serde_json::Map<String, serde_json::Value>> = None;
         let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
         let current_id = cc_switch_lib::settings::get_current_provider(&app_type_enum);
         if let Some(ref old_id) = current_id {
             if old_id != &id {
-                match cc_switch_lib::live::backfill_current_live_config() {
-                    Ok(backfill_settings) => {
-                        match state.db.get_provider(old_id, app_type) {
-                            Ok(Some(mut old_provider)) => {
+                match state.db.get_provider(old_id, app_type) {
+                    Ok(Some(mut old_provider)) => {
+                        previous_env = old_provider
+                            .settings_config
+                            .get("env")
+                            .and_then(|v| v.as_object())
+                            .cloned();
+                        match cc_switch_lib::live::backfill_current_live_config(
+                            &old_provider.settings_config,
+                        ) {
+                            Ok(backfill_settings) => {
                                 old_provider.settings_config = backfill_settings;
                                 if let Err(e) = state.db.save_provider(app_type, &old_provider) {
                                     warnings.push(format!(
@@ -253,18 +265,18 @@ pub async fn switch_provider(
                                     ));
                                 }
                             }
-                            Ok(None) => { /* old provider was deleted */ }
                             Err(e) => {
                                 warnings.push(format!(
-                                    "Backfill warning: failed to read old provider: {}",
+                                    "Backfill warning: failed to read live config: {}",
                                     e
                                 ));
                             }
                         }
                     }
+                    Ok(None) => { /* old provider was deleted */ }
                     Err(e) => {
                         warnings.push(format!(
-                            "Backfill warning: failed to read live config: {}",
+                            "Backfill warning: failed to read old provider: {}",
                             e
                         ));
                     }
@@ -274,7 +286,9 @@ pub async fn switch_provider(
 
         // (b) Write direct live config only when route takeover is inactive.
         let live_settings = live::settings_for_live(&provider, state.proxy_listen_port, false);
-        if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+        if let Err(e) =
+            cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
+        {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({

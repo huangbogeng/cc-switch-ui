@@ -94,8 +94,26 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         }
     }
 
+    // Exclusive-key cleanup reference: the provider record that last wrote the
+    // live config before takeover (the current direct provider). Its exclusive
+    // keys are removed on takeover only if the user never edited them.
+    let previous_env = state
+        .db
+        .get_current_provider_id(APP_TYPE)
+        .ok()
+        .flatten()
+        .and_then(|pid| state.db.get_provider(&pid, APP_TYPE).ok().flatten())
+        .and_then(|p| {
+            p.settings_config
+                .get("env")
+                .and_then(|v| v.as_object())
+                .cloned()
+        });
+
     let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
-    if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+    if let Err(e) =
+        cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
+    {
         log::error!(
             "[ProxyAPI] proxy_start failed to apply proxied live settings provider_id={}: {}",
             target_provider.id,
@@ -156,12 +174,23 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
         }
     };
 
+    // The takeover env written at proxy_start is the cleanup reference; restoring
+    // direct mode removes takeover-only exclusive keys (e.g.
+    // CLAUDE_CODE_AUTO_MODE_SERVER) when the target provider doesn't set them.
+    let takeover_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
+    let previous_env = takeover_settings
+        .get("env")
+        .and_then(|v| v.as_object())
+        .cloned();
+
     let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, false);
     log::info!(
         "[ProxyAPI] proxy_stop restoring live settings for provider_id={}",
         target_provider.id
     );
-    if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+    if let Err(e) =
+        cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
+    {
         return Json(serde_json::json!({
             "success": false,
             "error": format!("Failed to restore provider config: {}", e)

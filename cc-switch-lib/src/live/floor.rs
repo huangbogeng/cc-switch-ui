@@ -80,6 +80,7 @@ pub const CLAUDE_EXCLUSIVE_ENV: &[&str] = &[
     "CLAUDE_CODE_DISABLE_THINKING",
     "DISABLE_INTERLEAVED_THINKING",
     "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
+    "CLAUDE_CODE_EFFORT_LEVEL",
     "CLAUDE_CODE_EXTRA_BODY",
     "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING",
     // The auto-mode server-side classifier is only supported on the official
