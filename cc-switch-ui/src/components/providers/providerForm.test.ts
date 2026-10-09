@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Provider } from '@/api';
 import { providerPresets } from '@/config/providerPresets';
-import { buildProvider, emptyProviderForm, formFromProvider } from './providerForm';
+import { buildProvider, emptyProviderForm, formFromPreset, formFromProvider } from './providerForm';
 
 function provider(overrides: Partial<Provider> = {}): Provider {
   return {
@@ -121,4 +121,31 @@ describe('provider form serialization', () => {
     expect(env).not.toHaveProperty('ANTHROPIC_API_KEY');
     expect(env).not.toHaveProperty('ANTHROPIC_BASE_URL');
   });
+  it('retains subscription authentication through an edit without the preset', () => {
+    const preset = providerPresets.find((item) => item.id === 'claude-official')!;
+    const created = buildProvider(formFromPreset(preset), preset);
+    const edit = formFromProvider(created);
+    expect(edit.noAuth).toBe(true);
+    const saved = buildProvider(edit, null, created);
+    expect(saved.meta).toMatchObject({ noAuth: true });
+    expect(saved.settingsConfig).toEqual({ env: {} });
+  });
+
+  it('preserves legacy user settings without adding them to new providers', () => {
+    const existing = provider({ settingsConfig: { env: {
+      API_TIMEOUT_MS: '1234', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    } } });
+    const saved = buildProvider(formFromProvider(existing), null, existing);
+    expect(saved.settingsConfig).toEqual(existing.settingsConfig);
+    const created = buildProvider({ ...emptyProviderForm, id: 'new', name: 'New' }, null);
+    expect(created.settingsConfig).toEqual({ env: {} });
+  });
+
+  it('recognizes legacy keyless official records without reclassifying API providers', () => {
+    expect(formFromProvider(provider({ id: 'claude-official' })).noAuth).toBe(true);
+    expect(formFromProvider(provider({ id: 'claude-official',
+      settingsConfig: { env: { ANTHROPIC_API_KEY: 'secret' } },
+    })).noAuth).toBe(false);
+  });
+
 });

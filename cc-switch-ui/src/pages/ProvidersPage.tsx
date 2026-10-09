@@ -266,13 +266,7 @@ export default function ProvidersPage() {
           throw new Error('Base URL must use HTTP or HTTPS.');
         }
       }
-      if (formData.apiTimeoutMs.trim()) {
-        const timeout = Number(formData.apiTimeoutMs);
-        if (!Number.isInteger(timeout) || timeout <= 0) {
-          throw new Error('API timeout must be a positive integer in milliseconds.');
-        }
-      }
-      if (formData.authMode !== 'oauth_proxy' && !selectedPreset?.noAuth && !formData.apiKey.trim()) {
+      if (formData.authMode !== 'oauth_proxy' && !formData.noAuth && !formData.apiKey.trim()) {
         const providerName = selectedPreset?.name || name;
         const shouldContinue = confirm(
           `${providerName} is missing an API key.\n\nSave anyway? Switching or routing through this provider may fail until you add credentials.`

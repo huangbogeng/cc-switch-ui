@@ -70,7 +70,7 @@ export function ProviderFormDialog({
   if (!open) return null;
 
   const usesOAuthProxy = formData.authMode === 'oauth_proxy';
-  const noAuth = !!selectedPreset?.noAuth;
+  const noAuth = formData.noAuth;
   const showApiKey = !usesOAuthProxy && !noAuth;
   const showEndpoint = !noAuth && (!usesOAuthProxy || !!formData.baseUrl);
   const canFetchModels = !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
@@ -452,16 +452,7 @@ export function ProviderFormDialog({
                     <option value="gemini_native">Gemini Native</option>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="api-timeout">API Timeout MS</Label>
-                  <Input
-                    id="api-timeout"
-                    inputMode="numeric"
-                    value={formData.apiTimeoutMs}
-                    onChange={(e) => setFormData({ ...formData, apiTimeoutMs: e.target.value })}
-                    placeholder="3000000"
-                  />
-                </div>
+
               </div>
 
               <div className="space-y-2">
@@ -486,17 +477,10 @@ export function ProviderFormDialog({
                 </label>
               )}
 
-              <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={formData.disableNonessentialTraffic}
-                  onChange={(e) =>
-                    setFormData({ ...formData, disableNonessentialTraffic: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                Disable Claude Code nonessential traffic
-              </label>
+              <p className="text-xs text-muted-foreground">
+                API timeout and nonessential traffic are user settings. Edit them in
+                ~/.claude/settings.json; provider switching preserves them.
+              </p>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
