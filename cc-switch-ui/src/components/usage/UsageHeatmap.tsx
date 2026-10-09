@@ -6,10 +6,15 @@ interface Props {
   trend: ProxyUsageTrend[];
   loading: boolean;
   title?: string;
+  /** Selected range start, unix seconds. Bounds the heatmap so inactive days still show. */
+  rangeStart?: number;
+  /** Selected range end, unix seconds. */
+  rangeEnd?: number;
 }
 
 interface Cell {
-  date: Date;
+  /** UTC midnight of the day, in epoch ms. */
+  ms: number;
   day: string;
   count: number;
   tokens: number;
@@ -29,16 +34,26 @@ const MONTH_LABELS = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
-function parseDay(day: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  if (!m) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
 }
 
-function dayKey(date: Date): string {
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${mm}-${dd}`;
+// The backend groups requests by UTC day (`date(created_at, 'unixepoch')`), so
+// all calendar math here is anchored to UTC to stay aligned with the data.
+function parseDay(day: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function dayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+function startOfUtcDay(seconds: number): number {
+  const d = new Date(seconds * 1000);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
 function intensity(value: number, max: number): number {
@@ -50,27 +65,36 @@ function intensity(value: number, max: number): number {
   return 1;
 }
 
-function buildCells(trend: ProxyUsageTrend[]): Cell[] {
+function buildCells(trend: ProxyUsageTrend[], rangeStart?: number, rangeEnd?: number): Cell[] {
   const byDay = new Map<string, ProxyUsageTrend>();
-  const dates: Date[] = [];
+  const dataDays: number[] = [];
   for (const item of trend) {
-    const date = parseDay(item.day);
-    if (!date) continue;
+    const ms = parseDay(item.day);
+    if (ms === null) continue;
     byDay.set(item.day, item);
-    dates.push(date);
+    dataDays.push(ms);
   }
-  if (dates.length === 0) return [];
 
-  const start = new Date(Math.min(...dates.map((d) => d.getTime())));
-  const end = new Date(Math.max(...dates.map((d) => d.getTime())));
+  let start: number;
+  let end: number;
+  if (rangeStart !== undefined && rangeEnd !== undefined) {
+    start = startOfUtcDay(rangeStart);
+    end = startOfUtcDay(rangeEnd);
+    if (end < start) [start, end] = [end, start];
+  } else if (dataDays.length > 0) {
+    start = Math.min(...dataDays);
+    end = Math.max(...dataDays);
+  } else {
+    return [];
+  }
 
+  const DAY_MS = 86_400_000;
   const cells: Cell[] = [];
-  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-    const date = new Date(cursor);
-    const key = dayKey(date);
+  for (let ms = start; ms <= end; ms += DAY_MS) {
+    const key = dayKey(ms);
     const item = byDay.get(key);
     cells.push({
-      date,
+      ms,
       day: key,
       count: item?.request_count ?? 0,
       tokens: (item?.total_input_tokens ?? 0) + (item?.total_output_tokens ?? 0),
@@ -79,7 +103,7 @@ function buildCells(trend: ProxyUsageTrend[]): Cell[] {
   return cells;
 }
 
-export default function UsageHeatmap({ trend, loading, title = 'Activity' }: Props) {
+export default function UsageHeatmap({ trend, loading, title = 'Activity', rangeStart, rangeEnd }: Props) {
   if (loading) {
     return (
       <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
@@ -93,7 +117,7 @@ export default function UsageHeatmap({ trend, loading, title = 'Activity' }: Pro
     );
   }
 
-  const cells = buildCells(trend);
+  const cells = buildCells(trend, rangeStart, rangeEnd);
 
   if (cells.length === 0) {
     return (
@@ -118,7 +142,7 @@ export default function UsageHeatmap({ trend, loading, title = 'Activity' }: Pro
   const activeDays = cells.filter((cell) => cell.count > 0).length;
 
   // Lay the days out as GitHub-style week columns (7 rows each).
-  const leading = cells[0].date.getDay();
+  const leading = new Date(cells[0].ms).getUTCDay();
   const grid: (Cell | null)[] = [...Array<Cell | null>(leading).fill(null), ...cells];
   while (grid.length % 7 !== 0) grid.push(null);
 
@@ -130,7 +154,7 @@ export default function UsageHeatmap({ trend, loading, title = 'Activity' }: Pro
   const monthLabels = weeks.map((week) => {
     const first = week.find((cell): cell is Cell => cell !== null);
     if (!first) return '';
-    const month = first.date.getMonth();
+    const month = new Date(first.ms).getUTCMonth();
     if (month !== lastMonth) {
       lastMonth = month;
       return MONTH_LABELS[month];
@@ -185,9 +209,10 @@ export default function UsageHeatmap({ trend, loading, title = 'Activity' }: Pro
                         return <div key={dayIndex} className="h-[13px] w-[13px]" />;
                       }
                       const level = intensity(cell.count, maxCount);
-                      const dateLabel = cell.date.toLocaleDateString(undefined, {
+                      const dateLabel = new Date(cell.ms).toLocaleDateString(undefined, {
                         month: 'short',
                         day: 'numeric',
+                        timeZone: 'UTC',
                       });
                       return (
                         <div

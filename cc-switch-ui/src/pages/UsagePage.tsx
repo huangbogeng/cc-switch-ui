@@ -115,6 +115,8 @@ export default function UsagePage() {
         trend={summaryQuery.data?.trend ?? []}
         loading={summaryQuery.isLoading}
         title={`${rangeLabel} Activity`}
+        rangeStart={resolved.startDate}
+        rangeEnd={resolved.endDate}
       />
 
       <DataSourceBar sources={sourcesQuery.data} />

@@ -30,6 +30,24 @@ describe('UsageHeatmap', () => {
     expect(screen.getByText('2')).toBeTruthy();
   });
 
+  it('spans the selected range and zero-fills inactive days', () => {
+    const rangeStart = Date.UTC(2026, 0, 1) / 1000;
+    const rangeEnd = Date.UTC(2026, 0, 31) / 1000;
+    const { container } = render(
+      <UsageHeatmap
+        trend={[day('2026-01-15', 5)]}
+        loading={false}
+        rangeStart={rangeStart}
+        rangeEnd={rangeEnd}
+      />,
+    );
+
+    // All 31 days of January render, not just the single active day.
+    expect(container.querySelectorAll('[title]').length).toBe(31);
+    // Only one day had activity.
+    expect(screen.getByText('1')).toBeTruthy();
+  });
+
   it('marks the busiest day at full intensity', () => {
     const { container } = render(
       <UsageHeatmap
