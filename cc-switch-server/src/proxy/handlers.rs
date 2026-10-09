@@ -189,7 +189,8 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
     // The takeover env written at proxy_start is the cleanup reference; restoring
     // direct mode removes takeover-only exclusive keys (e.g.
     // CLAUDE_CODE_AUTO_MODE_SERVER) when the target provider doesn't set them.
-    let takeover_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
+    let takeover_settings =
+        live::settings_for_live(&target_provider, state.proxy_listen_port, true);
     let previous_env = takeover_settings
         .get("env")
         .and_then(|v| v.as_object())
