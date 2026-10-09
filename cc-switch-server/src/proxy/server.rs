@@ -25,6 +25,7 @@ use tower_http::trace::TraceLayer;
 /// Proxy server that can be started/stopped
 pub struct ProxyServer {
     config: ProxyConfig,
+    pub(crate) takeover_env: Option<serde_json::Map<String, serde_json::Value>>,
     shutdown_tx: RwLock<Option<tokio::sync::oneshot::Sender<()>>>,
     server_task: RwLock<Option<tokio::task::JoinHandle<()>>>,
 }
@@ -44,6 +45,7 @@ impl ProxyServer {
     pub fn new(config: ProxyConfig) -> Self {
         Self {
             config,
+            takeover_env: None,
             shutdown_tx: RwLock::new(None),
             server_task: RwLock::new(None),
         }

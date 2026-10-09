@@ -56,6 +56,7 @@ export const providerPresets: ProviderPreset[] = [
       env: {
         ANTHROPIC_BASE_URL: 'https://api.minimaxi.com/v1',
         ANTHROPIC_AUTH_TOKEN: '',
+        CLAUDE_CODE_AUTO_MODE_SERVER: '0',
         API_TIMEOUT_MS: '3000000',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
         ANTHROPIC_MODEL: 'MiniMax-M2.7',
@@ -78,6 +79,7 @@ export const providerPresets: ProviderPreset[] = [
       env: {
         ANTHROPIC_BASE_URL: 'https://api.siliconflow.cn',
         ANTHROPIC_AUTH_TOKEN: '',
+        CLAUDE_CODE_AUTO_MODE_SERVER: '0',
         ANTHROPIC_MODEL: 'Pro/MiniMaxAI/MiniMax-M2.7',
         ANTHROPIC_DEFAULT_HAIKU_MODEL: 'Pro/MiniMaxAI/MiniMax-M2.7',
         ANTHROPIC_DEFAULT_SONNET_MODEL: 'Pro/MiniMaxAI/MiniMax-M2.7',
@@ -102,6 +104,7 @@ export const providerPresets: ProviderPreset[] = [
         ANTHROPIC_DEFAULT_OPUS_MODEL: 'deepseek-v4-pro',
         CLAUDE_CODE_SUBAGENT_MODEL: 'deepseek-v4-flash',
         CLAUDE_CODE_EFFORT_LEVEL: 'max',
+        CLAUDE_CODE_AUTO_MODE_SERVER: '0',
       },
     },
     modelsUrl: 'https://api.deepseek.com/models',
@@ -139,6 +142,7 @@ export const providerPresets: ProviderPreset[] = [
       env: {
         ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
         ANTHROPIC_AUTH_TOKEN: '',
+        CLAUDE_CODE_AUTO_MODE_SERVER: '0',
         ANTHROPIC_MODEL: 'anthropic/claude-sonnet-4.6',
         ANTHROPIC_DEFAULT_HAIKU_MODEL: 'anthropic/claude-haiku-4.5',
         ANTHROPIC_DEFAULT_SONNET_MODEL: 'anthropic/claude-sonnet-4.6',
@@ -159,6 +163,7 @@ export const providerPresets: ProviderPreset[] = [
       env: {
         ANTHROPIC_BASE_URL: 'https://api.orcarouter.ai',
         ANTHROPIC_AUTH_TOKEN: '',
+        CLAUDE_CODE_AUTO_MODE_SERVER: '0',
         ANTHROPIC_MODEL: 'anthropic/claude-sonnet-4.6',
         ANTHROPIC_DEFAULT_HAIKU_MODEL: 'anthropic/claude-sonnet-4.6',
         ANTHROPIC_DEFAULT_SONNET_MODEL: 'anthropic/claude-sonnet-4.6',
