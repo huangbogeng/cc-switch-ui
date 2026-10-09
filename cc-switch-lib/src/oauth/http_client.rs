@@ -29,17 +29,36 @@ pub fn new_http_client() -> Result<Client, reqwest::Error> {
         .ok();
 
     if let Some(proxy_url) = proxy_url.as_deref().filter(|s| !s.trim().is_empty()) {
-        log::info!("[HTTP Client] Using proxy from environment: {}", proxy_url);
+        log::info!(
+            "[HTTP Client] Using proxy from environment: {}",
+            redact_proxy_url(proxy_url)
+        );
         // Use Proxy::all so an HTTP proxy also handles HTTPS targets through CONNECT.
         if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
             builder = builder.proxy(proxy);
             log::info!("[HTTP Client] Configured as proxy for all schemes");
         } else {
-            log::warn!("[HTTP Client] Failed to parse proxy URL '{}'", proxy_url);
+            log::warn!(
+                "[HTTP Client] Failed to parse proxy URL '{}'",
+                redact_proxy_url(proxy_url)
+            );
         }
     }
 
     builder.build()
+}
+
+/// Strip any embedded credentials from a proxy URL before logging it.
+fn redact_proxy_url(raw: &str) -> String {
+    match url::Url::parse(raw) {
+        Ok(mut parsed) if !parsed.username().is_empty() || parsed.password().is_some() => {
+            let _ = parsed.set_username("REDACTED");
+            let _ = parsed.set_password(None);
+            parsed.to_string()
+        }
+        Ok(_) => raw.to_string(),
+        Err(_) => "[invalid proxy url]".to_string(),
+    }
 }
 
 /// Build an HTTP client with explicit proxy configuration.
@@ -81,4 +100,30 @@ pub fn new_http_client_with_proxy(proxy_config: &ProxyConfig) -> Result<Client, 
     }
 
     builder.build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_proxy_url;
+
+    #[test]
+    fn strips_userinfo_from_proxy_url() {
+        assert_eq!(
+            redact_proxy_url("http://user:secret@127.0.0.1:10809"),
+            "http://REDACTED@127.0.0.1:10809/"
+        );
+    }
+
+    #[test]
+    fn keeps_url_without_credentials() {
+        assert_eq!(
+            redact_proxy_url("http://127.0.0.1:10809"),
+            "http://127.0.0.1:10809"
+        );
+    }
+
+    #[test]
+    fn masks_invalid_url() {
+        assert_eq!(redact_proxy_url("not a url"), "[invalid proxy url]");
+    }
 }

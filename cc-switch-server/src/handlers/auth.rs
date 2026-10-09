@@ -21,7 +21,7 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Json<LoginResponse> {
     log::info!("[Auth] login requested");
-    if payload.token == state.token {
+    if crate::constant_time_eq(&payload.token, &state.token) {
         log::info!("[Auth] login success");
         Json(LoginResponse {
             success: true,
