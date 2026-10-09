@@ -365,7 +365,9 @@ impl super::Database {
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
 
-        let settings = crate::live::sanitize_claude_settings_for_live(&live);
+        // Capture only the provider-owned env keys; user keys stay in the live
+        // file permanently and never travel with the imported provider record.
+        let settings = crate::live::capture_owned_live_config()?;
         let provider = Provider {
             id: "default".to_string(),
             name: name.to_string(),
