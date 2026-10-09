@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Provider } from '@/api';
+import { providerPresets } from '@/config/providerPresets';
 import { buildProvider, emptyProviderForm, formFromProvider } from './providerForm';
 
 function provider(overrides: Partial<Provider> = {}): Provider {
@@ -102,5 +103,22 @@ describe('provider form serialization', () => {
     expect(result.inFailoverQueue).toBe(true);
     expect(env.CUSTOM_SETTING).toBe('keep-me');
     expect(result.meta).toMatchObject({ customMetadata: 'keep-me' });
+  });
+
+  it('saves the official subscription preset with a clean, keyless env', () => {
+    const official = providerPresets.find((preset) => preset.id === 'claude-official');
+    expect(official?.noAuth).toBe(true);
+
+    const result = buildProvider(
+      { ...emptyProviderForm, id: 'claude-official', name: 'Claude Official' },
+      official ?? null,
+    );
+    const env = (result.settingsConfig as { env: Record<string, string> }).env;
+
+    // No blank credential field is persisted, so switching to it clears any
+    // third-party takeover instead of writing an empty token.
+    expect(env).not.toHaveProperty('ANTHROPIC_AUTH_TOKEN');
+    expect(env).not.toHaveProperty('ANTHROPIC_API_KEY');
+    expect(env).not.toHaveProperty('ANTHROPIC_BASE_URL');
   });
 });
