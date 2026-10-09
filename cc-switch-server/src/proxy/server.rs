@@ -396,6 +396,9 @@ mod tests {
         assert_eq!(redact_header("Cookie", &secret), "\"[REDACTED]\"");
 
         let plain = HeaderValue::from_static("application/json");
-        assert_eq!(redact_header("content-type", &plain), "\"application/json\"");
+        assert_eq!(
+            redact_header("content-type", &plain),
+            "\"application/json\""
+        );
     }
 }
