@@ -217,8 +217,15 @@ fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
 
 /// Apply provider settings to live Claude config under the ownership model.
 ///
+/// The provider record is first *projected* down to the keys it owns (key
+/// fields and exclusive fields). Any other key in the record — a user key such
+/// as `API_TIMEOUT_MS` that an older version backfilled, or that the editor
+/// still carries — is ignored, so a stale provider value can never clobber a
+/// live edit the user made.
+///
 /// Reads the current `~/.claude/settings.json` and rebuilds its `env`:
-/// - keys present in the desired env are written (in place, preserving order);
+/// - owned keys present in the desired env are written (in place, preserving
+///   order);
 /// - key fields absent from the desired env are removed (they belonged to the
 ///   previous provider);
 /// - exclusive fields absent from the desired env are removed only when
@@ -241,6 +248,13 @@ pub fn apply_provider_to_live(
         .cloned()
         .unwrap_or_default();
 
+    // Project the record onto the keys the provider owns; user keys it may
+    // still carry are dropped here so they never reach the live file.
+    let desired_owned: Map<String, Value> = desired_env
+        .into_iter()
+        .filter(|(key, _)| floor::claude_owned_env(key))
+        .collect();
+
     let mut current = read_live_settings_raw()?;
     let current_obj = current.as_object_mut().ok_or_else(|| {
         AppError::Config(format!(
@@ -252,7 +266,7 @@ pub fn apply_provider_to_live(
     let mut merged = Map::new();
     if let Some(live_env) = current_obj.get("env").and_then(Value::as_object) {
         for (key, value) in live_env {
-            if let Some(new_value) = desired_env.get(key) {
+            if let Some(new_value) = desired_owned.get(key) {
                 merged.insert(key.clone(), new_value.clone());
                 continue;
             }
@@ -267,10 +281,8 @@ pub fn apply_provider_to_live(
             merged.insert(key.clone(), value.clone());
         }
     }
-    for (key, value) in &desired_env {
-        if !merged.contains_key(key) {
-            merged.insert(key.clone(), value.clone());
-        }
+    for (key, value) in desired_owned {
+        merged.entry(key).or_insert(value);
     }
 
     current_obj.insert("env".into(), Value::Object(merged));
@@ -345,11 +357,13 @@ mod tests {
         assert_eq!(live.get("api_key"), None);
         // Env content matches input
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
             Some("sk-test-key")
         );
 
@@ -388,7 +402,8 @@ mod tests {
         );
         // Env content matches input
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
 
@@ -433,11 +448,13 @@ mod tests {
         );
         assert_eq!(live.get("theme").and_then(Value::as_str), Some("dark"));
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://api.deepseek.com/anthropic")
         );
         assert_eq!(
-            live.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            live.pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
             Some("real-key")
         );
         // PROXY_MANAGED key field from first write is gone
@@ -470,7 +487,8 @@ mod tests {
         apply_provider_to_live(&takeover, None).expect("takeover");
         let live = read_live_settings_raw().expect("read");
         assert_eq!(
-            live.pointer("/env/DISABLE_TELEMETRY").and_then(Value::as_str),
+            live.pointer("/env/DISABLE_TELEMETRY")
+                .and_then(Value::as_str),
             Some("1")
         );
         assert_eq!(
@@ -488,11 +506,59 @@ mod tests {
         apply_provider_to_live(&direct, None).expect("direct");
         let live = read_live_settings_raw().expect("read");
         assert_eq!(
-            live.pointer("/env/DISABLE_TELEMETRY").and_then(Value::as_str),
+            live.pointer("/env/DISABLE_TELEMETRY")
+                .and_then(Value::as_str),
             Some("1")
         );
         assert_eq!(
             live.pointer("/env/CLAUDE_CODE_USE_POWERSHELL_TOOL")
+                .and_then(Value::as_str),
+            Some("1")
+        );
+
+        cleanup(test_home);
+    }
+
+    #[test]
+    fn provider_record_cannot_clobber_live_user_key() {
+        let _guard = acquire_env_lock();
+        let test_home = setup_test_home();
+
+        // The user tuned API_TIMEOUT_MS directly in the live file.
+        let live = json!({
+            "env": {
+                "DISABLE_TELEMETRY": "1",
+                "API_TIMEOUT_MS": "120000"
+            }
+        });
+        write_live_settings_raw(&live).expect("pre-write live");
+
+        // The provider record still carries a stale API_TIMEOUT_MS (backfilled
+        // by an older version) plus its own connection keys.
+        let provider = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+                "ANTHROPIC_AUTH_TOKEN": "sk-x",
+                "API_TIMEOUT_MS": "3000000",
+                "DISABLE_TELEMETRY": "0"
+            }
+        });
+        apply_provider_to_live(&provider, None).expect("apply provider");
+
+        let live = read_live_settings_raw().expect("read");
+        // Owned keys are written from the provider.
+        assert_eq!(
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://api.deepseek.com/anthropic")
+        );
+        // User keys keep their live value — the stale record value is ignored.
+        assert_eq!(
+            live.pointer("/env/API_TIMEOUT_MS").and_then(Value::as_str),
+            Some("120000")
+        );
+        assert_eq!(
+            live.pointer("/env/DISABLE_TELEMETRY")
                 .and_then(Value::as_str),
             Some("1")
         );
@@ -580,7 +646,8 @@ mod tests {
         );
         // Exclusive key captured
         assert_eq!(
-            env.get("CLAUDE_CODE_AUTO_MODE_SERVER").and_then(Value::as_str),
+            env.get("CLAUDE_CODE_AUTO_MODE_SERVER")
+                .and_then(Value::as_str),
             Some("0")
         );
         // User key never travels with providers
@@ -651,7 +718,8 @@ mod tests {
             Some("PROXY_MANAGED")
         );
         assert_eq!(
-            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL").and_then(Value::as_str),
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(Value::as_str),
             Some("claude-haiku-4-5")
         );
         assert_eq!(
@@ -660,19 +728,22 @@ mod tests {
             Some("claude-sonnet-4-6")
         );
         assert_eq!(
-            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL").and_then(Value::as_str),
+            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                .and_then(Value::as_str),
             Some("claude-opus-4-8")
         );
         // The proxy is a gateway too — auto-mode classifier must stay off
         assert_eq!(
-            env.get("CLAUDE_CODE_AUTO_MODE_SERVER").and_then(Value::as_str),
+            env.get("CLAUDE_CODE_AUTO_MODE_SERVER")
+                .and_then(Value::as_str),
             Some("0")
         );
         // Real credentials must not leak into the takeover payload
         assert!(!env.values().any(|v| v.as_str() == Some("real-token")));
         // Provider compat switches and timeouts survive takeover
         assert_eq!(
-            env.get("CLAUDE_CODE_DISABLE_ARTIFACT").and_then(Value::as_str),
+            env.get("CLAUDE_CODE_DISABLE_ARTIFACT")
+                .and_then(Value::as_str),
             Some("1")
         );
         assert_eq!(
