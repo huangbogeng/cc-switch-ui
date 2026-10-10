@@ -1,5 +1,11 @@
 # Configuration write protection and recovery
 
+[Documentation](README.md) · [Upgrade guide](upgrading.md) · [Troubleshooting](troubleshooting.md)
+
+This reference describes the current repository. For normal operations, start with the [user guide](user-guide.md).
+
+## Guarded configuration writes
+
 Claude settings and MCP edits use a JSON patch against the current file. Invalid JSON or a non-object root stops the operation. Before publishing, the writer compares the current bytes with the bytes it read. If another process edited the file, it reapplies the patch to the new contents, up to three attempts. Persistent conflicts leave the external contents intact and report an error. Retry the operation after the external writer has finished.
 
 In-process JSON patches share a lock. External programs do not participate in that lock: there remains a small race between the final comparison and the rename. This is optimistic conflict detection, not a filesystem transaction across programs or multiple files.
@@ -8,17 +14,25 @@ The first guarded write retains the original bytes under `~/.cc-switch/backups/l
 
 To manually recover a configuration, stop CC Switch and other programs that write that file, locate its `.source.json`, and copy the associated `.original` to the recorded path. Keep a copy of the current file first. The first-write backup is a full-file snapshot, so restoring it also restores unrelated fields to their original state. A marker with `existed: false` has no original file to recover.
 
+## Skills publication and restore
+
 Skills use per-directory staging and content digests. Unchanged contents skip replacement and backup creation. Changed source or target contents detected before publication abort the replacement. Old installations remain under `~/.claude/skills/.cc-switch-backups/`; restoring a backup also preserves the previous source under `~/.cc-switch/skills/.cc-switch-backups/`.
 
 The Skills page can load these backups and restore source files. The selected backup is retained. Existing records keep their enabled state; a deleted record is recreated and enabled. Enabled records are then synced to Claude Code. If the source was restored but syncing failed, the UI reports the partial outcome and the user can retry Sync. Backups require manual cleanup. Dates shown in the UI are content modification times, not the time the backup was created.
+
+## Direct configuration and route recovery
 
 Provider selection and Route Target are independent. While the local route runs, selecting a provider chooses the Direct Config to apply after stopping; it does not change the active Route Target. Stopping restores that Direct Config and preserves user settings edited during takeover. With no direct selection, it restores the owned fields from the pre-route backup. Providers referenced by either selection cannot be deleted until another provider is selected.
 
 An interrupted route retains its backup and takeover key snapshot in SQLite. The Providers page offers **Restore Direct Config** before another start. Old backups without a takeover snapshot still restore connection fields, but cannot identify all old provider-exclusive compatibility fields for cleanup. A failed port bind never writes live config. A failed live write stops the newly bound listener.
 
+## User-owned Claude settings
+
 Settings → **Claude Code User Settings** edits `API_TIMEOUT_MS` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` in the live Claude configuration (including the legacy filename when in use). Blank timeout and **Use Claude Code default** remove their overrides. The provider form links to this panel; these values remain independent of provider records.
 
 Saving compares the two displayed fields with their loaded revision. Changes to those fields in another editor return a conflict without replacing them. Provider switches and unrelated edits are merged into the latest file. **Reload from file** asks before discarding a draft. **Restore user settings** previews and restores only these two fields from the first-write backup; credentials, permissions, route state and other settings are preserved. If the live file did not originally exist, restoration removes both overrides. The first snapshot remains available after restoration.
+
+## Provider saves and operation journals
 
 Editing the selected Direct Config saves its record and applies only the edited provider-owned fields to live settings. An editor baseline protects against a changed or deleted database record. New-provider forms reject duplicate IDs. Provider-owned fields use a three-way merge: unchanged fields retain external live edits; conflicting edits to the same field stop the save. User-owned env keys and unrelated top-level settings are preserved. Inactive-provider edits only update the record. During a local route, saves retain the takeover file; stopping applies the selected direct provider's latest record.
 
@@ -29,6 +43,8 @@ The journal now also covers provider selection. Direct-mode switches capture the
 Route takeover and MCP/Skills publication still have their existing separate recovery mechanisms; they are not yet covered by this journal. Explicit CLI `clean` discards the intent before deleting the database so a later start cannot replay it and recreate cleared provider credentials. Atomic rename and an intent support process interruption recovery, but do not guarantee recovery from storage loss or coordinate multiple server processes. Run one server per configuration directory.
 
 
+## Database snapshots and staged restoration
+
 Settings → **Database Backups** creates consistent private SQLite snapshots, including committed WAL writes, under `~/.cc-switch/backups/database/`. These contain provider credentials, MCP/Skills records, database settings and usage history. They do not contain live Claude files, installed Skills, OAuth token stores or device settings. Stop the local route and recover any unfinished provider/route operation before creating or staging a backup. Manual snapshots are limited to 20; deleting older snapshots frees a slot. The latest automatic safety snapshot and any source or safety snapshot used by a pending restore cannot be deleted through the API. Older safety snapshots can be removed deliberately.
 
 **Restore on restart** opens the selected snapshot read-only, checks SQLite integrity and references, rejects newer or unsupported schemas, migrates an isolated copy, and records its digest. The active database stays unchanged until the server restarts. You can cancel before application starts. Starting the local route is blocked while a restore is pending. Changes made after staging will be replaced at restart but remain in the safety snapshot.
@@ -38,10 +54,14 @@ Before server workers start, restoration checks the staged digest and creates a 
 CLI `clean` discards pending restores before deleting primary data to prevent replay; existing snapshots remain available and still contain credentials. Snapshot and restore file operations are serialized within one process; use one server per configuration directory. This recovery mechanism does not guarantee storage or power-loss durability. Safety snapshot creation must succeed before restoration can proceed.
 
 
+## Backup Center and complete-file recovery
+
 Settings → **Backup Center** groups database snapshots, first-write configuration snapshots, and Skills backups. The file inventory is metadata-only: it shows fixed Claude settings (including the legacy filename) and MCP paths, original/marker locations, size, marker modification time, and snapshot health. It never sends original JSON or credential values to the browser, accepts no target path, and reports an invalid snapshot separately from an absent one. Custom Claude configuration directories use their corresponding paths. Paths previously used under another override are not scanned.
 
 Complete configuration files use the displayed manual recovery instructions because replacing a whole file also changes permissions, credentials and unrelated settings. Recover pending provider operations and stop the local route first, then stop all writers and keep a separate current-file copy. Database records remain unchanged; later provider switching or MCP sync may apply those records again. Originally absent files have a source marker but no original bytes: review changes manually rather than copying an empty object over the file. The two user settings still have a scoped **Restore user settings** action. Skills restoration in the backup center uses the same recovery flow as the Skills page and invalidates its cached records; use the Skills page to review records or retry failed syncs.
 
+
+## Import and sync reports
 
 MCP and Skills **Import** and manual **Sync** return an item report with `success`, `imported`, `updated`, `applied`, `skipped`, `failed`, and `items` (identifier, outcome, optional error). A batch with item failures returns HTTP 200 and `success: false`; callers must inspect the report, not just the HTTP status. Errors before a batch can run still return an error status. Import counts include only committed new records; Skills collection backfills are counted separately as updates. Existing managed records and their enabled state are preserved. Import does not sync; review the records before applying them.
 
@@ -52,8 +72,16 @@ Manual Skills Sync keeps individual-directory publication and backup protection,
 MCP Sync retains one guarded JSON publication for the full managed set: all entries share the write outcome, including disabled-entry removal. An applied outcome confirms the requested configuration was published or already matched, rather than proving individual bytes changed. Invalid MCP roots or `mcpServers` nodes are rejected during import instead of being treated as an empty source. Reports contain identifiers and errors, not server specifications or credential values. The frontend keeps partial results, refreshes observed records even after a failed/lost import response, and distinguishes refresh failure from the batch outcome.
 
 
+## Durable deletion cleanup
+
 MCP and Skills deletion commits the managed-record removal and a single cleanup intent together in SQLite (schema version 4). A failed database delete or intent insertion leaves live files untouched. After that commit, cleanup removes only the captured MCP entry or Skills directory version. MCP cleanup uses the guarded JSON writer and preserves unrelated entries/root fields. Skills cleanup moves the captured installation to its normal backup directory and retains source files. If cleanup or clearing the intent fails, the record remains deleted and the intent survives restart; the API reports `saved`, `deleted`, and `recoveryRequired` instead of claiming full success.
 
 Both pages offer **Deletion recovery**, including pending deletions from the other page. **Retry live cleanup** finishes the captured operation; an already absent target is treated as completed. Changed target contents or a changed configuration path stop cleanup and retain the intent. **Keep current files** requires confirmation, clears the pending cleanup, and leaves current files unmanaged and possibly active in Claude Code; it does not recreate the deleted record. Recovery requests include an operation ID so a stale page cannot clear a later deletion. Status responses expose identifiers and names, not captured credentials or directory digests.
 
 Pending deletions block MCP/Skills save, toggle, import, sync, restore and further deletion until resolved. The UI refreshes records and recovery status even after a failed/lost deletion response, so a committed record removal disappears from the list while cleanup remains visible. Navigation stays available while merely pending; only active writes block leaving. Database backup creation/restoration also requires completed deletions, and restoring a snapshot containing a cleanup intent is refused. A planned database restore must be cancelled before beginning deletion. Shared in-process serialization coordinates these operations; run one server per configuration directory. Intent durability follows SQLite commits and existing guarded file publication, not a cross-process or power-loss filesystem transaction.
+
+## Schema upgrades and installer recovery
+
+Before migrating an existing older SQLite schema, startup creates a consistent original-schema snapshot under `~/.cc-switch/backups/upgrades/`, including committed WAL writes. Backup failure stops startup before migration. Schema creation, compatibility migrations and version changes share a transaction; migration failure rolls them back. Unsupported newer schemas are rejected. A successful repeat startup creates no additional snapshot for that migration. These private snapshots are retained separately from Backup Center's manual snapshots.
+
+The Linux/macOS installer additionally retains the previous program and a complete profile archive in a sibling `cc-switch-upgrade-backups/` directory. This is distinct from database restoration and guarded live-file snapshots. See the [upgrade guide](upgrading.md) for `update`, initial migration from an older release, startup validation, token changes and rollback limits.

@@ -6,23 +6,25 @@ Thank you for your interest in contributing to CC Switch Web! Please read our [C
 
 ## How to Contribute
 
-- **Report bugs** — Found something broken? [Open a bug report](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=bug_report.yml).
-- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=feature_request.yml).
-- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=doc_issue.yml).
+- **Report bugs** — Found something broken? [Open a bug report](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=bug_report.md).
+- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=feature_request.md).
+- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/huangbogeng/cc-switch-ui/issues/new).
 - **Contribute code** — Fix bugs or implement features via pull requests.
+
+See the [development guide](docs/development.md) for complete checks, isolated workflow tests and old-release migration regressions.
 
 ## Development Setup
 
 ### Prerequisites
 
 - Node.js 24.15+ and npm
-- Rust 1.85+ and Cargo
+- Rust 1.95 and Cargo
 
 ### Quick Start
 
 ```bash
 # Install frontend dependencies
-cd cc-switch-ui && npm install
+cd cc-switch-ui && npm ci
 
 # Start development server (proxies API to :5007)
 npm run dev
@@ -38,13 +40,14 @@ Frontend (in `cc-switch-ui/`):
 npm run dev       # Dev server with hot reload
 npm run build     # Production build
 npm run lint      # ESLint check
+npm test          # Component and behavior tests
 ```
 
 Backend (in project root):
 ```bash
 cargo run --bin cc-switch-server    # Run backend on :5007
 cargo build --release            # Release build
-cargo fmt && cargo clippy        # Format and lint
+cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings        # Format and lint
 ```
 
 ## Code Style
@@ -71,22 +74,22 @@ chore(deps): update dependencies
 
 ## Questions?
 
-- [Open a question](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=question.yml)
+- [Open a question](https://github.com/huangbogeng/cc-switch-ui/issues/new)
 - [GitHub Discussions](https://github.com/huangbogeng/cc-switch-ui/discussions)
 
 ---
 
 # 贡献指南
 
-> [English Version](#contributing-to-cc-switch-server)
+> [English Version](#contributing-to-cc-switch-web)
 
 感谢你对 CC Switch Web 的贡献兴趣！参与之前请阅读我们的[行为准则](./CODE_OF_CONDUCT.md)。
 
 ## 如何贡献
 
-- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=bug_report.yml)。
-- **建议功能** — 有想法？[提交功能请求](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=feature_request.yml)。
-- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=doc_issue.yml)。
+- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=bug_report.md)。
+- **建议功能** — 有想法？[提交功能请求](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=feature_request.md)。
+- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/huangbogeng/cc-switch-ui/issues/new)。
 - **贡献代码** — 通过 Pull Request 修复 Bug 或实现新功能。
 
 ## 开发环境搭建
@@ -94,13 +97,13 @@ chore(deps): update dependencies
 ### 前提条件
 
 - Node.js 24.15+ 和 npm
-- Rust 1.85+ 和 Cargo
+- Rust 1.95 和 Cargo
 
 ### 快速开始
 
 ```bash
 # 安装前端依赖
-cd cc-switch-ui && npm install
+cd cc-switch-ui && npm ci
 
 # 启动开发服务器（API 代理到 :5007）
 npm run dev
@@ -116,13 +119,14 @@ cargo run --bin cc-switch-server
 npm run dev       # 热重载开发服务器
 npm run build     # 生产构建
 npm run lint      # ESLint 检查
+npm test          # 组件与行为测试
 ```
 
 后端（项目根目录）：
 ```bash
 cargo run --bin cc-switch-server    # 运行后端于 :5007
 cargo build --release            # 发布版本构建
-cargo fmt && cargo clippy         # 格式化和检查
+cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings         # 格式化和检查
 ```
 
 ## 代码规范
@@ -149,5 +153,5 @@ chore(deps): update dependencies
 
 ## 有疑问？
 
-- [提问](https://github.com/huangbogeng/cc-switch-ui/issues/new?template=question.yml)
+- [提问](https://github.com/huangbogeng/cc-switch-ui/issues/new)
 - [GitHub 讨论区](https://github.com/huangbogeng/cc-switch-ui/discussions)
