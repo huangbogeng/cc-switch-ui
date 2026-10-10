@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import {
   listProviders,
   saveProvider,
+  recoverProviderOperation,
   deleteProvider,
   switchProvider,
   getCurrentProviderId,
@@ -50,6 +51,9 @@ export default function ProvidersPage() {
   const [draftFormData, setDraftFormData] = useState<ProviderFormData>(emptyProviderForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [editingBase, setEditingBase] = useState<Provider>();
+  const [operationNotice, setOperationNotice] = useState('');
+  const [saveRecoveryRequired, setSaveRecoveryRequired] = useState(false);
   const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
   const [proxyStatus, setProxyStatus] = useState<{
     running: boolean;
@@ -71,6 +75,7 @@ export default function ProvidersPage() {
       setError('');
       setProviders(providerData.providers);
       setCurrentProviderId(currentData.current_provider_id);
+      setSaveRecoveryRequired(currentData.recovery_required ?? false);
       cacheSet('providers', {
         providers: providerData.providers,
         currentProviderId: currentData.current_provider_id,
@@ -107,6 +112,7 @@ export default function ProvidersPage() {
         setError('');
         setProviders(providerData.providers);
         setCurrentProviderId(currentData.current_provider_id);
+        setSaveRecoveryRequired(currentData.recovery_required ?? false);
         cacheSet('providers', {
           providers: providerData.providers,
           currentProviderId: currentData.current_provider_id,
@@ -188,7 +194,8 @@ export default function ProvidersPage() {
   const handleSwitch = async (id: string) => {
     try {
       setPendingAction(`switch:${id}`);
-      await switchProvider(id);
+      const result = await switchProvider(id);
+      setOperationNotice(result.warnings?.join(' ') || 'Direct provider selected.');
       setCurrentProviderId(id);
       await applyProviders();
       await loadProxyStatus();
@@ -203,6 +210,7 @@ export default function ProvidersPage() {
     setFormError('');
     setSelectedPreset(preset);
     setEditingId(null);
+    setEditingBase(undefined);
     setDraftFormData(formFromPreset(preset));
     setShowForm(true);
   };
@@ -211,6 +219,7 @@ export default function ProvidersPage() {
     setFormError('');
     setSelectedPreset(null);
     setEditingId(null);
+    setEditingBase(undefined);
     setDraftFormData(emptyProviderForm);
     setShowForm(true);
   };
@@ -218,6 +227,7 @@ export default function ProvidersPage() {
   const handleEdit = (provider: Provider) => {
     setFormError('');
     setEditingId(provider.id);
+    setEditingBase(structuredClone(provider));
     setSelectedPreset(null);
     setDraftFormData(formFromProvider(provider));
     setShowForm(true);
@@ -245,10 +255,24 @@ export default function ProvidersPage() {
     }
   };
 
+  const handleRecoverSave = async () => {
+    setPendingAction('recover');
+    try {
+      const result = await recoverProviderOperation();
+      setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' '));
+      await applyProviders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Recovery failed');
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const handleSubmit = async (formData: ProviderFormData) => {
     setSaving(true);
     setError('');
     setFormError('');
+    setOperationNotice('');
 
     try {
       const id = formData.id.trim();
@@ -277,12 +301,13 @@ export default function ProvidersPage() {
           return;
         }
       }
-      const existingProvider = editingId ? providers[editingId] : undefined;
-      await saveProvider(buildProvider(formData, selectedPreset, existingProvider));
+      const result = await saveProvider(buildProvider(formData, selectedPreset, editingBase), editingBase);
+      setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' '));
       setShowForm(false);
       await applyProviders();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Save failed');
+      await applyProviders();
     } finally {
       setSaving(false);
     }
@@ -307,6 +332,19 @@ export default function ProvidersPage() {
         </div>
       )}
 
+      {saveRecoveryRequired && (
+        <div role="alert" className="mb-4 rounded-xl border px-4 py-3 text-sm">
+          An unfinished provider save needs recovery before switching or changing the local route.
+          <Button className="ml-3" onClick={() => void handleRecoverSave()} disabled={saving || pendingAction !== null}>Recover save</Button>
+        </div>
+      )}
+
+      {operationNotice && (
+        <div role="status" className="mb-4 rounded-xl border border-primary/30 px-4 py-2.5 text-sm">
+          {operationNotice}
+        </div>
+      )}
+
       {proxyError && (
         <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-sm">
           {proxyError}
@@ -320,7 +358,7 @@ export default function ProvidersPage() {
           proxyRunning={proxyStatus?.running ?? false}
           recoveryRequired={proxyStatus?.recovery_required ?? false}
           proxyTargetId={proxyStatus?.active_target_provider_id ?? currentProviderId ?? providerList[0]?.id ?? null}
-          busy={pendingAction !== null}
+          busy={pendingAction !== null || saving}
           onTargetChange={(providerId) => void handleProxyTargetChange(providerId)}
           onStartProxy={(providerId) => void handleStartProxy(providerId)}
           onStopProxy={handleStopProxy}
@@ -358,7 +396,7 @@ export default function ProvidersPage() {
               onSwitch={handleSwitch}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              busy={pendingAction !== null}
+              busy={pendingAction !== null || saving}
             />
           ))}
         </div>

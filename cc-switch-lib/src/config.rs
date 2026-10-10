@@ -346,7 +346,43 @@ fn first_write_backup(root: &Path, path: &Path, current: Option<&[u8]>) -> Resul
 fn update_json_with_backup(
     path: &Path,
     backup_root: &Path,
+    patch: impl FnMut(&mut serde_json::Value) -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    update_json_transaction_with_backup(
+        path,
+        backup_root,
+        patch,
+        |_, _| Ok(()),
+        || Ok(()),
+        || Ok(()),
+    )
+}
+
+/// One guarded file patch with durable intent and idempotent state completion.
+pub(crate) fn update_json_transaction(
+    path: &Path,
+    patch: impl FnMut(&mut serde_json::Value) -> Result<(), AppError>,
+    prepare: impl FnMut(Option<&[u8]>, Option<&[u8]>) -> Result<(), AppError>,
+    publishing: impl FnMut() -> Result<(), AppError>,
+    finish: impl FnMut() -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    update_json_transaction_with_backup(
+        path,
+        &get_app_config_dir().join("backups/live-first-write"),
+        patch,
+        prepare,
+        publishing,
+        finish,
+    )
+}
+
+fn update_json_transaction_with_backup(
+    path: &Path,
+    backup_root: &Path,
     mut patch: impl FnMut(&mut serde_json::Value) -> Result<(), AppError>,
+    mut prepare: impl FnMut(Option<&[u8]>, Option<&[u8]>) -> Result<(), AppError>,
+    mut publishing: impl FnMut() -> Result<(), AppError>,
+    mut finish: impl FnMut() -> Result<(), AppError>,
 ) -> Result<(), AppError> {
     static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = WRITES.lock().map_err(|e| AppError::Lock(e.to_string()))?;
@@ -365,20 +401,24 @@ fn update_json_with_backup(
         let original = value.clone();
         patch(&mut value)?;
         if value == original {
-            return Ok(());
+            prepare(before.as_deref(), before.as_deref())?;
+            publishing()?;
+            return finish();
         }
         let bytes = serde_json::to_vec_pretty(&value)
             .map_err(|source| AppError::JsonSerialize { source })?;
         let staged = stage_write(path, &bytes)?;
         first_write_backup(backup_root, path, before.as_deref())?;
+        prepare(before.as_deref(), Some(&bytes))?;
         refuse_symlink(path)?;
         if read_current(path)? != before {
             continue;
         }
+        publishing()?;
         staged
             .persist(path)
             .map_err(|e| AppError::io(path, e.error))?;
-        return Ok(());
+        return finish();
     }
     Err(AppError::Conflict {
         path: path.display().to_string(),

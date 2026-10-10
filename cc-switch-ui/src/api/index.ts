@@ -283,13 +283,25 @@ export async function getProvider(id: string) {
 }
 
 export async function getCurrentProviderId(options?: RequestInit) {
-  return api<{ current_provider_id: string | null }>('/providers/current', options);
+  return api<{ current_provider_id: string | null; recovery_required?: boolean }>('/providers/current', options);
 }
 
-export async function saveProvider(provider: Provider) {
-  return api<{ success: boolean }>('/providers', {
+export interface ProviderOperationResult {
+  success: boolean;
+  saved?: boolean;
+  applied?: boolean;
+  warnings?: string[];
+  message?: string;
+}
+
+export async function recoverProviderOperation() {
+  return api<ProviderOperationResult>('/providers/recover', { method: 'POST' });
+}
+
+export async function saveProvider(provider: Provider, base?: Provider) {
+  return api<ProviderOperationResult>('/providers', {
     method: 'POST',
-    body: JSON.stringify(provider),
+    body: JSON.stringify({ ...provider, ...(base ? { base } : { create: true }) }),
   });
 }
 
@@ -307,7 +319,7 @@ export async function deleteProvider(id: string) {
 }
 
 export async function switchProvider(id: string) {
-  return api<{ success: boolean }>(`/providers/${encodeURIComponent(id)}/switch`, {
+  return api<ProviderOperationResult>(`/providers/${encodeURIComponent(id)}/switch`, {
     method: 'POST',
   });
 }

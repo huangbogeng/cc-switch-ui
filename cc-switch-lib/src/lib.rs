@@ -15,6 +15,7 @@ pub mod error;
 pub mod live;
 pub mod mcp;
 pub mod oauth;
+pub mod provider_operations;
 pub mod providers;
 pub mod settings;
 pub mod skills;

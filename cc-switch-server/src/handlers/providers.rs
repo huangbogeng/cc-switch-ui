@@ -49,7 +49,7 @@ pub async fn get_current_provider(State(state): State<Arc<AppState>>) -> impl In
                 APP_TYPE,
                 id
             );
-            Json(serde_json::json!({ "current_provider_id": id })).into_response()
+            Json(serde_json::json!({ "current_provider_id": id, "recovery_required": cc_switch_lib::provider_operations::recovery_pending() })).into_response()
         }
         Err(e) => {
             log::error!("Failed to get current provider: {}", e);
@@ -85,69 +85,161 @@ pub async fn get_provider(
     }
 }
 
+#[derive(serde::Deserialize)]
+pub struct ProviderSaveRequest {
+    #[serde(flatten)]
+    provider: Provider,
+    #[serde(default)]
+    base: Option<Provider>,
+    #[serde(default)]
+    create: bool,
+}
+
 pub async fn save_provider(
     State(state): State<Arc<AppState>>,
-    Json(mut provider): Json<Provider>,
+    Json(request): Json<ProviderSaveRequest>,
 ) -> impl IntoResponse {
-    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
-    log::info!(
-        "[Providers] save_provider requested id={} name={}",
-        provider.id,
-        provider.name
-    );
-    // Normalise the key field so the DB record always matches the
-    // declared apiKeyField.  Prevents stale ANTHROPIC_API_KEY values
-    // from persisting across edits and surfacing during route toggles.
-    cc_switch_lib::providers::normalize_provider_schema(&mut provider);
-    match state.db.save_provider(APP_TYPE, &provider) {
-        Ok(()) => {
-            log::info!("[Providers] save_provider success id={}", provider.id);
-            Json(serde_json::json!({ "success": true })).into_response()
-        }
-        Err(e) => {
-            log::error!("Failed to save provider: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response()
-        }
-    }
+    persist_provider(state, request).await
 }
 
 pub async fn update_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(mut provider): Json<Provider>,
+    Json(request): Json<ProviderSaveRequest>,
 ) -> impl IntoResponse {
-    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
-    log::info!(
-        "[Providers] update_provider requested path_id={} payload_id={}",
-        id,
-        provider.id
-    );
-    if provider.id != id {
+    if request.provider.id != id {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "Provider ID mismatch"})),
         )
             .into_response();
     }
-    cc_switch_lib::providers::normalize_provider_schema(&mut provider);
-    match state.db.save_provider(APP_TYPE, &provider) {
-        Ok(()) => {
-            log::info!("[Providers] update_provider success id={}", provider.id);
-            Json(serde_json::json!({ "success": true })).into_response()
-        }
-        Err(e) => {
-            log::error!("Failed to update provider: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
+    persist_provider(state, request).await
+}
+
+async fn persist_provider(
+    state: Arc<AppState>,
+    request: ProviderSaveRequest,
+) -> axum::response::Response {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    let route_active = state.proxy_server.read().await.is_some();
+    let result =
+        tokio::task::spawn_blocking(move || persist_provider_record(&state, request, route_active))
+            .await;
+    match result {
+        Ok(Ok(result)) => Json(result).into_response(),
+        Ok(Err(error)) => operation_error(error),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+fn persist_provider_record(
+    state: &AppState,
+    mut request: ProviderSaveRequest,
+    route_active: bool,
+) -> Result<serde_json::Value, cc_switch_lib::error::AppError> {
+    use cc_switch_lib::{error::AppError, provider_operations};
+    let warnings = provider_operations::recover(&state.db)?;
+    cc_switch_lib::providers::normalize_provider_schema(&mut request.provider);
+    let old = state.db.get_provider(&request.provider.id, APP_TYPE)?;
+    if request.create && old.is_some() {
+        return Err(AppError::Conflict {
+            path: "provider ID already exists; edit the existing record or choose another ID"
+                .into(),
+        });
+    }
+    if let Some(base) = &request.base {
+        if old
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|source| AppError::JsonSerialize { source })?
+            != Some(
+                serde_json::to_value(base).map_err(|source| AppError::JsonSerialize { source })?,
             )
-                .into_response()
+            && old
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()
+                .map_err(|source| AppError::JsonSerialize { source })?
+                != Some(
+                    serde_json::to_value(&request.provider)
+                        .map_err(|source| AppError::JsonSerialize { source })?,
+                )
+        {
+            return Err(AppError::Conflict {
+                path: "provider record; reopen the editor to load the latest version".into(),
+            });
         }
     }
+    let provider = &mut request.provider;
+    if provider.id.trim().is_empty()
+        || provider.name.trim().is_empty()
+        || !provider.settings_config.is_object()
+        || provider
+            .settings_config
+            .get("env")
+            .is_some_and(|env| !env.is_object())
+    {
+        return Err(AppError::InvalidInput(
+            "Provider ID, name and an object configuration are required".into(),
+        ));
+    }
+    let current =
+        cc_switch_lib::settings::get_effective_current_provider(&state.db, &AppType::ClaudeCode)?;
+    let applied = current.as_deref() == Some(&provider.id) && !route_active;
+    if applied {
+        if state.db.get_live_backup(APP_TYPE)?.is_some() {
+            return Err(AppError::ProviderInUse(
+                "Restore the interrupted local route before editing the direct provider".into(),
+            ));
+        }
+        let desired = live::settings_for_live(provider, state.proxy_listen_port, false);
+        let base = old
+            .as_ref()
+            .map(|p| live::settings_for_live(p, state.proxy_listen_port, false))
+            .unwrap_or_else(|| serde_json::json!({}));
+        provider_operations::apply(&state.db, Some(provider), &desired, &base)?;
+    } else {
+        state.db.save_provider(APP_TYPE, provider)?;
+    }
+    Ok(
+        serde_json::json!({"success": true, "saved": true, "applied": applied, "warnings": warnings,
+            "message": if applied { "Saved and applied to direct config." } else if route_active { "Saved. The local route remains active. The selected direct provider is applied when the route stops." } else { "Saved. Select this provider to apply it." }}),
+    )
+}
+
+pub async fn recover_provider_operation(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    match tokio::task::spawn_blocking(move || cc_switch_lib::provider_operations::recover(&state.db)).await {
+        Ok(Ok(warnings)) => Json(serde_json::json!({"success": true, "warnings": warnings, "message": "Unfinished save recovered. Review the current provider before editing."})).into_response(),
+        Ok(Err(error)) => operation_error(error),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": error.to_string()}))).into_response(),
+    }
+}
+
+fn operation_error(error: cc_switch_lib::error::AppError) -> axum::response::Response {
+    use cc_switch_lib::error::AppError;
+    let status = match &error {
+        AppError::Conflict { .. } | AppError::ProviderInUse(_) => StatusCode::CONFLICT,
+        AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    let pending = cc_switch_lib::provider_operations::recovery_pending();
+    let message = if pending {
+        format!("{error}. An unfinished save is pending; retry the operation to complete recovery before switching.")
+    } else {
+        error.to_string()
+    };
+    (
+        status,
+        Json(serde_json::json!({"error": message, "recovery_required": pending})),
+    )
+        .into_response()
 }
 
 pub async fn delete_provider(
@@ -155,6 +247,10 @@ pub async fn delete_provider(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    if let Err(error) = cc_switch_lib::provider_operations::recover(&state.db) {
+        return operation_error(error);
+    }
+
     log::info!("[Providers] delete_provider requested id={}", id);
 
     let app_type: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
@@ -193,6 +289,11 @@ pub async fn switch_provider(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    let mut warnings = match cc_switch_lib::provider_operations::recover(&state.db) {
+        Ok(warnings) => warnings,
+        Err(error) => return operation_error(error),
+    };
+
     log::info!("[Providers] switch_provider requested id={}", id);
 
     let app_type = APP_TYPE;
@@ -231,7 +332,6 @@ pub async fn switch_provider(
     if !proxy_running && backup.is_some() && live_taken_over {
         return (StatusCode::CONFLICT, Json(serde_json::json!({"error": "The previous route was interrupted. Stop the local route to restore direct config before switching."}))).into_response();
     }
-    let mut warnings: Vec<String> = Vec::new();
 
     // Always update current-provider state. During route takeover we intentionally
     // avoid changing route target or rewriting live config; those belong to the
@@ -477,5 +577,185 @@ mod tests {
         assert_eq!(restored["env"]["ANTHROPIC_AUTH_TOKEN"], "before");
         assert_eq!(restored["env"]["API_TIMEOUT_MS"], "99");
         assert_eq!(restored["env"].get("CLAUDE_CODE_AUTO_MODE_SERVER"), None);
+    }
+    #[tokio::test]
+    async fn editing_current_provider_applies_without_losing_keys_on_switch() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        let provider: Provider = serde_json::from_value(json!({"id":"editor-a", "name":"A", "settingsConfig":{"env":{"ANTHROPIC_AUTH_TOKEN":"old", "ANTHROPIC_BASE_URL":"https://a.example", "ANTHROPIC_MODEL":"old-model"}}, "meta":{"apiFormat":"anthropic"}})).unwrap();
+        let mut other = provider.clone();
+        other.id = "editor-b".into();
+        db.save_provider(APP_TYPE, &provider).unwrap();
+        db.save_provider(APP_TYPE, &other).unwrap();
+        db.set_current_provider(&provider.id, APP_TYPE).unwrap();
+        let state = Arc::new(AppState {
+            db: db.clone(),
+            token: "test".into(),
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+            proxy_host: "127.0.0.1".into(),
+            proxy_listen_port: 0,
+        });
+        let (status, _) = body(
+            save_provider(
+                State(state.clone()),
+                Json(ProviderSaveRequest {
+                    provider: provider.clone(),
+                    base: None,
+                    create: true,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let path = live::get_live_settings_path();
+        cc_switch_lib::config::write_json_file(&path, &json!({"env":{"ANTHROPIC_AUTH_TOKEN":"old", "ANTHROPIC_BASE_URL":"https://a.example", "ANTHROPIC_MODEL":"external-model", "API_TIMEOUT_MS":"777"}, "permissions":{"allow":["Read"]}})).unwrap();
+        let mut edited = provider.clone();
+        edited.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("new");
+        let (status, result) = body(
+            save_provider(
+                State(state.clone()),
+                Json(ProviderSaveRequest {
+                    create: false,
+                    provider: edited.clone(),
+                    base: Some(provider.clone()),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        assert_eq!(result["applied"], true);
+        let saved: Value = cc_switch_lib::config::read_json_file(&path).unwrap();
+        assert_eq!(saved["env"]["ANTHROPIC_AUTH_TOKEN"], "new");
+        assert_eq!(saved["env"]["API_TIMEOUT_MS"], "777");
+        assert_eq!(saved["env"]["ANTHROPIC_MODEL"], "external-model");
+        assert_eq!(saved["permissions"]["allow"][0], "Read");
+        edited.name = "Stale editor change".into();
+        assert_eq!(
+            body(
+                save_provider(
+                    State(state.clone()),
+                    Json(ProviderSaveRequest {
+                        create: false,
+                        provider: edited,
+                        base: Some(provider)
+                    })
+                )
+                .await
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            body(switch_provider(State(state.clone()), Path(other.id.clone())).await)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            db.get_provider("editor-a", APP_TYPE)
+                .unwrap()
+                .unwrap()
+                .settings_config["env"]["ANTHROPIC_AUTH_TOKEN"],
+            "new"
+        );
+        assert_eq!(
+            body(switch_provider(State(state.clone()), Path("editor-a".into())).await)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            cc_switch_lib::config::read_json_file::<Value>(&path).unwrap()["env"]
+                ["ANTHROPIC_AUTH_TOKEN"],
+            "new"
+        );
+        let bytes = std::fs::read(&path).unwrap();
+        let mut inactive = other.clone();
+        inactive.name = "Edited B".into();
+        let (_, result) = body(
+            update_provider(
+                State(state.clone()),
+                Path(inactive.id.clone()),
+                Json(ProviderSaveRequest {
+                    create: false,
+                    provider: inactive,
+                    base: Some(other),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(result["applied"], false);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let old = db.get_provider("editor-a", APP_TYPE).unwrap().unwrap();
+        let mut conflicting = old.clone();
+        conflicting.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("form-edit");
+        let mut live_value: Value = cc_switch_lib::config::read_json_file(&path).unwrap();
+        live_value["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("external-key");
+        cc_switch_lib::config::write_json_file(&path, &live_value).unwrap();
+        assert_eq!(
+            body(
+                save_provider(
+                    State(state.clone()),
+                    Json(ProviderSaveRequest {
+                        create: false,
+                        provider: conflicting,
+                        base: Some(old.clone())
+                    })
+                )
+                .await
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            db.get_provider("editor-a", APP_TYPE)
+                .unwrap()
+                .unwrap()
+                .settings_config,
+            old.settings_config
+        );
+        assert_eq!(
+            cc_switch_lib::config::read_json_file::<Value>(&path).unwrap(),
+            live_value
+        );
+        assert!(!cc_switch_lib::provider_operations::recovery_pending());
+        // Route takeover must remain intact while editing the direct selection.
+        cc_switch_lib::config::write_json_file(&path, &old.settings_config).unwrap();
+        db.set_proxy_target_provider_id("editor-b").unwrap();
+        let (_, started) = body(proxy_start(State(state.clone())).await).await;
+        assert_eq!(started["success"], true, "{started}");
+        let takeover = std::fs::read(&path).unwrap();
+        let mut routed_edit = old.clone();
+        routed_edit.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("after-route");
+        let (_, result) = body(
+            save_provider(
+                State(state.clone()),
+                Json(ProviderSaveRequest {
+                    create: false,
+                    provider: routed_edit,
+                    base: Some(old),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(result["saved"], true);
+        assert_eq!(result["applied"], false);
+        assert_eq!(std::fs::read(&path).unwrap(), takeover);
+        let (_, stopped) = body(proxy_stop(State(state.clone())).await).await;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert_eq!(
+            cc_switch_lib::config::read_json_file::<Value>(&path).unwrap()["env"]
+                ["ANTHROPIC_AUTH_TOKEN"],
+            "after-route"
+        );
     }
 }
