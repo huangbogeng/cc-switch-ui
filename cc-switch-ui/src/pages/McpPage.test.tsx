@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError, listMcpServers, saveMcpServer, toggleMcpServer, importMcpServers, syncMcpServers, getManagedDeletion, deleteMcpServer } from '@/api';
 import McpPage from './McpPage';
@@ -86,13 +86,19 @@ it('does not claim a successful MCP sync after a failed atomic write', async () 
 });
 
 it('refreshes committed deletion and blocks mutations while exposing live cleanup recovery', async () => {
-  vi.mocked(deleteMcpServer).mockRejectedValue(new ApiError('Record deleted, live cleanup unfinished.', true));
+  vi.mocked(deleteMcpServer).mockImplementation(async () => {
+    // Publish the committed outcome only after the user confirms deletion.
+    vi.mocked(listMcpServers).mockResolvedValue({ servers: [] });
+    vi.mocked(getManagedDeletion).mockResolvedValue({ pending: { operationId: 'nonce', id: 'test', name: 'Test', kind: 'mcp' } });
+    throw new ApiError('Record deleted, live cleanup unfinished.', true);
+  });
   render(<McpPage />);
   await screen.findByRole('button', { name: 'Edit Test' });
-  vi.mocked(listMcpServers).mockResolvedValue({ servers: [] });
-  vi.mocked(getManagedDeletion).mockResolvedValue({ pending: { operationId: 'nonce', id: 'test', name: 'Test', kind: 'mcp' } });
   await userEvent.click(screen.getByRole('button', { name: 'Delete Test' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  const confirmation = await screen.findByRole('alertdialog', { name: 'Delete managed item?' });
+  expect(deleteMcpServer).not.toHaveBeenCalled();
+  await userEvent.click(within(confirmation).getByRole('button', { name: 'Delete' }));
+  await waitFor(() => expect(deleteMcpServer).toHaveBeenCalledExactlyOnceWith('test'));
   await screen.findByText(/record deleted, live cleanup unfinished/);
   expect(screen.queryByRole('button', { name: 'Edit Test' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Sync' }).hasAttribute('disabled')).toBe(true);
