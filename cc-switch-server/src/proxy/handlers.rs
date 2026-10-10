@@ -86,7 +86,7 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         codex_fast_mode: provider_codex_fast_mode(&target_provider),
         model_mapping: provider_model_mapping(&target_provider),
     };
-    let server = ProxyServer::new(config);
+    let mut server = ProxyServer::new(config);
     let listen_port = state.proxy_listen_port;
 
     let account_id = provider_codex_account_id(&target_provider);
@@ -106,8 +106,26 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         }
     }
 
+    // Exclusive-key cleanup reference: the provider record that last wrote the
+    // live config before takeover (the current direct provider). Its exclusive
+    // keys are removed on takeover only if the user never edited them.
+    let previous_env = state
+        .db
+        .get_current_provider_id(APP_TYPE)
+        .ok()
+        .flatten()
+        .and_then(|pid| state.db.get_provider(&pid, APP_TYPE).ok().flatten())
+        .and_then(|p| {
+            p.settings_config
+                .get("env")
+                .and_then(|v| v.as_object())
+                .cloned()
+        });
+
     let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
-    if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+    if let Err(e) =
+        cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
+    {
         log::error!(
             "[ProxyAPI] proxy_start failed to apply proxied live settings provider_id={}: {}",
             target_provider.id,
@@ -119,6 +137,9 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         }))
         .into_response();
     }
+    // Keep the exact payload that wrote live settings. The route target may
+    // change (or be edited) while running, so it cannot reconstruct this later.
+    server.takeover_env = live_settings.get("env").and_then(Value::as_object).cloned();
     if let Err(msg) = ensure_live_base_url_is_proxy(state.proxy_listen_port) {
         log::error!(
             "[ProxyAPI] proxy_start live settings verification failed: {}",
@@ -168,12 +189,21 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
         }
     };
 
+    let previous_env = state
+        .proxy_server
+        .read()
+        .await
+        .as_ref()
+        .and_then(|server| server.takeover_env.clone());
+
     let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, false);
     log::info!(
         "[ProxyAPI] proxy_stop restoring live settings for provider_id={}",
         target_provider.id
     );
-    if let Err(e) = cc_switch_lib::live::apply_provider_to_live(&live_settings) {
+    if let Err(e) =
+        cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
+    {
         return Json(serde_json::json!({
             "success": false,
             "error": format!("Failed to restore provider config: {}", e)
