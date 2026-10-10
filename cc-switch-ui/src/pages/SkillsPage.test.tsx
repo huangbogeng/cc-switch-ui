@@ -16,6 +16,7 @@ it('separates collection updates from imports and refreshes partial results', as
   vi.mocked(importSkills).mockResolvedValue(partial);
   const { container } = render(<SkillsPage />);
   await performImport();
+  expect(importSkills).toHaveBeenCalledWith(['candidate'], true);
   await screen.findByText('Import partially completed: 0 imported, 1 updated, 1 skipped, 1 failed.');
   await waitFor(() => expect(listSkills).toHaveBeenCalledTimes(2));
   expect(screen.getByText(/Collection save failed/)).toBeTruthy();

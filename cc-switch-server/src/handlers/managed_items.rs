@@ -13,6 +13,8 @@ use std::sync::Arc;
 #[serde(deny_unknown_fields)]
 pub struct Selection {
     pub ids: Vec<String>,
+    #[serde(default)]
+    pub apply: bool,
 }
 fn reply<T: serde::Serialize>(result: Result<T, cc_switch_lib::AppError>) -> Response {
     match result {
@@ -66,10 +68,41 @@ async fn apply(
             cc_switch_lib::managed_deletion::ensure_idle(&state.db)?;
             if restore {
                 managed_items::restore(&state.db, DEFAULT_APP_TYPE, &kind, &selection.ids)
-            } else if kind == "skill" {
-                skills::import_selected(&state.db, DEFAULT_APP_TYPE, &selection.ids)
             } else {
-                mcp::import_selected(&state.db, DEFAULT_APP_TYPE, &selection.ids)
+                let mut report = if kind == "skill" {
+                    skills::import_selected(&state.db, DEFAULT_APP_TYPE, &selection.ids)?
+                } else {
+                    mcp::import_selected(&state.db, DEFAULT_APP_TYPE, &selection.ids)?
+                };
+                if selection.apply {
+                    let imported: Vec<_> = report
+                        .items
+                        .iter()
+                        .filter(|item| item.outcome == "imported")
+                        .map(|item| item.id.clone())
+                        .collect();
+                    let applied = if kind == "skill" {
+                        skills::sync_selected_report(&state.db, DEFAULT_APP_TYPE, &imported)
+                    } else {
+                        mcp::sync_selected_report(&state.db, DEFAULT_APP_TYPE, &imported)
+                    };
+                    let retry_message = |error| {
+                        format!("Record saved; applying failed: {error}. Use Sync to retry.")
+                    };
+                    match applied {
+                        Ok(applied) => {
+                            for item in applied.items {
+                                report.record(item.id, item.outcome, item.error.map(retry_message));
+                            }
+                        }
+                        Err(error) => {
+                            for id in imported {
+                                report.record(id, "failed", Some(retry_message(error.to_string())));
+                            }
+                        }
+                    }
+                }
+                Ok(report)
             }
         })())
     })

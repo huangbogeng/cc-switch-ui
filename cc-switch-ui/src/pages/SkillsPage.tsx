@@ -139,11 +139,11 @@ export default function SkillsPage() {
     finally { setSyncing(false); }
   };
 
-  const handleImport = async (ids: string[]) => {
+  const handleImport = async (ids: string[], apply = true) => {
     setImporting(true);
     setNotice(''); setOperation(null); setError('');
     try {
-      const report = await importSkills(ids);
+      const report = await importSkills(ids, apply);
       setOperation({ report, action: 'Import' });
       if (!await loadSkills()) setError((previous) => `Import results are retained, but refreshing records failed: ${previous}`);
     } catch (e) {
@@ -228,7 +228,6 @@ export default function SkillsPage() {
             <Button variant="outline" onClick={() => setImportMode('Import')} className="gap-1.5" disabled={busy || showForm}>
               <Download className={importing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {importing ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" onClick={() => setImportMode('Restore')} disabled={busy || showForm}>Restore removed</Button>
             <Button variant="outline" onClick={handleSync} className="gap-1.5" disabled={busy || showForm}>
               <RefreshCw className={syncing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {syncing ? 'Syncing...' : 'Sync'}
             </Button>
@@ -244,7 +243,13 @@ export default function SkillsPage() {
       {operation && <OperationResults report={operation.report} action={operation.action} />}
       <DeletionRecoveryPanel refreshKey={deletionRefresh} onPendingChange={setHasPendingDeletion} disabled={operationBusy || showForm} onBusyChange={setRecovering} onResolved={async () => { setOperation(null); await loadSkills(); }} />
 
-      <SkillBackupsPanel disabled={busy || showForm} onRestored={async () => { setOperation(null); await loadSkills(); }} onBusyChange={setRecovering} />
+      <details className="rounded-xl border border-border px-4 py-3">
+        <summary className="cursor-pointer text-sm text-muted-foreground">Recovery</summary>
+        <div className="mt-4 space-y-4">
+          <Button variant="outline" onClick={() => setImportMode('Restore')} disabled={busy || showForm}>Restore removed</Button>
+          <SkillBackupsPanel disabled={busy || showForm} onRestored={async () => { setOperation(null); await loadSkills(); }} onBusyChange={setRecovering} />
+        </div>
+      </details>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />

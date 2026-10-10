@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { errorMessage } from '@/lib/errors';
 
 export function ManagedImportDialog({ kind, mode, onClose, onApply }: {
-  kind: ManagedKind; mode: 'Import' | 'Restore'; onClose: () => void; onApply: (ids: string[]) => Promise<void>;
+  kind: ManagedKind; mode: 'Import' | 'Restore'; onClose: () => void; onApply: (ids: string[], apply?: boolean) => Promise<void>;
 }) {
+  const [applyImmediately, setApplyImmediately] = useState(true);
   const [items, setItems] = useState<ImportCandidate[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
@@ -33,7 +34,7 @@ export function ManagedImportDialog({ kind, mode, onClose, onApply }: {
   const apply = async () => {
     if (busy || selected.size === 0 || selected.size > 2000) return;
     setBusy(true);
-    try { await onApply([...selected]); onClose(); }
+    try { await onApply([...selected], mode === 'Import' ? applyImmediately : undefined); onClose(); }
     catch (e) { setError(errorMessage(e, `${mode} failed`)); }
     finally { setBusy(false); }
   };
@@ -41,10 +42,11 @@ export function ManagedImportDialog({ kind, mode, onClose, onApply }: {
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="dialog-panel flex w-full max-w-xl flex-col" onClick={e => e.stopPropagation()}>
       <div className="border-b border-border p-5 sm:p-6">
         <h2 id={titleId} className="text-lg font-semibold">{mode === 'Restore' ? 'Restore removed items' : `Import ${kind === 'skill' ? 'Skills' : 'MCP servers'}`}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{mode === 'Restore' ? 'Restore selected records as disabled. Enable them when ready.' : 'Choose what to manage. Existing states are preserved; removed items are excluded. Imported items start enabled; use Sync to apply them.'}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{mode === 'Restore' ? 'Restore selected records as disabled. Enable them when ready.' : 'Choose what to manage. Existing states are preserved; removed items are excluded. By default, selected new items are enabled and applied to Claude Code.'}</p>
       </div>
       <div className="dialog-body space-y-4 p-5 sm:p-6">
         {mode === 'Import' && items.some(item => item.source === 'Plugin') && <p className="text-xs text-muted-foreground">Plugin originals remain installed. These controls manage the copy in Claude Code’s skills directory.</p>}
+        {mode === 'Import' && <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 accent-primary" checked={applyImmediately} disabled={busy} onChange={e => setApplyImmediately(e.target.checked)} /><span>Import and enable<span className="mt-1 block text-xs text-muted-foreground">Only newly imported items are applied. Uncheck to save records only; use Sync later to apply their enabled state.</span></span></label>}
         <Input aria-label="Search import candidates" placeholder="Search..." value={search} onChange={e => { setSearch(e.target.value); setVisibleCount(80); }} disabled={busy} />
         {error && <div className="space-y-2"><p role="alert" className="whitespace-pre-line text-sm text-destructive">{error}</p><Button variant="outline" size="sm" disabled={busy || loading} onClick={() => setScanVersion(value => value + 1)}>Rescan</Button><p className="text-xs text-muted-foreground">Rescan refreshes the list and clears your selection.</p></div>}
         {loading ? <p className="text-sm text-muted-foreground">Scanning...</p> : <>

@@ -180,11 +180,11 @@ export default function McpPage() {
     finally { setPendingAction(null); }
   };
 
-  const handleImport = async (ids: string[]) => {
+  const handleImport = async (ids: string[], apply = true) => {
     setPendingAction('import');
     setNotice(''); setOperation(null); setError('');
     try {
-      const report = await importMcpServers(ids);
+      const report = await importMcpServers(ids, apply);
       setOperation({ report, action: 'Import' });
       if (!await loadServers()) setError((previous) => `Import results are retained, but refreshing records failed: ${previous}`);
     } catch (e) {
@@ -275,7 +275,6 @@ export default function McpPage() {
             <Button variant="outline" onClick={() => setImportMode('Import')} disabled={pendingAction !== null || saving || hasPendingDeletion || showForm || importMode !== null || !hasLoaded} className="gap-1.5">
               <Download className="h-3.5 w-3.5" /> {pendingAction === 'import' ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" onClick={() => setImportMode('Restore')} disabled={pendingAction !== null || saving || hasPendingDeletion || showForm || importMode !== null || !hasLoaded}>Restore removed</Button>
             <Button variant="outline" onClick={handleSync} disabled={pendingAction !== null || saving || hasPendingDeletion || showForm || importMode !== null || !hasLoaded} className="gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" /> {pendingAction === 'sync' ? 'Syncing...' : 'Sync'}
             </Button>
@@ -290,6 +289,12 @@ export default function McpPage() {
       {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
       {operation && <OperationResults report={operation.report} action={operation.action} />}
       <DeletionRecoveryPanel refreshKey={deletionRefresh} onPendingChange={setHasPendingDeletion} disabled={saving || pendingAction !== null || showForm} onBusyChange={(value) => setPendingAction(value ? 'recover' : null)} onResolved={async () => { setOperation(null); await loadServers(); }} />
+
+      <details className="rounded-xl border border-border px-4 py-3">
+        <summary className="cursor-pointer text-sm text-muted-foreground">Recovery</summary>
+        <p className="my-3 text-xs text-muted-foreground">Restore removed records as disabled, then enable them when ready.</p>
+        <Button variant="outline" onClick={() => setImportMode('Restore')} disabled={pendingAction !== null || saving || hasPendingDeletion || showForm || importMode !== null || !hasLoaded}>Restore removed</Button>
+      </details>
 
       <Input aria-label="Search MCP servers" placeholder="Search name, ID, transport or host..." value={search} onChange={e => { setSearch(e.target.value); setVisibleCount(60); }} />
 
