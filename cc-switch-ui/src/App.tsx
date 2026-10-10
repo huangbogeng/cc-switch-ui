@@ -1,17 +1,33 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import ProvidersPage from './pages/ProvidersPage';
-import SettingsPage from './pages/SettingsPage';
-import OAuthPage from './pages/OAuthPage';
-import UsagePage from './pages/UsagePage';
-import McpPage from './pages/McpPage';
-import SkillsPage from './pages/SkillsPage';
+import { queryClient } from '@/lib/queryClient';
+import { cacheClear } from '@/lib/fetchCache';
 import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { confirmDiscardChanges } from '@/lib/useUnsavedChanges';
+
+const pageLoaders = {
+  dashboard: () => import('./pages/DashboardPage'),
+  providers: () => import('./pages/ProvidersPage'),
+  settings: () => import('./pages/SettingsPage'),
+  oauth: () => import('./pages/OAuthPage'),
+  usage: () => import('./pages/UsagePage'),
+  mcp: () => import('./pages/McpPage'),
+  skills: () => import('./pages/SkillsPage'),
+};
+const DashboardPage = lazy(pageLoaders.dashboard);
+const ProvidersPage = lazy(pageLoaders.providers);
+const SettingsPage = lazy(pageLoaders.settings);
+const OAuthPage = lazy(pageLoaders.oauth);
+const UsagePage = lazy(pageLoaders.usage);
+const McpPage = lazy(pageLoaders.mcp);
+const SkillsPage = lazy(pageLoaders.skills);
+
+function preloadPage(page: Page) {
+  void pageLoaders[page]().catch(() => { /* Navigation retries through React.lazy. */ });
+}
 
 type Page = 'dashboard' | 'providers' | 'mcp' | 'skills' | 'oauth' | 'usage' | 'settings';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
@@ -48,9 +64,15 @@ export default function App() {
     setCurrentPage(page);
   };
 
-  const handleLogin = () => setAuthenticated(true);
+  const clearSessionCache = () => {
+    void queryClient.cancelQueries();
+    queryClient.clear();
+    cacheClear();
+  };
+  const handleLogin = () => { clearSessionCache(); setAuthenticated(true); };
   const handleLogout = () => {
     if (!confirmDiscardChanges()) return;
+    clearSessionCache();
     clearAuthToken();
     setAuthenticated(false);
   };
@@ -98,6 +120,8 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => navigate(item.id)}
+                onMouseEnter={() => preloadPage(item.id)}
+                onFocus={() => preloadPage(item.id)}
                 aria-current={currentPage === item.id ? 'page' : undefined}
                 className={cn(
                   "group relative grid min-w-max grid-cols-[16px_minmax(0,1fr)] items-center gap-3.5 rounded-xl px-3 py-2.5 text-left transition-all duration-200 lg:min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
@@ -137,13 +161,15 @@ export default function App() {
 
         <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 relative">
           <div className="mx-auto w-full max-w-[1200px] animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {currentPage === 'dashboard' && <DashboardPage />}
-            {currentPage === 'providers' && <ProvidersPage />}
-            {currentPage === 'mcp' && <McpPage />}
-            {currentPage === 'skills' && <SkillsPage />}
-            {currentPage === 'oauth' && <OAuthPage />}
-            {currentPage === 'usage' && <UsagePage />}
-            {currentPage === 'settings' && <SettingsPage />}
+            <Suspense fallback={<div role="status" className="min-h-64 rounded-2xl border border-white/10 bg-card/40 p-6 text-sm text-muted-foreground">Loading page…</div>}>
+              {currentPage === 'dashboard' && <DashboardPage />}
+              {currentPage === 'providers' && <ProvidersPage />}
+              {currentPage === 'mcp' && <McpPage />}
+              {currentPage === 'skills' && <SkillsPage />}
+              {currentPage === 'oauth' && <OAuthPage />}
+              {currentPage === 'usage' && <UsagePage />}
+              {currentPage === 'settings' && <SettingsPage />}
+            </Suspense>
           </div>
         </main>
       </div>
