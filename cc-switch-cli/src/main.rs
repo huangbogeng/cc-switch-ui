@@ -51,6 +51,12 @@ enum Commands {
         #[arg(long)]
         port: Option<u16>,
     },
+    /// Update this release installation with verified downloads and rollback (Linux/macOS)
+    Update {
+        /// Reinstall even when the current version is the latest release
+        #[arg(long)]
+        force: bool,
+    },
     /// Print version information
     Version,
     /// Cancel a staged database restore before it begins (also works when server startup fails)
@@ -512,6 +518,46 @@ async fn start_and_run(opts: ServerLaunchOptions) -> i32 {
     }
 }
 
+#[cfg(unix)]
+fn run_update(force: bool) -> i32 {
+    use std::io::Write;
+    let result = (|| -> Result<i32, String> {
+        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        let directory = executable
+            .parent()
+            .ok_or("Cannot locate installation directory")?;
+        if !directory.join("dist/index.html").is_file() {
+            return Err("Update requires a release installation with dist/index.html beside the executable; source build directories cannot be updated in place".into());
+        }
+        let mut installer = tempfile::NamedTempFile::new().map_err(|e| e.to_string())?;
+        installer
+            .write_all(include_bytes!("../../install.sh"))
+            .map_err(|e| e.to_string())?;
+        installer.flush().map_err(|e| e.to_string())?;
+        let status = std::process::Command::new("bash")
+            .arg(installer.path())
+            .env("CC_SWITCH_INSTALL_DIR", directory)
+            .env("CC_SWITCH_CURRENT_VERSION", env!("CARGO_PKG_VERSION"))
+            .env("CC_SWITCH_UPDATE_FORCE", if force { "1" } else { "0" })
+            .status()
+            .map_err(|e| format!("Cannot run update installer: {e}"))?;
+        Ok(status.code().unwrap_or(1))
+    })();
+    match result {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("Update failed: {error}");
+            1
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn run_update(_force: bool) -> i32 {
+    eprintln!("Automatic updates are currently supported on Linux/macOS. On Windows, download the new release package and back up your data before replacing the installation.");
+    1
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -534,6 +580,7 @@ async fn main() {
             println!("cc-switch-ui {}", env!("CARGO_PKG_VERSION"));
             0
         }
+        Some(Commands::Update { force }) => run_update(force),
         Some(Commands::Doctor) => run_doctor(),
         Some(Commands::Stop) => run_stop(),
         Some(Commands::CancelRestore) => match cc_switch_lib::database::backups::cancel() {

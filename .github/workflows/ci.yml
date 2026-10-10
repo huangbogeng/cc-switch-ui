@@ -38,3 +38,27 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust unit and real-service workflow regressions
         run: cargo test --workspace
+
+  upgrade:
+    name: Upgrade from ${{ matrix.old_version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        old_version: [v0.1.9, v0.2.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95
+      - run: cargo build --package cc-switch-cli
+      - name: Download old published Linux binary
+        env:
+          OLD_VERSION: ${{ matrix.old_version }}
+        run: |
+          mkdir -p /tmp/cc-old-release
+          curl -fSL "https://github.com/huangbogeng/cc-switch-ui/releases/download/$OLD_VERSION/cc-switch-ui-linux-x86_64.tar.gz" -o /tmp/cc-old-release/release.tar.gz
+          tar -xzf /tmp/cc-old-release/release.tar.gz -C /tmp/cc-old-release
+      - name: Test upgrade and rollback with isolated data and real processes
+        run: |
+          bash -n install.sh
+          python3 tests/test_upgrade.py --new-binary target/debug/cc-switch-ui --old-binary /tmp/cc-old-release/cc-switch-ui/cc-switch-ui -v

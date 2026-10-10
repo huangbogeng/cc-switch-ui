@@ -65,6 +65,11 @@ jobs:
           cache: npm
           cache-dependency-path: cc-switch-ui/package-lock.json
 
+      - name: Setup Python for release checksums
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Build Frontend
         working-directory: ./cc-switch-ui
         run: |
@@ -111,19 +116,23 @@ jobs:
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Windows 打包为 zip
             7z a ../${{ matrix.asset_name }}.zip cc-switch-ui
-            echo "ASSET_FILE=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
+            ASSET_FILE="${{ matrix.asset_name }}.zip"
           else
             # Linux 和 macOS 打包为 tar.gz
             tar -czf ../${{ matrix.asset_name }}.tar.gz cc-switch-ui
-            echo "ASSET_FILE=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
+            ASSET_FILE="${{ matrix.asset_name }}.tar.gz"
           fi
           cd ..
+          echo "ASSET_FILE=$ASSET_FILE" >> "$GITHUB_ENV"
+          python -c 'import hashlib,sys; p=sys.argv[1]; print(hashlib.sha256(open(p,"rb").read()).hexdigest()+"  "+p)' "$ASSET_FILE" > "$ASSET_FILE.sha256"
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ env.ASSET_FILE }}
+          path: |
+            ${{ env.ASSET_FILE }}
+            ${{ env.ASSET_FILE }}.sha256
           if-no-files-found: error
 
   publish-release:
