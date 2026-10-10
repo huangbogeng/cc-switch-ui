@@ -19,7 +19,9 @@ import DataSourceBar from '@/components/usage/DataSourceBar';
 import type { LogsQueryParams } from '@/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { usageKeys } from '@/lib/useUsage';
-import { ErrorAlert } from '@/components/ErrorAlert';
+import { Card, CardContent } from '@/components/ui/card';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
+import type { SessionSyncResult } from '@/api';
 import { errorMessage } from '@/lib/errors';
 import { formatRangeLabel } from '@/lib/usageRange';
 
@@ -66,7 +68,13 @@ export default function UsagePage() {
   };
 
   const refreshLabel = refreshMs > 0 ? `${refreshMs / 1000}s` : 'OFF';
-  const queryError = summaryQuery.error ?? providerQuery.error ?? modelQuery.error ?? sourcesQuery.error;
+  const [dismissedError, setDismissedError] = useState<unknown>(null);
+  const [dismissedSync, setDismissedSync] = useState<SessionSyncResult | null>(null);
+  useUnsavedChanges(false, syncMutation.isPending);
+  const queryError = summaryQuery.error ?? (activeTab === 'providers' ? providerQuery.error : activeTab === 'models' ? modelQuery.error : null) ?? sourcesQuery.error;
+  const refreshing = summaryQuery.isFetching || sourcesQuery.isFetching || (activeTab === 'providers' && providerQuery.isFetching) || (activeTab === 'models' && modelQuery.isFetching);
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: usageKeys.all }); };
+  const summaryUnavailable = summaryQuery.error && !summaryQuery.data;
   const rangeLabel = formatRangeLabel(range, resolved);
 
   return (
@@ -77,6 +85,7 @@ export default function UsagePage() {
         action={
           <div className="flex flex-wrap items-center gap-2">
             <UsageDateRangePicker selection={range} onChange={setRange} />
+            <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing...' : 'Refresh'}</Button>
             <Button
               variant="outline"
               size="sm"
@@ -101,14 +110,25 @@ export default function UsagePage() {
         }
       />
 
-      {queryError && (
-        <ErrorAlert message={errorMessage(queryError, 'Failed to load usage data')} />
+      {queryError && queryError !== dismissedError && (
+        <ToastNotice tone="error" message={errorMessage(queryError, 'Failed to load usage data')} onDismiss={() => setDismissedError(queryError)} />
       )}
       {syncMutation.error && (
         <ToastNotice tone="error" message={errorMessage(syncMutation.error, 'Failed to sync session logs')} onDismiss={() => syncMutation.reset()} />
       )}
 
+      {syncMutation.data && syncMutation.data !== dismissedSync && <ToastNotice
+        tone={syncMutation.data.errors.length ? 'warning' : 'success'}
+        message={`Session sync ${syncMutation.data.errors.length ? 'partially completed' : 'completed'}: ${syncMutation.data.imported} imported, ${syncMutation.data.skipped} skipped, ${syncMutation.data.errors.length} ${syncMutation.data.errors.length === 1 ? 'error' : 'errors'}.`}
+        onDismiss={() => setDismissedSync(syncMutation.data ?? null)}>
+        {syncMutation.data.errors.length > 0 && <details className="mt-2 text-xs"><summary className="cursor-pointer">Sync errors</summary><ul className="mt-2 max-h-48 overflow-y-auto space-y-1">{syncMutation.data.errors.map((message, index) => <li key={index} className="break-words">{message}</li>)}</ul></details>}
+      </ToastNotice>}
+
       <UsageSummaryCards data={summaryQuery.data} loading={summaryQuery.isLoading} />
+      {summaryUnavailable ? <Card><CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+        <p className="text-sm text-muted-foreground">Usage activity is unavailable.</p>
+        <Button variant="outline" disabled={summaryQuery.isFetching} onClick={() => void summaryQuery.refetch()}>Retry usage activity</Button>
+      </CardContent></Card> : <>
       <UsageTrendChart
         trend={summaryQuery.data?.trend ?? []}
         loading={summaryQuery.isLoading}
@@ -123,10 +143,12 @@ export default function UsagePage() {
         rangeEnd={resolved.endDate}
       />
 
+      </>}
+
       <DataSourceBar sources={sourcesQuery.data} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-muted/50">
+        <TabsList className="w-full flex-nowrap justify-start overflow-x-auto bg-muted/50 sm:w-auto [&>button]:shrink-0">
           <TabsTrigger value="logs" className="gap-2">
             <ListFilter className="h-4 w-4" />
             Request Logs
@@ -154,11 +176,17 @@ export default function UsagePage() {
         </TabsContent>
 
         <TabsContent value="providers" className="mt-4">
-          <ProviderStatsTable data={providerQuery.data?.providers} loading={providerQuery.isLoading} />
+          {providerQuery.error && !providerQuery.data ? <div className="flex flex-col items-center gap-3 py-8 text-sm text-muted-foreground">
+            <p>Provider statistics are unavailable.</p>
+            <Button variant="outline" disabled={providerQuery.isFetching} onClick={() => void providerQuery.refetch()}>Retry provider statistics</Button>
+          </div> : <ProviderStatsTable data={providerQuery.data?.providers} loading={providerQuery.isLoading} />}
         </TabsContent>
 
         <TabsContent value="models" className="mt-4">
-          <ModelStatsTable data={modelQuery.data?.models} loading={modelQuery.isLoading} />
+          {modelQuery.error && !modelQuery.data ? <div className="flex flex-col items-center gap-3 py-8 text-sm text-muted-foreground">
+            <p>Model statistics are unavailable.</p>
+            <Button variant="outline" disabled={modelQuery.isFetching} onClick={() => void modelQuery.refetch()}>Retry model statistics</Button>
+          </div> : <ModelStatsTable data={modelQuery.data?.models} loading={modelQuery.isLoading} />}
         </TabsContent>
 
         <TabsContent value="pricing" className="mt-4">
