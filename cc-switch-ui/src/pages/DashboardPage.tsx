@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useProviders, useCurrentProvider, useRouteStatus } from '@/lib/useProviders';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -9,7 +9,7 @@ import UsageTrendChart from '@/components/usage/UsageTrendChart';
 import { sortProviders } from '@/lib/provider';
 import { useCopilotUsage, useUsageSummary } from '@/lib/useUsage';
 import { resolveUsageRange } from '@/lib/usageRange';
-import { ErrorAlert } from '@/components/ErrorAlert';
+import { ToastNotice } from '@/components/ToastNotice';
 import { errorMessage } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,6 +25,9 @@ export default function DashboardPage() {
   const usageRange = useMemo(() => resolveUsageRange({ preset: '30d' }), []);
   const { data: usage } = useCopilotUsage();
   const usageSummaryQuery = useUsageSummary(usageRange.startDate, usageRange.endDate);
+  const [dismissedError, setDismissedError] = useState<unknown>(null);
+  const refreshing = providersQuery.isFetching || currentQuery.isFetching || routeQuery.isFetching || usageSummaryQuery.isFetching;
+  const refresh = () => { void Promise.allSettled([providersQuery.refetch(), currentQuery.refetch(), routeQuery.refetch(), usageSummaryQuery.refetch()]); };
   const queryError = providersQuery.error ?? currentQuery.error ?? routeQuery.error ?? usageSummaryQuery.error;
   const providerList = useMemo(() => sortProviders(providers ?? {}), [providers]);
   const currentProvider = currentProviderId ? providers?.[currentProviderId] ?? null : null;
@@ -35,10 +38,10 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description="Your connections and activity, at a glance."
-        action={<Button variant="outline" asChild><a href="#providers">Manage providers<ArrowUpRight className="h-4 w-4" /></a></Button>}
+        action={<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing...' : 'Refresh'}</Button><Button variant="outline" asChild><a href="#providers">Manage providers<ArrowUpRight className="h-4 w-4" /></a></Button></div>}
       />
-      {queryError && (
-        <ErrorAlert message={errorMessage(queryError, 'Failed to load dashboard')} />
+      {queryError && queryError !== dismissedError && (
+        <ToastNotice tone="error" message={errorMessage(queryError, 'Failed to load dashboard')} onDismiss={() => setDismissedError(queryError)} />
       )}
       <div className="space-y-6">
         <DashboardHeroCard
@@ -63,7 +66,12 @@ export default function DashboardPage() {
         </section>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className={usage ? 'min-w-0' : 'min-w-0 xl:col-span-2'}>
-            <UsageTrendChart trend={usageSummaryQuery.data?.trend ?? []} loading={usageSummaryQuery.isLoading} />
+            {usageSummaryQuery.error && !usageSummaryQuery.data ? (
+              <Card><CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+                <p className="text-sm text-muted-foreground">Recent activity is unavailable.</p>
+                <Button variant="outline" disabled={usageSummaryQuery.isFetching} onClick={() => void usageSummaryQuery.refetch()}>Retry activity</Button>
+              </CardContent></Card>
+            ) : <UsageTrendChart trend={usageSummaryQuery.data?.trend ?? []} loading={usageSummaryQuery.isLoading} />}
           </div>
           {usage && <UsageCard usage={usage} />}
         </div>
