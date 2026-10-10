@@ -10,10 +10,10 @@ vi.mock('../api', () => ({
   deleteProvider: vi.fn(), setProxyTarget: vi.fn(), startProxy: vi.fn(), stopProxy: vi.fn(),
 }));
 vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => null, cacheSet: vi.fn() }));
-vi.mock('@/components/providers/LocalRoutePanel', () => ({ LocalRoutePanel: () => null }));
+vi.mock('@/components/providers/LocalRoutePanel', () => ({ LocalRoutePanel: ({ onStopProxy, busy }: { onStopProxy: () => void; busy: boolean }) => <button disabled={busy} onClick={onStopProxy}>Stop test route</button> }));
 vi.mock('@/components/providers/ProviderCard', () => ({
-  ProviderCard: ({ provider, onEdit, onSwitch }: { provider: api.Provider; onEdit: (provider: api.Provider) => void; onSwitch: (id: string) => void }) => (
-    <><button onClick={() => onEdit(provider)}>Edit {provider.name}</button><button onClick={() => onSwitch(provider.id)}>Select {provider.name}</button></>
+  ProviderCard: ({ provider, onEdit, onSwitch, onDelete, busy }: { provider: api.Provider; onEdit: (provider: api.Provider) => void; onSwitch: (id: string) => void; onDelete: (id: string) => void; busy: boolean }) => (
+    <><button onClick={() => onEdit(provider)}>Edit {provider.name}</button><button disabled={busy} onClick={() => onSwitch(provider.id)}>Select {provider.name}</button><button disabled={busy} onClick={() => onDelete(provider.id)}>Delete {provider.name}</button></>
   ),
 }));
 vi.mock('@/components/providers/ProviderFormDialog', () => ({
@@ -79,4 +79,46 @@ it('explains that takeover-time selection applies after stopping', async () => {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
   fireEvent.click(await screen.findByText('Select Test'));
   expect(await screen.findByRole('status')).toHaveProperty('textContent', 'Direct provider selected. It will be applied when the local route stops.');
+});
+
+it('shows a retry state instead of an empty list when initial loading fails', async () => {
+  vi.mocked(api.listProviders).mockRejectedValueOnce(new Error('Server unavailable')).mockResolvedValue({ providers: { test: provider } });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  expect(await screen.findByText('Unable to load provider configuration')).toBeTruthy();
+  expect(screen.queryByText('No providers yet')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText('Edit Test')).toBeTruthy();
+  expect(screen.queryByText('Unable to load provider configuration')).toBeNull();
+});
+it('allows dismissing query errors without losing the retry control', async () => {
+  vi.mocked(api.listProviders).mockRejectedValue(new Error('Server unavailable'));
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  await screen.findByText('Server unavailable');
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }));
+  expect(screen.queryByText('Server unavailable')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+});
+it('refreshes recovery and route state after a route stop loses its response', async () => {
+  vi.mocked(api.stopProxy).mockRejectedValue(new Error('Response lost'));
+  vi.mocked(api.getCurrentProviderId).mockResolvedValueOnce({ current_provider_id: 'test' }).mockResolvedValue({ current_provider_id: 'test', recovery_required: true });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Stop test route' }));
+  await screen.findByText('Response lost');
+  expect(screen.getByText('Recover operation')).toBeTruthy();
+  expect(api.getProxyStatus).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('status')).toBeNull();
+});
+it('refreshes records after a deletion loses its response', async () => {
+  vi.mocked(api.getCurrentProviderId).mockResolvedValue({ current_provider_id: null });
+  vi.mocked(api.getProxyStatus).mockResolvedValue({ running: false, listen_addr: null, active_target_provider_id: null, upstream_url: '', http_proxy_url: null, active_target_provider_name: null });
+  vi.mocked(api.deleteProvider).mockImplementation(async () => {
+    vi.mocked(api.listProviders).mockResolvedValue({ providers: {} });
+    throw new Error('Deletion response lost');
+  });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByText('Delete Test'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+  await screen.findByText('Deletion response lost');
+  expect(screen.getByText('No providers yet')).toBeTruthy();
+  expect(screen.queryByText('Edit Test')).toBeNull();
 });

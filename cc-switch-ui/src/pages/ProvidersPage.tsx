@@ -32,6 +32,7 @@ import { sortProviders } from '@/lib/provider';
 import { useQueryClient } from '@tanstack/react-query';
 import { providerKeys, useProviders, useCurrentProvider, useRouteStatus, useRefreshProviders } from '@/lib/useProviders';
 import { errorMessage } from '@/lib/errors';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 export default function ProvidersPage() {
   const queryClient = useQueryClient();
@@ -44,7 +45,9 @@ export default function ProvidersPage() {
   const loading = providersQuery.isLoading || currentQuery.isLoading;
   const { confirmAction, confirmation } = useConfirm();
   const [operationError, setError] = useState('');
-  const error = operationError || errorMessage(providersQuery.error ?? currentQuery.error, '');
+  const queryError = providersQuery.error ?? currentQuery.error;
+  const [dismissedQueryError, setDismissedQueryError] = useState<unknown>(null);
+  const error = operationError || (queryError !== dismissedQueryError ? errorMessage(queryError, '') : '');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
@@ -57,8 +60,12 @@ export default function ProvidersPage() {
   const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
   const proxyStatus = routeQuery.error ? null : routeQuery.data ?? null;
   const [operationProxyError, setProxyError] = useState('');
-  const proxyError = operationProxyError || errorMessage(routeQuery.error, '');
+  const [dismissedRouteError, setDismissedRouteError] = useState<unknown>(null);
+  const proxyError = operationProxyError || (routeQuery.error !== dismissedRouteError ? errorMessage(routeQuery.error, '') : '');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const busy = pendingAction !== null || saving;
+  useUnsavedChanges(false, busy);
+  const unavailable = !loading && (!providersQuery.data || !currentQuery.data);
   const providerList = useMemo(() => sortProviders(providers ?? {}), [providers]);
 
   const applyProviders = async () => {
@@ -99,6 +106,8 @@ export default function ProvidersPage() {
       if (!result.success) throw new Error(result.error);
       await loadProxyStatus();
     } catch (e) {
+      await loadProxyStatus();
+      await applyProviders();
       setProxyError(e instanceof Error ? e.message : 'Failed to start local route');
     } finally {
       setPendingAction(null);
@@ -113,6 +122,8 @@ export default function ProvidersPage() {
       if (!result.success) throw new Error(result.error);
       await loadProxyStatus();
     } catch (e) {
+      await loadProxyStatus();
+      await applyProviders();
       setProxyError(e instanceof Error ? e.message : 'Failed to stop local route');
     } finally {
       setPendingAction(null);
@@ -126,6 +137,8 @@ export default function ProvidersPage() {
       await setProxyTarget(providerId);
       await loadProxyStatus();
     } catch (e) {
+      await loadProxyStatus();
+      await applyProviders();
       setProxyError(e instanceof Error ? e.message : 'Failed to update route target');
     } finally {
       setPendingAction(null);
@@ -189,10 +202,14 @@ export default function ProvidersPage() {
     if (!await confirmAction('Delete this provider?', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     try {
       setPendingAction(`delete:${id}`);
+      setError(''); setOperationNotice('');
       await deleteProvider(id);
+      setOperationNotice('Provider deleted.');
       await applyProviders();
       await loadProxyStatus();
     } catch (e) {
+      await applyProviders();
+      await loadProxyStatus();
       setError(e instanceof Error ? e.message : 'Delete failed');
     } finally {
       setPendingAction(null);
@@ -201,11 +218,14 @@ export default function ProvidersPage() {
 
   const handleRecoverSave = async () => {
     setPendingAction('recover');
+    setError(''); setOperationNotice('');
     try {
       const result = await recoverProviderOperation();
       setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' '));
       await applyProviders();
     } catch (e) {
+      await applyProviders();
+      await loadProxyStatus();
       setError(e instanceof Error ? e.message : 'Recovery failed');
     } finally {
       setPendingAction(null);
@@ -265,14 +285,14 @@ export default function ProvidersPage() {
         title="Providers"
         description="Your connections, direct configuration, and local route."
         action={
-          <Button onClick={handleAdd} disabled={pendingAction !== null || saving}>
+          <Button onClick={handleAdd} disabled={busy || showForm}>
             <Plus className="h-4 w-4" />
             Add Provider
           </Button>
         }
       />
 
-      {error && <ToastNotice tone="error" message={error} onDismiss={() => setError('')} />}
+      {error && <ToastNotice tone="error" message={error} onDismiss={() => { setError(''); setDismissedQueryError(queryError); }} />}
 
 
       {saveRecoveryRequired && (
@@ -285,7 +305,7 @@ export default function ProvidersPage() {
       {operationNotice && <ToastNotice message={operationNotice} onDismiss={() => setOperationNotice('')} />}
 
 
-      {proxyError && <ToastNotice tone="error" message={proxyError} onDismiss={() => setProxyError('')} />}
+      {proxyError && <ToastNotice tone="error" message={proxyError} onDismiss={() => { setProxyError(''); setDismissedRouteError(routeQuery.error); }} />}
 
 
       {loading ? (
@@ -293,6 +313,15 @@ export default function ProvidersPage() {
           <CardContent className="p-12 flex flex-col items-center justify-center text-sm leading-5 text-muted-foreground">
             <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin mb-4"></div>
             Loading providers...
+          </CardContent>
+        </Card>
+      ) : unavailable ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+            <p className="text-sm font-medium">Unable to load provider configuration</p>
+            <p className="max-w-sm text-sm text-muted-foreground">Check the connection and retry to see your saved providers and current selection.</p>
+            <Button variant="outline" disabled={busy || providersQuery.isFetching || currentQuery.isFetching}
+              onClick={() => void applyProviders()}>{providersQuery.isFetching || currentQuery.isFetching ? 'Retrying...' : 'Retry'}</Button>
           </CardContent>
         </Card>
       ) : providerList.length === 0 ? (
@@ -303,7 +332,7 @@ export default function ProvidersPage() {
             </div>
             <div className="text-lg font-semibold leading-5 text-foreground mb-2">No providers yet</div>
             <div className="text-sm leading-5 text-muted-foreground max-w-sm">Add a preset or configure a custom endpoint to start managing your Claude Code routes.</div>
-            <Button onClick={handleAdd} className="mt-6 shadow-[0_0_20px_rgba(var(--primary),0.15)]">
+            <Button onClick={handleAdd} disabled={busy || showForm} className="mt-6 shadow-[0_0_20px_rgba(var(--primary),0.15)]">
               <Plus className="h-4 w-4 mr-2" />
               Add First Provider
             </Button>
@@ -311,7 +340,7 @@ export default function ProvidersPage() {
         </Card>
       ) : (
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <ProviderList providers={providerList} currentProviderId={currentProviderId} busy={pendingAction !== null || saving}
+          <ProviderList providers={providerList} currentProviderId={currentProviderId} busy={busy || showForm || unavailable}
             onSwitch={handleSwitch} onEdit={handleEdit} onDelete={handleDelete} />
           <aside aria-label="Local route controls" className="min-w-0 xl:sticky xl:top-6">
             <LocalRoutePanel
@@ -321,7 +350,7 @@ export default function ProvidersPage() {
               recoveryRequired={proxyStatus?.recovery_required ?? false}
               statusUnavailable={routeQuery.isLoading || Boolean(routeQuery.error)}
               proxyTargetId={proxyStatus?.active_target_provider_id ?? currentProviderId ?? providerList[0]?.id ?? null}
-              busy={pendingAction !== null || saving}
+              busy={busy || showForm || unavailable}
               onTargetChange={(providerId) => void handleProxyTargetChange(providerId)}
               onStartProxy={(providerId) => void handleStartProxy(providerId)}
               onStopProxy={handleStopProxy}

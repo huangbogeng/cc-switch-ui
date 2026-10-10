@@ -16,9 +16,9 @@ Inputs, selects and textareas share the same surface and focus treatment. Use `d
 
 ## Feedback
 
-Use `ToastNotice` for short operation results. Notices render in `NotificationViewport` outside page layout, expire after 5 seconds for success or 8 seconds for errors/warnings, pause during hover or keyboard focus, and support manual dismissal. Successful bulk operations may expose item details inside the notice.
+Use `ToastNotice` for short operation results. Notices render in `NotificationViewport` outside page layout, expire after 5 seconds for success or 8 seconds for errors/warnings, pause during hover or keyboard focus, and support manual dismissal. Bulk Import/Sync outcomes, including partial or full failures, expose item details inside a scrollable notice.
 
-Keep form validation next to its input or form. Retain inline recovery controls and failed bulk-operation details when the user needs to act; completion should remove the recovery panel. Loading/empty states and ongoing route state are page content, not transient notifications.
+Keep form validation next to its input or form. Retain inline recovery controls when the user needs to act; completion should remove the recovery panel. Loading/empty states and ongoing route state are page content, not transient notifications.
 
 Keep page imports lazy and preserve reduced-motion support. Typography must work using assets shipped with the frontend; do not require server fonts or external font services.
 

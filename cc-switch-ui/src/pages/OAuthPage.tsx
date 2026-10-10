@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { errorMessage } from '@/lib/errors';
 import { useDialog } from '@/lib/useDialog';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 interface CopilotStatus {
   authenticated: boolean;
@@ -51,27 +52,46 @@ export default function OAuthPage() {
   const [copilotExpiresAt, setCopilotExpiresAt] = useState(0);
   const [githubDomain, setGithubDomain] = useState('github.com');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [codexLoading, setCodexLoading] = useState(!cachedCodex);
+  const [copilotLoading, setCopilotLoading] = useState(!cachedCopilot);
+  const [codexUnavailable, setCodexUnavailable] = useState(false);
+  const [copilotUnavailable, setCopilotUnavailable] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
+  useUnsavedChanges(false, pendingAction !== null);
+
   const loadCodexStatus = useCallback(async (signal?: AbortSignal) => {
+    setCodexLoading(true);
     try {
       const status = await getCodexOAuthStatus({ signal });
+      if (signal?.aborted) return;
+      setCodexUnavailable(false);
       setCodexStatus(status);
       cacheSet('oauth-codex', status);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
+      setCodexUnavailable(true);
       setError(errorMessage(e, 'Failed to load ChatGPT accounts'));
+    } finally {
+      if (!signal?.aborted) setCodexLoading(false);
     }
   }, []);
 
   const loadCopilotStatus = useCallback(async (signal?: AbortSignal) => {
+    setCopilotLoading(true);
     try {
       const status = await getCopilotOAuthStatus({ signal });
+      if (signal?.aborted) return;
+      setCopilotUnavailable(false);
       setCopilotStatus(status);
       cacheSet('oauth-copilot', status);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
+      setCopilotUnavailable(true);
       setError(errorMessage(e, 'Failed to load Copilot accounts'));
+    } finally {
+      if (!signal?.aborted) setCopilotLoading(false);
     }
   }, []);
 
@@ -93,7 +113,7 @@ export default function OAuthPage() {
   const handleStartCodexOAuth = async () => {
     try {
       setPendingAction('codex-connect');
-      setError('');
+      setError(''); setNotice('');
       const data = await startCodexOAuth();
       setCodexDeviceCode(data.device_code);
       setCodexUserCode(data.user_code);
@@ -129,10 +149,12 @@ export default function OAuthPage() {
   const handleSetDefaultCodexAccount = async (accountId: string) => {
     try {
       setPendingAction(`codex-default:${accountId}`);
-      setError('');
+      setError(''); setNotice('');
       await setDefaultCodexAccount(accountId);
+      setNotice('Default ChatGPT account updated.');
       await loadCodexStatus();
     } catch (e) {
+      await loadCodexStatus();
       setError(errorMessage(e, 'Failed to set the default ChatGPT account'));
     } finally {
       setPendingAction(null);
@@ -143,10 +165,12 @@ export default function OAuthPage() {
     if (!await confirmAction('Remove this ChatGPT account?', { title: 'Remove account?', confirmLabel: 'Remove', destructive: true })) return;
     try {
       setPendingAction(`codex-remove:${accountId}`);
-      setError('');
+      setError(''); setNotice('');
       await removeCodexAccount(accountId);
+      setNotice('ChatGPT account removed.');
       await loadCodexStatus();
     } catch (e) {
+      await loadCodexStatus();
       setError(errorMessage(e, 'Failed to remove the ChatGPT account'));
     } finally {
       setPendingAction(null);
@@ -157,7 +181,7 @@ export default function OAuthPage() {
   const handleStartCopilotOAuth = async () => {
     try {
       setPendingAction('copilot-connect');
-      setError('');
+      setError(''); setNotice('');
       const domain = githubDomain.trim() || 'github.com';
       const data = await startCopilotOAuth(domain);
       setCopilotDeviceCode(data.device_code);
@@ -194,10 +218,12 @@ export default function OAuthPage() {
   const handleSetDefaultCopilotAccount = async (accountId: string) => {
     try {
       setPendingAction(`copilot-default:${accountId}`);
-      setError('');
+      setError(''); setNotice('');
       await setDefaultCopilotAccount(accountId);
+      setNotice('Default Copilot account updated.');
       await loadCopilotStatus();
     } catch (e) {
+      await loadCopilotStatus();
       setError(errorMessage(e, 'Failed to set the default Copilot account'));
     } finally {
       setPendingAction(null);
@@ -208,10 +234,12 @@ export default function OAuthPage() {
     if (!await confirmAction('Remove this GitHub Copilot account?', { title: 'Remove account?', confirmLabel: 'Remove', destructive: true })) return;
     try {
       setPendingAction(`copilot-remove:${accountId}`);
-      setError('');
+      setError(''); setNotice('');
       await removeCopilotAccount(accountId);
+      setNotice('Copilot account removed.');
       await loadCopilotStatus();
     } catch (e) {
+      await loadCopilotStatus();
       setError(errorMessage(e, 'Failed to remove the Copilot account'));
     } finally {
       setPendingAction(null);
@@ -226,6 +254,7 @@ export default function OAuthPage() {
         description="Manage account connections used by OAuth-backed routes."
       />
 
+      {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
       {error && <ToastNotice tone="error" message={error} onDismiss={() => setError('')} />}
 
       <div className="space-y-6">
@@ -240,6 +269,10 @@ export default function OAuthPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {codexUnavailable && <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+              <span>Unable to refresh ChatGPT accounts.</span>
+              <Button variant="outline" size="sm" disabled={codexLoading || pendingAction !== null} onClick={() => { setError(''); void loadCodexStatus(); }}>{codexLoading ? 'Retrying...' : 'Retry ChatGPT accounts'}</Button>
+            </div>}
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-xl bg-white/[0.025] border border-white/[0.07] p-4">
               <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-4">
                 {codexStatus?.authenticated ? (
@@ -254,13 +287,13 @@ export default function OAuthPage() {
                 <div className="min-w-0">
                   <div className="truncate text-[15px] font-semibold tracking-tight leading-5">ChatGPT Codex</div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
-                    {codexStatus?.authenticated
+                    {codexLoading ? 'Loading accounts...' : codexUnavailable ? 'Account status unavailable' : codexStatus?.authenticated
                       ? codexStatus.accounts.find((a) => a.is_default)?.login || codexStatus.accounts[0]?.login || 'Connected'
                       : 'OAuth route provider only'}
                   </div>
                 </div>
               </div>
-              <Button size="sm" variant={codexStatus?.authenticated ? 'secondary' : 'default'} onClick={handleStartCodexOAuth} disabled={codexPending || pendingAction !== null} className="rounded-xl px-4">
+              <Button size="sm" variant={codexStatus?.authenticated ? 'secondary' : 'default'} onClick={handleStartCodexOAuth} disabled={codexPending || codexLoading || codexUnavailable || pendingAction !== null} className="rounded-xl px-4">
                 {pendingAction === 'codex-connect' ? 'Connecting...' : codexStatus?.authenticated ? 'Reconnect' : 'Connect'}
               </Button>
             </div>
@@ -278,12 +311,12 @@ export default function OAuthPage() {
                       size="sm"
                       variant={account.is_default ? 'default' : 'secondary'}
                       onClick={() => handleSetDefaultCodexAccount(account.id)}
-                      disabled={account.is_default || pendingAction !== null}
+                      disabled={account.is_default || codexLoading || codexUnavailable || pendingAction !== null}
                       className={`h-8 rounded-lg text-xs font-medium px-3 ${account.is_default ? 'bg-primary/20 text-primary hover:bg-primary/30 cursor-default opacity-100' : ''}`}
                     >
                       {account.is_default ? 'Default' : 'Set Default'}
                     </Button>
-                    <Button aria-label={`Remove ${account.login}`} size="sm" variant="ghost" disabled={pendingAction !== null} onClick={() => handleRemoveCodexAccount(account.id)} className="h-8 w-8 p-0 rounded-lg text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                    <Button aria-label={`Remove ${account.login}`} size="sm" variant="ghost" disabled={codexLoading || codexUnavailable || pendingAction !== null} onClick={() => handleRemoveCodexAccount(account.id)} className="h-8 w-8 p-0 rounded-lg text-destructive/70 hover:text-destructive hover:bg-destructive/10">
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -304,6 +337,10 @@ export default function OAuthPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {copilotUnavailable && <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+              <span>Unable to refresh Copilot accounts.</span>
+              <Button variant="outline" size="sm" disabled={copilotLoading || pendingAction !== null} onClick={() => { setError(''); void loadCopilotStatus(); }}>{copilotLoading ? 'Retrying...' : 'Retry Copilot accounts'}</Button>
+            </div>}
             <div className="space-y-2">
               <Label htmlFor="github-domain">GitHub domain</Label>
               <Input
@@ -311,7 +348,7 @@ export default function OAuthPage() {
                 value={githubDomain}
                 onChange={(event) => setGithubDomain(event.target.value)}
                 placeholder="github.com or your GHES host"
-                disabled={copilotPending || pendingAction !== null}
+                disabled={copilotPending || copilotLoading || copilotUnavailable || pendingAction !== null}
               />
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-xl bg-white/[0.025] border border-white/[0.07] p-4">
@@ -328,13 +365,13 @@ export default function OAuthPage() {
                 <div className="min-w-0">
                   <div className="truncate text-[15px] font-semibold tracking-tight leading-5">GitHub Copilot</div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
-                    {copilotStatus?.authenticated
+                    {copilotLoading ? 'Loading accounts...' : copilotUnavailable ? 'Account status unavailable' : copilotStatus?.authenticated
                       ? copilotStatus.accounts.find((a) => a.id === copilotStatus.default_account_id)?.login || 'Connected'
                       : 'Not connected'}
                   </div>
                 </div>
               </div>
-              <Button size="sm" variant={copilotStatus?.authenticated ? 'secondary' : 'default'} onClick={handleStartCopilotOAuth} disabled={copilotPending || pendingAction !== null} className="rounded-xl px-4">
+              <Button size="sm" variant={copilotStatus?.authenticated ? 'secondary' : 'default'} onClick={handleStartCopilotOAuth} disabled={copilotPending || copilotLoading || copilotUnavailable || pendingAction !== null} className="rounded-xl px-4">
                 {pendingAction === 'copilot-connect' ? 'Connecting...' : copilotStatus?.authenticated ? 'Reconnect' : 'Connect'}
               </Button>
             </div>
@@ -351,7 +388,7 @@ export default function OAuthPage() {
                     <Button
                       size="sm"
                       variant={account.id === copilotStatus.default_account_id ? 'default' : 'secondary'}
-                      disabled={account.id === copilotStatus.default_account_id || pendingAction !== null}
+                      disabled={account.id === copilotStatus.default_account_id || copilotLoading || copilotUnavailable || pendingAction !== null}
                       onClick={() => handleSetDefaultCopilotAccount(account.id)}
                     >
                       {account.id === copilotStatus.default_account_id ? 'Default' : 'Set Default'}
@@ -360,7 +397,7 @@ export default function OAuthPage() {
                       aria-label={`Remove ${account.login}`}
                       size="icon"
                       variant="ghost"
-                      disabled={pendingAction !== null}
+                      disabled={copilotLoading || copilotUnavailable || pendingAction !== null}
                       onClick={() => handleRemoveCopilotAccount(account.id)}
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
