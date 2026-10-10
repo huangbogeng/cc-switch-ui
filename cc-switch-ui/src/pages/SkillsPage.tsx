@@ -2,7 +2,7 @@ import { useConfirm } from '@/lib/useConfirm';
 import { DeletionRecoveryPanel } from '@/components/DeletionRecoveryPanel';
 import { OperationResults } from '@/components/OperationResults';
 import type { OperationReport } from '@/api';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Package, Download, Search } from 'lucide-react';
 import {
   ApiError,
@@ -25,6 +25,7 @@ import { SkillBackupsPanel } from '@/components/skills/SkillBackupsPanel';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 const DEFAULT_COLLECTION = 'Other';
+const SEARCH_BATCH = 120;
 
 function groupByCollection(skills: Skill[]): [string, Skill[]][] {
   const groups = new Map<string, Skill[]>();
@@ -43,6 +44,8 @@ export default function SkillsPage() {
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearch = useDeferredValue(searchQuery.trim().toLowerCase());
+  const [searchWindow, setSearchWindow] = useState({ query: '', limit: SEARCH_BATCH });
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -79,17 +82,23 @@ export default function SkillsPage() {
   }, [loadSkills]);
 
   const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return skills;
-    const q = searchQuery.toLowerCase();
+    if (!deferredSearch) return skills;
+    const q = deferredSearch;
     return skills.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        (s.description ?? '').toLowerCase().includes(q),
+        (s.description ?? '').toLowerCase().includes(q) ||
+        s.directory.toLowerCase().includes(q) ||
+        (s.collection ?? '').toLowerCase().includes(q),
     );
-  }, [skills, searchQuery]);
+  }, [skills, deferredSearch]);
 
-  const groups = useMemo(() => groupByCollection(filtered), [filtered]);
-  const isSearching = searchQuery.trim().length > 0;
+  const isSearching = deferredSearch.length > 0;
+  const searchLimit = searchWindow.query === deferredSearch ? searchWindow.limit : SEARCH_BATCH;
+  const visibleResults = useMemo(() => isSearching ? filtered.slice(0, searchLimit) : filtered, [filtered, isSearching, searchLimit]);
+  const groups = useMemo(() => groupByCollection(visibleResults), [visibleResults]);
+  const updatingSearch = searchQuery.trim().toLowerCase() !== deferredSearch;
+  const handleEdit = useCallback((skill: Skill) => { setEditingSkill(skill); setShowForm(true); }, []);
 
   const handleDelete = useCallback(async (id: string) => {
     if (!await confirmAction('Delete this managed skill? Its live directory will be backed up; source files are retained.', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
@@ -199,13 +208,15 @@ export default function SkillsPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
         <Input
-          placeholder="Search skills by name or description..."
+          aria-label="Search skills"
+          placeholder="Search name, description, directory or collection..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
       </div>
 
+      {isSearching && <p role="status" className="mt-2 text-xs text-muted-foreground">{updatingSearch ? 'Updating results…' : `${filtered.length} matching skills · ${visibleResults.length} loaded`}</p>}
       {skills.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
@@ -223,7 +234,7 @@ export default function SkillsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-y-auto" style={{ height: 'calc(100vh - 250px)' }}>
+        <div className="mt-3 max-h-[70dvh] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]" aria-busy={updatingSearch}>
           <div className="space-y-2">
             {groups.map(([collection, collSkills]) => (
               <SkillGroup
@@ -233,11 +244,16 @@ export default function SkillsPage() {
                 isSearching={isSearching}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
-                onEdit={(skill) => { setEditingSkill(skill); setShowForm(true); }}
+                onEdit={handleEdit}
                 busySkillId={pendingSkillId}
                 busy={busy || showForm}
               />
             ))}
+            {isSearching && visibleResults.length < filtered.length && (
+              <Button variant="outline" className="w-full" onClick={() => setSearchWindow({ query: deferredSearch, limit: searchLimit + SEARCH_BATCH })}>
+                Show next {Math.min(SEARCH_BATCH, filtered.length - visibleResults.length)} matches
+              </Button>
+            )}
           </div>
         </div>
       )}

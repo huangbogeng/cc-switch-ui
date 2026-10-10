@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useId, useState } from 'react';
 import { ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -77,7 +77,7 @@ const SkillItem = memo(function SkillItem({
   );
 });
 
-export function SkillGroup({
+export const SkillGroup = memo(function SkillGroup({
   collection,
   skills,
   isSearching,
@@ -97,11 +97,12 @@ export function SkillGroup({
   busy?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [showAll, setShowAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE);
+  const listId = useId();
 
   const isOpen = isSearching || open;
-  const limitReached = !isSearching && !showAll && skills.length > MAX_VISIBLE;
-  const visible = limitReached ? skills.slice(0, MAX_VISIBLE) : skills;
+  const limitReached = !isSearching && skills.length > visibleCount;
+  const visible = limitReached ? skills.slice(0, visibleCount) : skills;
   const hiddenCount = skills.length - visible.length;
 
   return (
@@ -109,6 +110,8 @@ export function SkillGroup({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listId : undefined}
         className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-accent/50"
       >
         <div className="flex items-center gap-2">
@@ -125,7 +128,7 @@ export function SkillGroup({
         </div>
       </button>
       {isOpen && (
-        <div className="divide-y divide-border border-t">
+        <div id={listId} className="divide-y divide-border border-t animate-in fade-in">
           {visible.map((skill) => (
             <SkillItem
               key={skill.id}
@@ -139,14 +142,14 @@ export function SkillGroup({
           {limitReached && (
             <button
               type="button"
-              onClick={() => setShowAll(true)}
+              onClick={() => setVisibleCount((count) => count + MAX_VISIBLE)}
               className="flex w-full items-center justify-center px-4 py-2.5 text-xs text-muted-foreground hover:bg-accent/30 hover:text-foreground transition-colors"
             >
-              Show {hiddenCount} more {hiddenCount === 1 ? 'skill' : 'skills'}
+              Show next {Math.min(MAX_VISIBLE, hiddenCount)} of {hiddenCount} more {hiddenCount === 1 ? 'skill' : 'skills'}
             </button>
           )}
         </div>
       )}
     </div>
   );
-}
+});

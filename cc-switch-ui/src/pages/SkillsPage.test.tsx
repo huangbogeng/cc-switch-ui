@@ -29,3 +29,20 @@ it('shows partial sync and replaces the report on a successful retry', async () 
   await screen.findByText('Sync completed: 1 applied, 2 skipped, 0 failed.');
   expect(screen.queryByText(/Collection save failed/)).toBeNull();
 });
+
+it('bounds broad search results and resets the batch when searching a different directory', async () => {
+  vi.mocked(listSkills).mockResolvedValue({ skills: Array.from({ length: 500 }, (_, index) => ({ id: `skill-${index}`, name: `Demo ${index}`, directory: `demo-${index}`, collection: 'Samples', appType: 'claude_code', enabled: true, installedAt: 0 })) });
+  render(<SkillsPage />);
+  const search = await screen.findByRole('textbox', { name: 'Search skills' });
+  await userEvent.type(search, 'Samples');
+  await screen.findByText('500 matching skills · 120 loaded');
+  expect(screen.getAllByRole('button', { name: /^Edit Demo/ })).toHaveLength(120);
+  await userEvent.click(screen.getByRole('button', { name: 'Show next 120 matches' }));
+  expect(screen.getAllByRole('button', { name: /^Edit Demo/ })).toHaveLength(240);
+  await userEvent.clear(search);
+  await userEvent.type(search, 'demo-499');
+  await screen.findByText('1 matching skills · 1 loaded');
+  expect(screen.getAllByRole('button', { name: /^Edit Demo/ })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Edit Demo 499' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /Show next .* matches/ })).toBeNull();
+});
