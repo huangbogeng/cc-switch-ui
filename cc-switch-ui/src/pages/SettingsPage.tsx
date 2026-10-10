@@ -18,6 +18,7 @@ import { cacheGet, cacheSet } from '@/lib/fetchCache';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { errorMessage } from '@/lib/errors';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
+import { ClaudeUserSettingsPanel } from '@/components/settings/ClaudeUserSettingsPanel';
 
 export default function SettingsPage() {
   const cachedPort = cacheGet<number>('settings-proxy-port');
@@ -162,6 +163,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <div className="space-y-6">
+          <ClaudeUserSettingsPanel />
           <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
             <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
               <CardTitle className="text-[15px] font-bold tracking-tight">Local Route Port</CardTitle>

@@ -275,21 +275,60 @@ fn write_private_once(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
     }
 }
 
-fn first_write_backup(root: &Path, path: &Path, current: Option<&[u8]>) -> Result<(), AppError> {
+fn absolute_path(path: &Path) -> Result<PathBuf, AppError> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()
+            .map_err(|e| AppError::io(path, e))?
+            .join(path))
+    }
+}
+
+fn first_write_key(path: &Path) -> String {
     use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(path.to_string_lossy().as_bytes()))
+}
+
+/// Read the immutable first-write snapshot for this fixed configuration path.
+/// A target which originally did not exist is represented by an empty object.
+pub fn read_first_write_backup(path: &Path) -> Result<Option<serde_json::Value>, AppError> {
+    let root = get_app_config_dir().join("backups/live-first-write");
+    refuse_symlink(&root)?;
+    refuse_symlink(root.parent().unwrap())?;
+    let absolute = absolute_path(path)?;
+    let key = first_write_key(&absolute);
+    let marker = root.join(format!("{key}.source.json"));
+    refuse_symlink(&marker)?;
+    let Some(bytes) = read_current(&marker)? else {
+        return Ok(None);
+    };
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| AppError::json(&marker, e))?;
+    if metadata.get("path") != Some(&serde_json::json!(absolute)) {
+        return Err(AppError::Config(
+            "Backup source path does not match configuration".into(),
+        ));
+    }
+    match metadata.get("existed").and_then(serde_json::Value::as_bool) {
+        Some(false) => Ok(Some(serde_json::json!({}))),
+        Some(true) => {
+            let original = root.join(format!("{key}.original"));
+            refuse_symlink(&original)?;
+            read_json_file(&original).map(Some)
+        }
+        None => Err(AppError::Config("Invalid backup metadata".into())),
+    }
+}
+
+fn first_write_backup(root: &Path, path: &Path, current: Option<&[u8]>) -> Result<(), AppError> {
     refuse_symlink(root)?;
     if let Some(parent) = root.parent() {
         refuse_symlink(parent)?;
     }
     fs::create_dir_all(root).map_err(|e| AppError::io(root, e))?;
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .map_err(|e| AppError::io(path, e))?
-            .join(path)
-    };
-    let key = hex::encode(Sha256::digest(absolute.to_string_lossy().as_bytes()));
+    let absolute = absolute_path(path)?;
+    let key = first_write_key(&absolute);
     let marker = root.join(format!("{key}.source.json"));
     refuse_symlink(&marker)?;
     if marker.exists() {

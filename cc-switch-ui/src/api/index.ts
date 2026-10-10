@@ -636,3 +636,32 @@ export async function restoreSkillBackup(backupId: string) {
     body: JSON.stringify({ backupId }),
   });
 }
+
+// User-owned live Claude settings; provider switching preserves these fields.
+export interface ClaudeUserValues {
+  timeoutMs: string | null;
+  nonessentialTraffic: string | null;
+}
+
+export interface ClaudeUserSettings {
+  path: string;
+  revision: string;
+  values: ClaudeUserValues;
+  initialValues: ClaudeUserValues | null;
+}
+
+export function getClaudeUserSettings(options?: RequestInit) {
+  return api<ClaudeUserSettings>('/settings/claude-user', options);
+}
+
+export function saveClaudeUserSettings(revision: string, values: ClaudeUserValues) {
+  return api<{ success: boolean }>('/settings/claude-user', {
+    method: 'PUT', body: JSON.stringify({ revision, values }),
+  });
+}
+
+export function restoreClaudeUserSettings(revision: string) {
+  return api<{ success: boolean }>('/settings/claude-user/restore', {
+    method: 'POST', body: JSON.stringify({ revision }),
+  });
+}

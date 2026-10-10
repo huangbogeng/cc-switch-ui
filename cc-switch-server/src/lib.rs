@@ -355,6 +355,14 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/proxy/status", get(proxy::proxy_status))
         .route("/api/proxy/target", get(proxy::proxy_target))
         .route("/api/proxy/target", post(proxy::proxy_set_target))
+        .route(
+            "/api/settings/claude-user",
+            get(settings::get_claude_user_settings).put(settings::save_claude_user_settings),
+        )
+        .route(
+            "/api/settings/claude-user/restore",
+            post(settings::restore_claude_user_settings),
+        )
         .route("/api/settings/proxy", get(settings::get_proxy_config))
         .route("/api/settings/proxy", put(settings::set_proxy_config))
         .route("/api/settings/proxy", delete(settings::delete_proxy_config))
