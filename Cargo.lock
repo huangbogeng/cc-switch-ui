@@ -388,6 +388,7 @@ dependencies = [
 name = "cc-switch-cli"
 version = "0.2.0"
 dependencies = [
+ "axum",
  "cc-switch-lib",
  "cc-switch-server",
  "clap",
@@ -395,8 +396,10 @@ dependencies = [
  "env_logger",
  "log",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
