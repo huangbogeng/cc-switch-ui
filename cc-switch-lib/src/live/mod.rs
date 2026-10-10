@@ -109,14 +109,20 @@ pub fn capture_owned_live_config() -> Result<Value, AppError> {
 /// When the live file contains no owned keys at all, the existing config is
 /// returned unchanged — an empty live file must not wipe a provider record.
 pub fn backfill_current_live_config(existing: &Value) -> Result<Value, AppError> {
-    let captured = capture_owned_live_config()?;
-    let captured_env = captured
+    Ok(backfill_from_snapshot(existing, &read_live_settings_raw()?))
+}
+
+pub(crate) fn backfill_from_snapshot(existing: &Value, live: &Value) -> Value {
+    let captured_env: Map<String, Value> = live
         .get("env")
         .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
+        .into_iter()
+        .flat_map(|env| env.iter())
+        .filter(|(key, _)| floor::claude_owned_env(key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
     if captured_env.is_empty() {
-        return Ok(existing.clone());
+        return existing.clone();
     }
     let mut result = existing.clone();
     if !result.is_object() {
@@ -126,7 +132,7 @@ pub fn backfill_current_live_config(existing: &Value) -> Result<Value, AppError>
         .as_object_mut()
         .expect("normalized above")
         .insert("env".to_string(), Value::Object(captured_env));
-    Ok(result)
+    result
 }
 
 /// Placeholder auth token written to the live config during proxy takeover.
@@ -245,6 +251,16 @@ pub fn apply_provider_to_live(
     settings_config: &Value,
     previous_env: Option<&Map<String, Value>>,
 ) -> Result<(), AppError> {
+    update_json_file(&get_claude_settings_path(), |current| {
+        merge_provider_settings(current, settings_config, previous_env)
+    })
+}
+
+pub(crate) fn merge_provider_settings(
+    current: &mut Value,
+    settings_config: &Value,
+    previous_env: Option<&Map<String, Value>>,
+) -> Result<(), AppError> {
     let desired = sanitize_claude_settings_for_live(settings_config);
     let desired_env = desired
         .get("env")
@@ -259,43 +275,39 @@ pub fn apply_provider_to_live(
         .filter(|(key, _)| floor::claude_owned_env(key))
         .collect();
 
-    update_json_file(&get_claude_settings_path(), |current| {
-        let current_obj = current.as_object_mut().ok_or_else(|| {
-            AppError::Config(format!(
-                "live settings at {:?} is not a JSON object; refusing to merge",
-                get_claude_settings_path()
-            ))
-        })?;
-
-        let mut merged = Map::new();
-        if let Some(live_env) = current_obj.get("env").and_then(Value::as_object) {
-            for (key, value) in live_env {
-                if let Some(new_value) = desired_owned.get(key) {
-                    merged.insert(key.clone(), new_value.clone());
-                    continue;
-                }
-                if floor::claude_floor_env(key) {
-                    continue;
-                }
-                if floor::claude_exclusive_env(key)
-                    && previous_env.is_some_and(|prev| prev.get(key) == Some(value))
-                {
-                    continue;
-                }
-                merged.insert(key.clone(), value.clone());
-            }
-        }
-        for (key, value) in &desired_owned {
-            merged.entry(key.clone()).or_insert_with(|| value.clone());
-        }
-
-        current_obj.insert("env".into(), Value::Object(merged));
-        Ok(())
+    let current_obj = current.as_object_mut().ok_or_else(|| {
+        AppError::Config(format!(
+            "live settings at {:?} is not a JSON object; refusing to merge",
+            get_claude_settings_path()
+        ))
     })?;
-    log::info!(
-        "Applied provider settings to live Claude config at {:?}",
-        get_live_settings_path()
-    );
+
+    if current_obj.get("env").is_some_and(|env| !env.is_object()) {
+        return Err(AppError::Config("Live env must be a JSON object".into()));
+    }
+    let mut merged = Map::new();
+    if let Some(live_env) = current_obj.get("env").and_then(Value::as_object) {
+        for (key, value) in live_env {
+            if let Some(new_value) = desired_owned.get(key) {
+                merged.insert(key.clone(), new_value.clone());
+                continue;
+            }
+            if floor::claude_floor_env(key) {
+                continue;
+            }
+            if floor::claude_exclusive_env(key)
+                && previous_env.is_some_and(|prev| prev.get(key) == Some(value))
+            {
+                continue;
+            }
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    for (key, value) in &desired_owned {
+        merged.entry(key.clone()).or_insert_with(|| value.clone());
+    }
+
+    current_obj.insert("env".into(), Value::Object(merged));
     Ok(())
 }
 

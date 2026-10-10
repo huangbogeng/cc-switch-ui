@@ -216,7 +216,7 @@ fn persist_provider_record(
 pub async fn recover_provider_operation(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     match tokio::task::spawn_blocking(move || cc_switch_lib::provider_operations::recover(&state.db)).await {
-        Ok(Ok(warnings)) => Json(serde_json::json!({"success": true, "warnings": warnings, "message": "Unfinished save recovered. Review the current provider before editing."})).into_response(),
+        Ok(Ok(warnings)) => Json(serde_json::json!({"success": true, "warnings": warnings, "message": "Unfinished provider operation recovered. Review the current provider before editing."})).into_response(),
         Ok(Err(error)) => operation_error(error),
         Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": error.to_string()}))).into_response(),
     }
@@ -231,7 +231,7 @@ fn operation_error(error: cc_switch_lib::error::AppError) -> axum::response::Res
     };
     let pending = cc_switch_lib::provider_operations::recovery_pending();
     let message = if pending {
-        format!("{error}. An unfinished save is pending; retry the operation to complete recovery before switching.")
+        format!("{error}. An unfinished provider operation is pending; use Recover operation before switching.")
     } else {
         error.to_string()
     };
@@ -289,162 +289,36 @@ pub async fn switch_provider(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
-    let mut warnings = match cc_switch_lib::provider_operations::recover(&state.db) {
-        Ok(warnings) => warnings,
-        Err(error) => return operation_error(error),
-    };
-
-    log::info!("[Providers] switch_provider requested id={}", id);
-
-    let app_type = APP_TYPE;
-
-    // 1. Get provider
-    let provider = match state.db.get_provider(&id, app_type) {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "Provider not found"})),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response();
-        }
-    };
-
-    // 2. Determine takeover state
-    let backup = state.db.get_live_backup(app_type).ok().flatten();
-    let live_taken_over = cc_switch_lib::live::detect_takeover_in_live_config();
-    let proxy_running = {
+    let route_active = {
         let guard = state.proxy_server.read().await;
         match guard.as_ref() {
             Some(server) => server.is_running().await,
             None => false,
         }
     };
-
-    let takeover_active = proxy_running;
-    if !proxy_running && backup.is_some() && live_taken_over {
-        return (StatusCode::CONFLICT, Json(serde_json::json!({"error": "The previous route was interrupted. Stop the local route to restore direct config before switching."}))).into_response();
-    }
-
-    // Always update current-provider state. During route takeover we intentionally
-    // avoid changing route target or rewriting live config; those belong to the
-    // explicit route-target and route-lifecycle actions.
-    if takeover_active {
-        log::info!(
-            "[Providers] switch_provider id={} path=takeover_select_only",
-            id
-        );
-    } else {
-        // Direct-live path: backfill current live settings, then apply selected provider.
-        log::info!("[Providers] switch_provider id={} path=direct_live", id);
-
-        // (a) Capture the previous provider's env BEFORE backfill, then save the
-        // current live config into the old provider's DB record. The captured env
-        // is the reference for exclusive-key cleanup: an exclusive key the user
-        // edited in the live file (value differs from the record) survives the
-        // switch, while one left untouched is removed.
-        let mut previous_env: Option<serde_json::Map<String, serde_json::Value>> = None;
-        let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
-        let current_id = match cc_switch_lib::settings::get_effective_current_provider(
-            &state.db,
-            &app_type_enum,
-        ) {
-            Ok(id) => id,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                )
-                    .into_response()
-            }
-        };
-        if let Some(ref old_id) = current_id {
-            if old_id != &id {
-                match state.db.get_provider(old_id, app_type) {
-                    Ok(Some(mut old_provider)) => {
-                        previous_env = old_provider
-                            .settings_config
-                            .get("env")
-                            .and_then(|v| v.as_object())
-                            .cloned();
-                        match cc_switch_lib::live::backfill_current_live_config(
-                            &old_provider.settings_config,
-                        ) {
-                            Ok(backfill_settings) => {
-                                old_provider.settings_config = backfill_settings;
-                                if let Err(e) = state.db.save_provider(app_type, &old_provider) {
-                                    warnings.push(format!(
-                                        "Backfill warning: failed to save old provider config: {}",
-                                        e
-                                    ));
-                                }
-                            }
-                            Err(e) => {
-                                warnings.push(format!(
-                                    "Backfill warning: failed to read live config: {}",
-                                    e
-                                ));
-                            }
-                        }
-                    }
-                    Ok(None) => { /* old provider was deleted */ }
-                    Err(e) => {
-                        warnings.push(format!(
-                            "Backfill warning: failed to read old provider: {}",
-                            e
-                        ));
-                    }
-                }
-            }
+    let result = tokio::task::spawn_blocking(move || -> Result<Option<serde_json::Value>, cc_switch_lib::error::AppError> {
+        let warnings = cc_switch_lib::provider_operations::recover(&state.db)?;
+        if state.db.get_provider(&id, APP_TYPE)?.is_none() {
+            return Ok(None);
         }
-
-        // (b) Write direct live config only when route takeover is inactive.
-        let live_settings = live::settings_for_live(&provider, state.proxy_listen_port, false);
-        if let Err(e) =
-            cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
-        {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": format!("Failed to apply config: {}", e)
-                })),
-            )
-                .into_response();
-        }
-    }
-
-    let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
-    if let Err(e) = cc_switch_lib::settings::set_current_provider(&app_type_enum, Some(&id)) {
-        warnings.push(format!("Failed to save device setting: {}", e));
-    }
-    if let Err(e) = state.db.set_current_provider(&id, app_type) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": format!("Failed to set current provider: {}", e)
-            })),
+        let applied = cc_switch_lib::provider_operations::switch(&state.db, &id, state.proxy_listen_port, route_active)?;
+        Ok(Some(serde_json::json!({"success": true, "saved": true, "applied": applied, "warnings": warnings,
+            "message": if route_active { "Direct provider selected. It will be applied when the local route stops." } else if applied { "Direct provider selected and applied." } else { "Direct provider remains selected. Existing live edits were preserved." }})))
+    }).await;
+    match result {
+        Ok(Ok(None)) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Provider not found"})),
         )
-            .into_response();
+            .into_response(),
+        Ok(Ok(Some(result))) => Json(result).into_response(),
+        Ok(Err(error)) => operation_error(error),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
     }
-
-    log::info!(
-        "[Providers] switch_provider success id={} warnings={}",
-        id,
-        warnings.len()
-    );
-
-    Json(serde_json::json!({
-        "success": true,
-        "warnings": warnings
-    }))
-    .into_response()
 }
 
 #[cfg(test)]

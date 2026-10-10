@@ -298,6 +298,12 @@ fn run_clean(clean_live: bool) -> i32 {
     println!("clean: removing cc-switch-ui local data");
     println!("  config_dir: {}", config_dir.display());
 
+    // A leftover intent could recreate credentials after the database is deleted.
+    if let Err(error) = cc_switch_lib::provider_operations::discard_for_clean() {
+        eprintln!("clean: cannot discard pending provider operation: {error}");
+        return 1;
+    }
+
     remove(&db_path, "database");
     remove(&settings_path, "device settings");
     remove(&cli_config_path, "CLI config");

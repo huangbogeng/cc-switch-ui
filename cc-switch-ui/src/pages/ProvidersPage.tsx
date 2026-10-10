@@ -194,12 +194,16 @@ export default function ProvidersPage() {
   const handleSwitch = async (id: string) => {
     try {
       setPendingAction(`switch:${id}`);
+      setError('');
+      setOperationNotice('');
       const result = await switchProvider(id);
-      setOperationNotice(result.warnings?.join(' ') || 'Direct provider selected.');
+      setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' ') || 'Direct provider selected.');
       setCurrentProviderId(id);
       await applyProviders();
       await loadProxyStatus();
     } catch (e) {
+      await applyProviders();
+      await loadProxyStatus();
       setError(e instanceof Error ? e.message : 'Switch failed');
     } finally {
       setPendingAction(null);
@@ -334,8 +338,8 @@ export default function ProvidersPage() {
 
       {saveRecoveryRequired && (
         <div role="alert" className="mb-4 rounded-xl border px-4 py-3 text-sm">
-          An unfinished provider save needs recovery before switching or changing the local route.
-          <Button className="ml-3" onClick={() => void handleRecoverSave()} disabled={saving || pendingAction !== null}>Recover save</Button>
+          An unfinished provider operation needs recovery before switching or changing the local route.
+          <Button className="ml-3" onClick={() => void handleRecoverSave()} disabled={saving || pendingAction !== null}>Recover operation</Button>
         </div>
       )}
 
