@@ -65,7 +65,27 @@ impl super::Database {
         Ok(result)
     }
 
+    pub fn validate_skill(&self, skill: &SkillRecord) -> Result<(), AppError> {
+        crate::skills::validate_directory(&skill.directory)?;
+        let conn = self.conn();
+        let conflict: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM skills WHERE directory = ?1 AND app_type = ?2 AND id != ?3)",
+            params![skill.directory, skill.app_type, skill.id], |row| row.get(0),
+        )?;
+        let renamed: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM skills WHERE id = ?1 AND (directory != ?2 OR app_type != ?3))",
+            params![skill.id, skill.directory, skill.app_type], |row| row.get(0),
+        )?;
+        if conflict || renamed {
+            return Err(AppError::InvalidInput(
+                "Skill directory is already managed or cannot be changed".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn save_skill(&self, skill: &SkillRecord) -> Result<(), AppError> {
+        self.validate_skill(skill)?;
         let conn = self.conn();
         conn.execute(
             "INSERT INTO skills (id, name, description, directory, app_type, enabled, collection,
@@ -108,5 +128,36 @@ impl super::Database {
             .execute("DELETE FROM skills WHERE id = ?1", params![id])
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(affected > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::Database;
+
+    #[test]
+    fn save_rejects_directory_aliases_and_identity_changes() {
+        let db = Database {
+            conn: std::sync::Mutex::new(rusqlite::Connection::open_in_memory().unwrap()),
+        };
+        db.create_tables().unwrap();
+        let skill: SkillRecord = serde_json::from_value(serde_json::json!({
+            "id": "first", "name": "First", "directory": "same", "appType": "claude_code"
+        }))
+        .unwrap();
+        db.save_skill(&skill).unwrap();
+        let mut alias = skill.clone();
+        alias.id = "second".into();
+        assert!(db.save_skill(&alias).is_err());
+        let mut renamed = skill.clone();
+        renamed.directory = "renamed".into();
+        assert!(db.save_skill(&renamed).is_err());
+        let mut traversal = skill.clone();
+        traversal.directory = "../escape".into();
+        assert!(db.save_skill(&traversal).is_err());
+        let records = db.get_all_skills("claude_code").unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].directory, "same");
     }
 }

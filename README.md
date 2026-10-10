@@ -231,3 +231,11 @@ CC Switch UI is built from the open-source [cc-switch](https://github.com/farion
 ## License
 
 Licensed under the [MIT License](LICENSE).
+
+### MCP and Skills sync safety
+
+Saving or toggling a managed MCP server or skill applies the desired state to Claude Code. If the record is saved but syncing fails, the API reports `saved: true`; correct the reported cause and retry **Sync**. A sync can apply earlier skills before a later skill fails; retrying applies the remaining desired state.
+
+Sync preserves MCP entries and skill directories that have not been imported or added to CC Switch. Disabling or deleting a managed skill moves its live directory into `~/.claude/skills/.cc-switch-backups/`; replacements also preserve the previous installation there. Backups remain until manually removed. To restore one, disable the managed record, then copy its backup to the original skill directory. The source in `~/.cc-switch/skills/` is retained on deletion. Skill directories must be single directory names; symlinked managed directories or source contents are rejected rather than followed.
+
+The Skills page can load and restore backups, including deleted skills. Existing disabled records stay disabled; deleted records are recreated and enabled. Recovery preserves both the selected history and the previous source files. Unchanged syncs no longer create duplicate backups, and detected external edits abort publication. See [configuration protection and recovery](docs/configuration-recovery.md) for first-write snapshots and conflict-detection limits.
