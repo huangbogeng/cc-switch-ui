@@ -25,16 +25,15 @@ it('keeps conflicting cleanup retryable and requires confirmation before keeping
   await userEvent.click(await screen.findByRole('button', { name: 'Retry live cleanup' }));
   await screen.findByText('File changed externally');
   expect(screen.getByText(/record deleted, live cleanup unfinished/)).toBeTruthy();
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   await userEvent.click(screen.getByRole('button', { name: 'Keep current files' }));
   expect(finishManagedDeletion).toHaveBeenCalledTimes(1);
-  confirm.mockReturnValue(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   vi.mocked(finishManagedDeletion).mockResolvedValue({ success: true, keptFiles: true });
   vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
   await userEvent.click(screen.getByRole('button', { name: 'Keep current files' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Keep files' }));
   await screen.findByText('Deletion finished. Current live files were kept unmanaged.');
   expect(finishManagedDeletion).toHaveBeenLastCalledWith('operation-uuid', true);
-  confirm.mockRestore();
 });
 it('retains completion feedback when refreshing records fails', async () => {
   const callbacks = props();

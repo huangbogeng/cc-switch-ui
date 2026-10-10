@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
@@ -40,6 +41,7 @@ export default function ProvidersPage() {
   const providers = providersQuery.data?.providers;
   const currentProviderId = currentQuery.data?.current_provider_id ?? null;
   const loading = providersQuery.isLoading || currentQuery.isLoading;
+  const { confirmAction, confirmation } = useConfirm();
   const [operationError, setError] = useState('');
   const error = operationError || errorMessage(providersQuery.error ?? currentQuery.error, '');
   const [showForm, setShowForm] = useState(false);
@@ -183,7 +185,7 @@ export default function ProvidersPage() {
       setError('Choose another route target before deleting this Provider.');
       return;
     }
-    if (!confirm('Delete this provider?')) return;
+    if (!await confirmAction('Delete this provider?', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     try {
       setPendingAction(`delete:${id}`);
       await deleteProvider(id);
@@ -234,8 +236,9 @@ export default function ProvidersPage() {
       }
       if (formData.authMode !== 'oauth_proxy' && !formData.noAuth && !formData.apiKey.trim()) {
         const providerName = selectedPreset?.name || name;
-        const shouldContinue = confirm(
-          `${providerName} is missing an API key.\n\nSave anyway? Switching or routing through this provider may fail until you add credentials.`
+        const shouldContinue = await confirmAction(
+          `${providerName} is missing an API key.\n\nSave anyway? Switching or routing through this provider may fail until you add credentials.`,
+          { title: 'Save without credentials?', confirmLabel: 'Save anyway' },
         );
         if (!shouldContinue) {
           setSaving(false);
@@ -256,6 +259,7 @@ export default function ProvidersPage() {
 
   return (
     <div>
+      {confirmation}
       <PageHeader
         title="Providers"
         description="Manage provider configs. Local route control is separated below."

@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { DeletionRecoveryPanel } from '@/components/DeletionRecoveryPanel';
 import { OperationResults } from '@/components/OperationResults';
 import type { OperationReport } from '@/api';
@@ -36,6 +37,7 @@ function emptyForm(): McpServer {
 
 export default function McpPage() {
   const cached = cacheGet<McpServer[]>('mcp-servers');
+  const { confirmAction, confirmation } = useConfirm();
   const [servers, setServers] = useState<McpServer[]>(cached ?? []);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
@@ -122,7 +124,7 @@ export default function McpPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this managed MCP server and remove it from Claude Code?')) return;
+    if (!await confirmAction('Delete this managed MCP server and remove it from Claude Code?', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     try {
       setPendingAction(`delete:${id}`);
       setError('');
@@ -221,6 +223,7 @@ export default function McpPage() {
 
   return (
     <div className="space-y-6">
+      {confirmation}
       <PageHeader
         title="MCP Servers"
         description="Save and enable/disable apply managed servers to Claude Code. Retry Sync after an application error."

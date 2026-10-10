@@ -14,12 +14,16 @@ beforeEach(() => {
   vi.mocked(api.cancelDatabaseRestore).mockResolvedValue({ success: true });
 });
 it('confirms restart-time replacement and explains what remains separate', async () => {
-  const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);render(<DatabaseBackupsPanel />);
+  render(<DatabaseBackupsPanel />);
   fireEvent.click(await screen.findByRole('button',{name:'Restore on restart'}));
-  expect(api.scheduleDatabaseRestore).not.toHaveBeenCalled();expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Live Claude files, installed Skills, OAuth logins and device preferences are not restored'));
-  confirm.mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Restore on restart'}));
+  expect(api.scheduleDatabaseRestore).not.toHaveBeenCalled();
+  expect(screen.getByRole('alertdialog').textContent).toContain('Live Claude files, installed Skills, OAuth logins and device preferences are not restored');
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  expect(api.scheduleDatabaseRestore).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Restore on restart'}));
+  fireEvent.click(screen.getByRole('button',{name:'Restore'}));
   await waitFor(()=>expect(api.scheduleDatabaseRestore).toHaveBeenCalledWith('manual-test.db'));
-  expect(await screen.findByRole('status')).toHaveProperty('textContent',expect.stringContaining('current database is unchanged until restart'));confirm.mockRestore();
+  expect(await screen.findByRole('status')).toHaveProperty('textContent',expect.stringContaining('current database is unchanged until restart'));
 });
 it('shows pending restore and keeps protected backups from deletion', async () => {
   vi.mocked(api.getDatabaseBackups).mockResolvedValue({ ...snapshot, entries: [{...snapshot.entries[0],protected:true}],pending:{sourceId:'manual-test.db',applying:false} });
@@ -42,7 +46,8 @@ it('reports completed creation when refresh fails and requires reload', async ()
   expect(api.createDatabaseBackup).toHaveBeenCalledOnce();
 });
 it('does not stage or claim success when backend validation fails', async () => {
-  const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);vi.mocked(api.scheduleDatabaseRestore).mockRejectedValue(new Error('Backup was created by a newer schema version'));
+  vi.mocked(api.scheduleDatabaseRestore).mockRejectedValue(new Error('Backup was created by a newer schema version'));
   render(<DatabaseBackupsPanel />);fireEvent.click(await screen.findByRole('button',{name:'Restore on restart'}));
-  expect(await screen.findByText('Backup was created by a newer schema version')).toBeTruthy();expect(screen.queryByRole('status')).toBeNull();confirm.mockRestore();
+  fireEvent.click(screen.getByRole('button',{name:'Restore'}));
+  expect(await screen.findByText('Backup was created by a newer schema version')).toBeTruthy();expect(screen.queryByRole('status')).toBeNull();
 });

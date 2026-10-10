@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { DeletionRecoveryPanel } from '@/components/DeletionRecoveryPanel';
 import { OperationResults } from '@/components/OperationResults';
 import type { OperationReport } from '@/api';
@@ -37,6 +38,7 @@ function groupByCollection(skills: Skill[]): [string, Skill[]][] {
 
 export default function SkillsPage() {
   const cached = cacheGet<Skill[]>('skills');
+  const { confirmAction, confirmation } = useConfirm();
   const [skills, setSkills] = useState<Skill[]>(cached ?? []);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
@@ -90,7 +92,7 @@ export default function SkillsPage() {
   const isSearching = searchQuery.trim().length > 0;
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this managed skill? Its live directory will be backed up; source files are retained.')) return;
+    if (!await confirmAction('Delete this managed skill? Its live directory will be backed up; source files are retained.', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     try {
       setPendingSkillId(id);
       setError('');
@@ -106,7 +108,7 @@ export default function SkillsPage() {
       setDeletionRefresh((value) => value + 1);
       setPendingSkillId(null);
     }
-  }, [loadSkills]);
+  }, [loadSkills, confirmAction]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -166,6 +168,7 @@ export default function SkillsPage() {
 
   return (
     <div className="space-y-6">
+      {confirmation}
       <PageHeader
         title="Skills"
         description="Save and enable/disable apply managed skills to Claude Code. Retry Sync after an application error."

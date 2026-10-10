@@ -10,7 +10,6 @@ vi.mock('@/api', async (original) => ({
 const backup = { id: 'live:test-00000000-0000-0000-0000-000000000000', directory: 'test', origin: 'live' as const, modifiedAt: 0 };
 beforeEach(() => {
   vi.mocked(listSkillBackups).mockResolvedValue({ backups: [backup] });
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.resetAllMocks(); });
 
@@ -21,12 +20,12 @@ it('loads backup history on demand and requires confirmation to restore', async 
   expect(listSkillBackups).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Load backups' }));
   expect(await screen.findByLabelText('Backup version')).toBeTruthy();
-  vi.mocked(window.confirm).mockReturnValue(false);
   await userEvent.click(screen.getByRole('button', { name: 'Restore files' }));
   expect(restoreSkillBackup).not.toHaveBeenCalled();
-  vi.mocked(window.confirm).mockReturnValue(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   vi.mocked(restoreSkillBackup).mockResolvedValue({ success: true, directory: 'test', enabled: false });
   await userEvent.click(screen.getByRole('button', { name: 'Restore files' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
   await screen.findByText('Source files restored. This skill remains disabled.');
   expect(onRestored).toHaveBeenCalledOnce();
   expect(restoreSkillBackup).toHaveBeenCalledWith(backup.id);
@@ -40,6 +39,7 @@ it('refreshes records but reports pending sync when recovery is only partially a
   await userEvent.click(screen.getByRole('button', { name: 'Load backups' }));
   await screen.findByLabelText('Backup version');
   await userEvent.click(screen.getByRole('button', { name: 'Restore files' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
   await screen.findByText('Source restored, but sync failed. Retry Sync.');
   expect(onRestored).toHaveBeenCalledOnce();
   expect(screen.queryByText('Skill restored and synced to Claude Code.')).toBeNull();
@@ -53,6 +53,7 @@ it('retains a successful restore notice if refreshing history fails', async () =
   await screen.findByLabelText('Backup version');
   vi.mocked(listSkillBackups).mockRejectedValue(new Error('Read failed'));
   await userEvent.click(screen.getByRole('button', { name: 'Restore files' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
   await screen.findByText('Restore completed, but backup refresh failed: Read failed');
   expect(screen.getByText('Skill restored and synced to Claude Code.')).toBeTruthy();
 });

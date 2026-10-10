@@ -4,6 +4,8 @@ import App from './App';
 import { queryClient } from '@/lib/queryClient';
 import { cacheSet, cacheGet } from '@/lib/fetchCache';
 
+vi.mock('@/components/ServerStatus', () => ({ ServerStatus: () => <span>Local Server</span> }));
+
 vi.mock('./pages/ProvidersPage', async () => {
   const { useUnsavedChanges } = await import('./lib/useUnsavedChanges');
   function ProviderEditor() { useUnsavedChanges(true); return <div>Dirty provider editor</div>; }

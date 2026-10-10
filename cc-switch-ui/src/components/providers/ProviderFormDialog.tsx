@@ -120,7 +120,7 @@ export function ProviderFormDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
+    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
       <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-2xl overflow-hidden [contain:layout_paint]">
         <CardContent className="max-h-[90vh] overflow-y-auto overscroll-contain p-6 [scrollbar-gutter:stable] [will-change:scroll-position]">
           <div className="mb-5">

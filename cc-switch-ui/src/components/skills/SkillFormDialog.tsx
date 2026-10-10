@@ -66,7 +66,7 @@ export function SkillFormDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
+    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
       <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-lg overflow-hidden border-primary/30">
         <CardContent className="space-y-4 p-6">
           <h2 id={titleId} className="text-lg font-semibold">{initialSkill ? 'Edit Skill' : 'Add Skill'}</h2>
