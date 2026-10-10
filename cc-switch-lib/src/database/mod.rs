@@ -39,6 +39,15 @@ pub struct Database {
 }
 
 impl Database {
+    #[cfg(test)]
+    pub(crate) fn test_memory() -> Self {
+        let db = Self {
+            conn: Mutex::new(Connection::open_in_memory().unwrap()),
+        };
+        db.create_tables().unwrap();
+        db
+    }
+
     /// Initialize database connection and create tables
     pub fn init() -> Result<Self, AppError> {
         let db_path = get_app_config_dir().join("cc-switch.db");

@@ -30,3 +30,6 @@ rand.workspace = true
 async-stream.workspace = true
 bytes.workspace = true
 futures.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true

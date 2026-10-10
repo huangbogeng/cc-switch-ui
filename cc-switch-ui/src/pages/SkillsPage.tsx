@@ -1,3 +1,5 @@
+import { OperationResults } from '@/components/OperationResults';
+import type { OperationReport } from '@/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Package, Download, Search } from 'lucide-react';
 import {
@@ -44,6 +46,7 @@ export default function SkillsPage() {
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' } | null>(null);
   const [recovering, setRecovering] = useState(false);
   const busy = syncing || importing || pendingSkillId !== null || recovering;
   useUnsavedChanges(false, busy);
@@ -53,9 +56,11 @@ export default function SkillsPage() {
       const data = await listSkills({ signal });
       setSkills(data.skills);
       cacheSet('skills', data.skills);
+      return true;
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
+      if (e instanceof DOMException && e.name === 'AbortError') return false;
       setError(e instanceof Error ? e.message : 'Failed to load');
+      return false;
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -85,7 +90,7 @@ export default function SkillsPage() {
     try {
       setPendingSkillId(id);
       setError('');
-      setNotice('');
+      setNotice(''); setOperation(null);
       await deleteSkill(id);
       await loadSkills();
     } catch (e) {
@@ -97,41 +102,34 @@ export default function SkillsPage() {
 
   const handleSync = async () => {
     setSyncing(true);
+    setNotice(''); setOperation(null); setError('');
     try {
-      setNotice('');
-      await syncSkills();
-      setError('');
-      await loadSkills();
-      setNotice('Skills synced to Claude Code.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync failed');
-    } finally {
-      setSyncing(false);
-    }
+      const report = await syncSkills();
+      setOperation({ report, action: 'Sync' });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Sync failed'); }
+    finally { setSyncing(false); }
   };
 
   const handleImport = async () => {
     setImporting(true);
+    setNotice(''); setOperation(null); setError('');
     try {
-      setNotice('');
-      const res = await importSkills();
-      setError('');
-      setNotice(`Imported ${res.imported} skill${res.imported === 1 ? '' : 's'}.`);
-      if (res.imported > 0) {
-        await loadSkills();
-      }
+      const report = await importSkills();
+      setOperation({ report, action: 'Import' });
+      if (!await loadSkills()) setError((previous) => `Import results are retained, but refreshing records failed: ${previous}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Import failed');
-    } finally {
-      setImporting(false);
-    }
+      // A lost response can still follow committed imports; refresh observed records.
+      const message = e instanceof Error ? e.message : 'Import failed';
+      const refreshed = await loadSkills();
+      setError((previous) => refreshed ? message : `${message}. Refresh failed: ${previous}`);
+    } finally { setImporting(false); }
   };
 
   const handleToggle = useCallback(async (skill: Skill) => {
     try {
       setPendingSkillId(skill.id);
       setError('');
-      setNotice('');
+      setNotice(''); setOperation(null);
       const res = await toggleSkill(skill.id);
       setNotice('Skill state saved and synced to Claude Code.');
       setSkills((prev) => {
@@ -182,8 +180,9 @@ export default function SkillsPage() {
         <ErrorAlert message={error} />
       )}
       {notice && <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">{notice}</div>}
+      {operation && <OperationResults report={operation.report} action={operation.action} />}
 
-      <SkillBackupsPanel disabled={syncing || importing || pendingSkillId !== null || showForm} onRestored={loadSkills} onBusyChange={setRecovering} />
+      <SkillBackupsPanel disabled={syncing || importing || pendingSkillId !== null || showForm} onRestored={async () => { setOperation(null); await loadSkills(); }} onBusyChange={setRecovering} />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
@@ -236,7 +235,7 @@ export default function SkillsPage() {
         open={showForm}
         initialSkill={editingSkill}
         onClose={() => { setShowForm(false); setEditingSkill(null); }}
-        onSaved={loadSkills}
+        onSaved={async () => { setOperation(null); await loadSkills(); }}
       />
     </div>
   );

@@ -117,7 +117,7 @@ pub async fn import_mcp_servers(State(state): State<Arc<AppState>>) -> impl Into
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
         log::info!("[MCP] Import from ~/.claude.json requested");
         match cc_switch_lib::mcp::import_from_claude(&state.db, APP_TYPE) {
-            Ok(count) => Json(json!({ "success": true, "imported": count })).into_response(),
+            Ok(report) => Json(report).into_response(),
             Err(e) => {
                 log::error!("Failed to import MCP servers: {}", e);
                 (
@@ -181,8 +181,8 @@ pub async fn sync_mcp_servers(State(state): State<Arc<AppState>>) -> impl IntoRe
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
         log::info!("[MCP] Manual sync requested");
-        match cc_switch_lib::mcp::sync_enabled_to_claude(&state.db, APP_TYPE) {
-            Ok(()) => Json(json!({ "success": true })).into_response(),
+        match cc_switch_lib::mcp::sync_report(&state.db, APP_TYPE) {
+            Ok(report) => Json(report).into_response(),
             Err(e) => {
                 log::error!("Failed to sync MCP servers: {}", e);
                 (

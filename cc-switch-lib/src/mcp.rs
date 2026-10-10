@@ -6,6 +6,7 @@
 use crate::config;
 use crate::database::{Database, McpServerRecord};
 use crate::error::AppError;
+use crate::operation_report::OperationReport;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -113,50 +114,74 @@ fn strip_internal_fields(spec: &Value) -> Value {
 /// Read the current mcpServers from ~/.claude.json.
 pub fn read_claude_mcp_servers() -> Result<HashMap<String, Value>, AppError> {
     let root = read_claude_mcp_json()?;
-    let servers = root
-        .get("mcpServers")
-        .and_then(|v| v.as_object())
-        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-        .unwrap_or_default();
-    Ok(servers)
+    parse_mcp_servers(root)
 }
 
-/// Import MCP servers from ~/.claude.json into the database.
-///
-/// Scans the existing `mcpServers` node in ~/.claude.json and creates
-/// database records for any servers not already managed by CC Switch.
-/// Returns the count of newly imported servers.
-pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppError> {
-    let current = read_claude_mcp_servers()?;
-    if current.is_empty() {
-        return Ok(0);
+fn parse_mcp_servers(root: Value) -> Result<HashMap<String, Value>, AppError> {
+    if !root.is_object() {
+        return Err(AppError::Config(
+            "MCP configuration root must be an object".into(),
+        ));
     }
+    match root.get("mcpServers") {
+        None => Ok(HashMap::new()),
+        Some(Value::Object(obj)) => Ok(obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
+        Some(_) => Err(AppError::Config("mcpServers must be an object".into())),
+    }
+}
 
-    let mut imported = 0;
-    for (id, spec) in &current {
-        let existing = db.get_all_mcp_servers(app_type)?;
-        if existing.iter().any(|s| s.id == *id) {
+/// Import valid new records independently; preserve existing managed records.
+pub fn import_from_claude(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
+    import_servers(db, app_type, read_claude_mcp_servers()?)
+}
+fn import_servers(
+    db: &Database,
+    app_type: &str,
+    current: HashMap<String, Value>,
+) -> Result<OperationReport, AppError> {
+    let existing = db.get_all_mcp_servers(app_type)?;
+    let mut current: Vec<_> = current.into_iter().collect();
+    current.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut report = OperationReport::new();
+    for (id, spec) in current {
+        if existing.iter().any(|s| s.id == id) {
+            report.record(id, "skipped", None);
             continue;
         }
-
         let server = McpServerRecord {
             id: id.clone(),
             name: id.clone(),
-            server_spec: spec.clone(),
-            app_type: app_type.to_string(),
+            server_spec: spec,
+            app_type: app_type.into(),
             enabled: true,
         };
-        db.save_mcp_server(&server)?;
-        imported += 1;
-        log::info!("Imported MCP server '{}' from ~/.claude.json", id);
+        match validate_server(&server).and_then(|_| db.save_mcp_server(&server)) {
+            Ok(()) => report.record(id, "imported", None),
+            Err(error) => report.record(id, "failed", Some(error.to_string())),
+        }
     }
+    Ok(report)
+}
 
-    log::info!(
-        "MCP import complete: {} new servers imported for app_type={}",
-        imported,
-        app_type
-    );
-    Ok(imported)
+/// MCP is published as a single JSON patch, so every entry shares the write outcome.
+pub fn sync_report(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
+    let servers = db.get_all_mcp_servers(app_type)?;
+    let result = config::update_json_file(&config::get_claude_mcp_path(), |root| {
+        merge_managed(root, &servers)
+    });
+    let mut report = OperationReport::new();
+    let ids: Vec<_> = if servers.is_empty() {
+        vec!["MCP configuration".into()]
+    } else {
+        servers.into_iter().map(|s| s.id).collect()
+    };
+    for id in ids {
+        match &result {
+            Ok(()) => report.record(id, "applied", None),
+            Err(error) => report.record(id, "failed", Some(error.to_string())),
+        }
+    }
+    Ok(report)
 }
 
 #[cfg(test)]
@@ -172,6 +197,42 @@ mod tests {
             enabled,
             server_spec: json!({"command": "new", "name": "internal"}),
         }
+    }
+
+    #[test]
+    fn import_continues_after_validation_and_database_failures_and_retries_safely() {
+        let db = Database::test_memory();
+        db.conn().execute_batch("CREATE TRIGGER reject_import BEFORE INSERT ON mcp_servers WHEN NEW.id = 'blocked' BEGIN SELECT RAISE(ABORT, 'Test write failure'); END;").unwrap();
+        let source = parse_mcp_servers(json!({"mcpServers": {
+            "invalid": null, "blocked": {"command":"npx"}, "good": {"command":"ok","env":{"TOKEN":"secret-test"}}
+        }})).unwrap();
+        let report = import_servers(&db, "claude_code", source.clone()).unwrap();
+        assert!(!report.success);
+        assert_eq!((report.imported, report.failed), (1, 2));
+        assert_eq!(db.get_all_mcp_servers("claude_code").unwrap().len(), 1);
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("secret-test"));
+        db.conn()
+            .execute_batch("DROP TRIGGER reject_import")
+            .unwrap();
+        let report = import_servers(&db, "claude_code", source).unwrap();
+        assert_eq!((report.imported, report.skipped, report.failed), (1, 1, 1));
+        assert_eq!(db.get_all_mcp_servers("claude_code").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn import_rejects_malformed_nodes_instead_of_claiming_zero_imports() {
+        for value in [
+            json!([]),
+            json!({"mcpServers": null}),
+            json!({"mcpServers": []}),
+        ] {
+            assert!(parse_mcp_servers(value).is_err());
+        }
+        assert!(parse_mcp_servers(json!({"other": true}))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

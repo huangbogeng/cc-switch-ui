@@ -120,11 +120,11 @@ pub async fn sync_skills(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let state = state.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
-        cc_switch_lib::skills::sync_enabled_to_claude(&state.db, APP_TYPE)
+        cc_switch_lib::skills::sync_report(&state.db, APP_TYPE)
     })
     .await
     {
-        Ok(Ok(())) => Json(json!({ "success": true })).into_response(),
+        Ok(Ok(report)) => Json(report).into_response(),
         Ok(Err(e)) => {
             log::error!("Failed to sync skills: {}", e);
             (
@@ -153,7 +153,7 @@ pub async fn import_skills(State(state): State<Arc<AppState>>) -> impl IntoRespo
     })
     .await
     {
-        Ok(Ok(count)) => Json(json!({ "success": true, "imported": count })).into_response(),
+        Ok(Ok(report)) => Json(report).into_response(),
         Ok(Err(e)) => {
             log::error!("Failed to import skills: {}", e);
             (
@@ -353,6 +353,79 @@ mod tests {
             .await
             .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn batch_import_preserves_partial_progress_and_retries_retained_source_safely() {
+        use crate::state::{AppState, TestHome as SharedHome};
+        use cc_switch_lib::oauth::{codex::CodexOAuthManager, copilot::CopilotAuthManager};
+        let _env = crate::state::TEST_ENV_LOCK.lock().await;
+        let home = SharedHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        let state = Arc::new(AppState {
+            db: db.clone(),
+            token: "test".into(),
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+            proxy_host: "127.0.0.1".into(),
+            proxy_listen_port: 0,
+        });
+        let live = home.path.join(".claude/skills");
+        for name in ["blocked", "good"] {
+            fs::create_dir_all(live.join(name)).unwrap();
+            fs::write(live.join(name).join("SKILL.md"), "original").unwrap();
+        }
+        let conn = rusqlite::Connection::open(home.path.join(".cc-switch/cc-switch.db")).unwrap();
+        conn.execute_batch("CREATE TRIGGER reject_skill_import BEFORE INSERT ON skills WHEN NEW.directory='blocked' BEGIN SELECT RAISE(ABORT, 'Test write failure'); END;").unwrap();
+        let (status, report) = response_json(import_skills(State(state.clone())).await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(report["success"], false);
+        assert_eq!(report["imported"], 1);
+        assert_eq!(report["failed"], 1);
+        assert_eq!(db.get_all_skills(APP_TYPE).unwrap().len(), 1);
+        let source = home.path.join(".cc-switch/skills/blocked/SKILL.md");
+        assert_eq!(fs::read_to_string(&source).unwrap(), "original");
+        conn.execute_batch("DROP TRIGGER reject_skill_import")
+            .unwrap();
+        fs::write(live.join("blocked/SKILL.md"), "changed after failure").unwrap();
+        let (_, report) = response_json(import_skills(State(state.clone())).await).await;
+        assert_eq!(report["failed"], 1);
+        assert_eq!(fs::read_to_string(&source).unwrap(), "original");
+        fs::write(live.join("blocked/SKILL.md"), "original").unwrap();
+        let (_, report) = response_json(import_skills(State(state.clone())).await).await;
+        assert_eq!(report["success"], true);
+        assert_eq!(report["imported"], 1);
+        assert_eq!(report["skipped"], 1);
+        fs::remove_file(&source).unwrap();
+        let (_, report) = response_json(sync_skills(State(state.clone())).await).await;
+        assert_eq!(report["success"], false);
+        assert_eq!(report["skipped"], 1);
+        assert_eq!(report["failed"], 1);
+        assert_eq!(
+            fs::read_to_string(live.join("blocked/SKILL.md")).unwrap(),
+            "original"
+        );
+        let mcp_path = cc_switch_lib::config::get_claude_mcp_path();
+        fs::write(&mcp_path, r#"{"mcpServers":{"valid":{"command":"npx","env":{"TOKEN":"do-not-return"}},"invalid":null}}"#).unwrap();
+        let (_, report) =
+            response_json(crate::handlers::mcp::import_mcp_servers(State(state.clone())).await)
+                .await;
+        assert_eq!(report["imported"], 1);
+        assert_eq!(report["failed"], 1);
+        assert!(!report.to_string().contains("do-not-return"));
+        fs::write(&mcp_path, "[]").unwrap();
+        let (_, report) =
+            response_json(crate::handlers::mcp::sync_mcp_servers(State(state.clone())).await).await;
+        assert_eq!(report["success"], false);
+        assert_eq!(report["applied"], 0);
+        assert_eq!(report["failed"], 1);
+        assert_eq!(fs::read_to_string(&mcp_path).unwrap(), "[]");
+        fs::write(&mcp_path, "{}").unwrap();
+        let (_, report) =
+            response_json(crate::handlers::mcp::sync_mcp_servers(State(state)).await).await;
+        assert_eq!(report["success"], true);
+        assert_eq!(report["applied"], 1);
     }
 
     #[tokio::test]
