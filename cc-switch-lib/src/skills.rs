@@ -15,6 +15,9 @@ use crate::error::AppError;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod recovery;
+pub use recovery::{list_backups, restore_backup, SkillBackup};
+
 /// Get the SSOT skills directory (~/.cc-switch/skills/).
 fn get_ssot_dir() -> PathBuf {
     config::get_app_config_dir().join("skills")
@@ -61,22 +64,23 @@ fn sync_skills(skills: &[SkillRecord], ssot_dir: &Path, target_dir: &Path) -> Re
                 skill.directory
             )));
         }
+        let source_version = directory_version(&source)?;
+        let target_version = directory_version(&dest)?;
+        if source_version == target_version {
+            continue;
+        }
         // Finish copying before touching the previous installation.
         let stage = tempfile::tempdir_in(target_dir).map_err(|e| AppError::io(target_dir, e))?;
         let staged = stage.path().join("skill");
         copy_dir_recursive(&source, &staged)?;
-        let backup = backup_target(&dest, target_dir)?;
-        if let Err(error) = fs::rename(&staged, &dest) {
-            if let Some(backup) = backup {
-                fs::rename(&backup, &dest).map_err(|restore| {
-                    AppError::Config(format!(
-                        "Publish failed: {error}; restore failed: {restore}; backup: {}",
-                        backup.display()
-                    ))
-                })?;
-            }
-            return Err(AppError::io(&dest, error));
+        if directory_version(&source)? != source_version
+            || directory_version(&staged)? != source_version
+        {
+            return Err(AppError::Conflict {
+                path: source.display().to_string(),
+            });
         }
+        publish_directory(&staged, &dest, target_dir, target_version)?;
     }
 
     log::info!(
@@ -84,6 +88,78 @@ fn sync_skills(skills: &[SkillRecord], ssot_dir: &Path, target_dir: &Path) -> Re
         skills.iter().filter(|skill| skill.enabled).count(),
         target_dir.display()
     );
+    Ok(())
+}
+
+/// Content digest without following links. Absence and an empty directory differ.
+fn directory_version(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    use sha2::{Digest, Sha256};
+    fn hash_tree(path: &Path, hasher: &mut Sha256) -> Result<(), AppError> {
+        reject_symlink(path)?;
+        let metadata = fs::metadata(path).map_err(|e| AppError::io(path, e))?;
+        if metadata.is_file() {
+            hasher.update(b"file");
+            let bytes = fs::read(path).map_err(|e| AppError::io(path, e))?;
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        } else if metadata.is_dir() {
+            hasher.update(b"dir");
+            let mut entries = fs::read_dir(path)
+                .map_err(|e| AppError::io(path, e))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| AppError::io(path, e))?;
+            entries.sort_by_key(|entry| entry.file_name());
+            hasher.update((entries.len() as u64).to_le_bytes());
+            for entry in entries {
+                let name = entry.file_name();
+                let bytes = name.as_encoded_bytes();
+                hasher.update((bytes.len() as u64).to_le_bytes());
+                hasher.update(bytes);
+                hash_tree(&entry.path(), hasher)?;
+            }
+        } else {
+            return Err(AppError::InvalidInput(format!(
+                "Unsupported skill file: {}",
+                path.display()
+            )));
+        }
+        Ok(())
+    }
+    reject_symlink(path)?;
+    match fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(AppError::io(path, e)),
+        Ok(_) => {
+            let mut hash = Sha256::new();
+            hash_tree(path, &mut hash)?;
+            Ok(Some(hash.finalize().to_vec()))
+        }
+    }
+}
+
+fn publish_directory(
+    staged: &Path,
+    dest: &Path,
+    parent: &Path,
+    expected: Option<Vec<u8>>,
+) -> Result<(), AppError> {
+    if directory_version(dest)? != expected {
+        return Err(AppError::Conflict {
+            path: dest.display().to_string(),
+        });
+    }
+    let backup = backup_target(dest, parent)?;
+    if let Err(error) = fs::rename(staged, dest) {
+        if let Some(backup) = backup {
+            fs::rename(&backup, dest).map_err(|restore| {
+                AppError::Config(format!(
+                    "Publish failed: {error}; restore failed: {restore}; backup: {}",
+                    backup.display()
+                ))
+            })?;
+        }
+        return Err(AppError::io(dest, error));
+    }
     Ok(())
 }
 
@@ -507,6 +583,39 @@ mod tests {
     fn install(root: &Path, name: &str, content: &str) {
         fs::create_dir_all(root.join(name)).unwrap();
         fs::write(root.join(name).join("SKILL.md"), content).unwrap();
+    }
+
+    #[test]
+    fn unchanged_sync_is_a_noop_without_backup_growth() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("ssot");
+        let target = temp.path().join("target");
+        install(&source, "enabled", "identical");
+        install(&target, "enabled", "identical");
+        sync_skills(&[skill("enabled", true)], &source, &target).unwrap();
+        sync_skills(&[skill("enabled", true)], &source, &target).unwrap();
+        assert!(!target.join(".cc-switch-backups").exists());
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn changed_destination_is_preserved_when_publication_conflicts() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        let staging = temp.path().join("staging");
+        install(&target, "enabled", "old content");
+        install(&staging, "enabled", "intended content");
+        let dest = target.join("enabled");
+        let original = directory_version(&dest).unwrap();
+        fs::write(dest.join("SKILL.md"), "external edit").unwrap();
+        let result = publish_directory(&staging.join("enabled"), &dest, &target, original);
+        assert!(matches!(result, Err(AppError::Conflict { .. })));
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "external edit"
+        );
+        assert!(!target.join(".cc-switch-backups").exists());
+        assert!(staging.join("enabled/SKILL.md").is_file());
     }
 
     #[test]

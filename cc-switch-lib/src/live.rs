@@ -2,7 +2,9 @@
 //!
 //! Handles syncing provider settings to Claude Code's live config files.
 
-use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
+#[cfg(test)]
+use crate::config::write_json_file;
+use crate::config::{get_claude_settings_path, read_json_file, update_json_file};
 use crate::error::AppError;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -146,6 +148,7 @@ pub fn settings_for_live(
 }
 
 /// Write Claude settings to disk (atomic write)
+#[cfg(test)]
 fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
     let path = get_claude_settings_path();
     write_json_file(&path, settings)
@@ -162,13 +165,15 @@ fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
 /// the env for proxy routing before calling this function.
 pub fn apply_provider_to_live(settings_config: &serde_json::Value) -> Result<(), AppError> {
     let settings = sanitize_claude_settings_for_live(settings_config);
-    let mut current = read_live_settings_raw()?;
-    if let Some(current_obj) = current.as_object_mut() {
+    update_json_file(&get_claude_settings_path(), |current| {
         if let Some(env) = settings.get("env") {
-            current_obj.insert("env".into(), env.clone());
+            current
+                .as_object_mut()
+                .expect("validated by writer")
+                .insert("env".into(), env.clone());
         }
-    }
-    write_live_settings_raw(&current)?;
+        Ok(())
+    })?;
     log::info!(
         "Applied provider settings to live Claude config at {:?}",
         get_live_settings_path()

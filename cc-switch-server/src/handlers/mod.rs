@@ -29,7 +29,11 @@ async fn file_mutation(
 fn sync_failure(kind: &str, error: &cc_switch_lib::error::AppError) -> axum::response::Response {
     use axum::response::IntoResponse;
     (
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        if matches!(error, cc_switch_lib::error::AppError::Conflict { .. }) {
+            axum::http::StatusCode::CONFLICT
+        } else {
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        },
         axum::Json(serde_json::json!({
             "error": format!("Record saved, but {kind} sync failed: {error}. Retry Sync."),
             "saved": true,

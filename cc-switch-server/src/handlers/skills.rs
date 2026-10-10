@@ -219,3 +219,202 @@ pub async fn toggle_skill(
     })
     .await
 }
+
+pub async fn list_skill_backups(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
+    super::file_mutation(move || {
+        let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        match cc_switch_lib::skills::list_backups() {
+            Ok(backups) => Json(json!({"backups": backups})).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response(),
+        }
+    })
+    .await
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreBackupRequest {
+    backup_id: String,
+}
+
+pub async fn restore_skill_backup(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<RestoreBackupRequest>,
+) -> impl IntoResponse {
+    super::file_mutation(move || {
+        let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let backup = match cc_switch_lib::skills::list_backups() {
+            Ok(backups) => backups.into_iter().find(|backup| backup.id == body.backup_id),
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+        };
+        let Some(backup) = backup else {
+            return (StatusCode::NOT_FOUND, Json(json!({"error": "Backup not found"}))).into_response();
+        };
+        let records = match state.db.get_all_skills(APP_TYPE) {
+            Ok(records) => records,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+        };
+        let skill = records.into_iter().find(|skill| skill.directory == backup.directory).unwrap_or_else(|| SkillRecord {
+            id: format!("recovered:{}", body.backup_id),
+            name: backup.directory.clone(), description: None, directory: backup.directory,
+            app_type: APP_TYPE.into(), enabled: true, collection: Some("Recovered".into()),
+            installed_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64,
+            repo_owner: None, repo_name: None, repo_branch: None, readme_url: None,
+        });
+        if let Err(e) = state.db.validate_skill(&skill).and_then(|()| cc_switch_lib::skills::restore_backup(&body.backup_id).map(|_| ())) {
+            let status = if matches!(e, cc_switch_lib::error::AppError::Conflict { .. }) { StatusCode::CONFLICT } else { StatusCode::BAD_REQUEST };
+            return (status, Json(json!({"error": e.to_string()}))).into_response();
+        }
+        if let Err(e) = state.db.save_skill(&skill) {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("Source restored, but record save failed: {e}. Retry Restore."), "saved": true}))).into_response();
+        }
+        match cc_switch_lib::skills::sync_enabled_to_claude(&state.db, APP_TYPE) {
+            Ok(()) => Json(json!({"success": true, "directory": skill.directory, "enabled": skill.enabled})).into_response(),
+            Err(e) => super::sync_failure("Skills restoration", &e),
+        }
+    }).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cc_switch_lib::database::Database;
+    use cc_switch_lib::oauth::{CodexOAuthManager, CopilotAuthManager};
+    use std::fs;
+
+    struct TestHome {
+        path: std::path::PathBuf,
+        previous: Option<std::ffi::OsString>,
+    }
+    impl Drop for TestHome {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe { std::env::set_var("CC_SWITCH_TEST_HOME", value) },
+                None => unsafe { std::env::remove_var("CC_SWITCH_TEST_HOME") },
+            }
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    async fn response_json(response: impl IntoResponse) -> (StatusCode, serde_json::Value) {
+        let response = response.into_response();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 1_000_000)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn restores_deleted_records_preserves_disabled_state_and_reports_partial_failure() {
+        let home = TestHome {
+            path: std::env::temp_dir()
+                .join(format!("cc-skill-recovery-test-{}", rand::random::<u64>())),
+            previous: std::env::var_os("CC_SWITCH_TEST_HOME"),
+        };
+        fs::create_dir_all(&home.path).unwrap();
+        unsafe {
+            std::env::set_var("CC_SWITCH_TEST_HOME", &home.path);
+        }
+        let state = Arc::new(AppState {
+            db: Arc::new(Database::init().unwrap()),
+            token: "test".into(),
+            proxy_listen_port: 15721,
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+        });
+        let name = "test-00000000-0000-0000-0000-000000000000";
+        let live_root = home.path.join(".claude/skills");
+        let backup = live_root.join(".cc-switch-backups").join(name);
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(backup.join("SKILL.md"), "restored instructions").unwrap();
+        let id = format!("live:{name}");
+        let (status, body) = response_json(list_skill_backups(State(state.clone())).await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["backups"].as_array().unwrap().len(), 1);
+        let (status, _) = response_json(
+            restore_skill_backup(
+                State(state.clone()),
+                Json(RestoreBackupRequest {
+                    backup_id: "live:../escape".into(),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(state.db.get_all_skills(APP_TYPE).unwrap().is_empty());
+        let (status, body) = response_json(
+            restore_skill_backup(
+                State(state.clone()),
+                Json(RestoreBackupRequest {
+                    backup_id: id.clone(),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["enabled"], true);
+        assert_eq!(
+            fs::read_to_string(live_root.join("test/SKILL.md")).unwrap(),
+            "restored instructions"
+        );
+        let record = state.db.get_all_skills(APP_TYPE).unwrap().pop().unwrap();
+        assert_eq!(record.directory, "test");
+        let (status, _) =
+            response_json(toggle_skill(State(state.clone()), Path(record.id.clone())).await).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, body) = response_json(
+            restore_skill_backup(
+                State(state.clone()),
+                Json(RestoreBackupRequest {
+                    backup_id: id.clone(),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["enabled"], false);
+        assert!(!live_root.join("test").exists());
+        assert!(backup.join("SKILL.md").exists());
+
+        #[cfg(unix)]
+        {
+            let mut record = record;
+            record.enabled = true;
+            state.db.save_skill(&record).unwrap();
+            let external = home.path.join("external");
+            fs::create_dir(&external).unwrap();
+            fs::write(external.join("SKILL.md"), "user instructions").unwrap();
+            std::os::unix::fs::symlink(&external, live_root.join("test")).unwrap();
+            fs::write(
+                home.path.join(".cc-switch/skills/test/SKILL.md"),
+                "changed instructions",
+            )
+            .unwrap();
+            let (status, body) = response_json(
+                restore_skill_backup(State(state), Json(RestoreBackupRequest { backup_id: id }))
+                    .await,
+            )
+            .await;
+            assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(body["saved"], true);
+            assert!(body["error"].as_str().unwrap().contains("Retry Sync"));
+            assert_eq!(
+                fs::read_to_string(external.join("SKILL.md")).unwrap(),
+                "user instructions"
+            );
+            assert_eq!(
+                fs::read_to_string(home.path.join(".cc-switch/skills/test/SKILL.md")).unwrap(),
+                "restored instructions"
+            );
+        }
+    }
+}
