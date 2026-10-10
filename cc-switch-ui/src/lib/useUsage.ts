@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, queryOptions } from '@tanstack/react-query';
 import {
   getProxyUsageSummary,
   getProviderStats,
@@ -26,7 +26,7 @@ export const usageKeys = {
   modelStats: (startDate?: number, endDate?: number) =>
     [...usageKeys.all, 'model-stats', startDate ?? 0, endDate ?? 0] as const,
   logs: (params: LogsQueryParams) =>
-    [...usageKeys.all, 'logs', JSON.stringify(params)] as const,
+    [...usageKeys.all, 'logs', params] as const,
   logDetail: (id: number) =>
     [...usageKeys.all, 'detail', id] as const,
   copilotUsage: () => [...usageKeys.all, 'copilot-usage'] as const,
@@ -50,11 +50,13 @@ export function useProviderStats(
   startDate?: number,
   endDate?: number,
   refetchInterval = DEFAULT_REFETCH_MS,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: usageKeys.providerStats(startDate, endDate),
     queryFn: ({ signal }) => getProviderStats(startDate, endDate, signal),
     refetchInterval,
+    enabled,
   });
 }
 
@@ -62,20 +64,33 @@ export function useModelStats(
   startDate?: number,
   endDate?: number,
   refetchInterval = DEFAULT_REFETCH_MS,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: usageKeys.modelStats(startDate, endDate),
     queryFn: ({ signal }) => getModelStats(startDate, endDate, signal),
     refetchInterval,
+    enabled,
+  });
+}
+
+export function requestLogsOptions(params: LogsQueryParams, refetchInterval = DEFAULT_REFETCH_MS) {
+  return queryOptions({
+    queryKey: usageKeys.logs(params),
+    queryFn: ({ signal }) => getRequestLogs(params, signal),
+    refetchInterval: refetchInterval || false,
+    placeholderData: (previous, previousQuery) => {
+      const old = previousQuery?.queryKey[2];
+      // Keep rows only while changing pages within the same filters.
+      if (!old || typeof old !== 'object') return undefined;
+      const filters = ['app_type', 'provider_id', 'model', 'status_code', 'start_date', 'end_date', 'page_size'] as const;
+      return filters.every((key) => old[key] === params[key]) ? previous : undefined;
+    },
   });
 }
 
 export function useRequestLogs(params: LogsQueryParams, refetchInterval = DEFAULT_REFETCH_MS) {
-  return useQuery({
-    queryKey: usageKeys.logs(params),
-    queryFn: ({ signal }) => getRequestLogs(params, signal),
-    refetchInterval,
-  });
+  return useQuery(requestLogsOptions(params, refetchInterval));
 }
 
 export function useCopilotUsage() {

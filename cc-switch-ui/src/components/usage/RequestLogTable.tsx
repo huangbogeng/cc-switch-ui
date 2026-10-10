@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import type { RequestLogDetail } from '@/api';
-import { useRequestLogs } from '@/lib/useUsage';
+import { requestLogsOptions, useRequestLogs } from '@/lib/useUsage';
 import type { LogsQueryParams } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const pageSize = 20;
@@ -25,12 +27,17 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
     () => ({ ...params, page, page_size: pageSize }),
     [params, page],
   );
-  const { data, isLoading, isError } = useRequestLogs(queryParams, refreshMs);
+  const { data, isLoading, isError, isPlaceholderData, isFetching } = useRequestLogs(queryParams, refreshMs);
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0;
 
+  const prefetchNext = () => {
+    if (!data || isPlaceholderData || page + 1 >= totalPages) return;
+    void queryClient.prefetchQuery(requestLogsOptions({ ...queryParams, page: page + 1 }, refreshMs));
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-busy={isFetching}>
       {/* summary + pagination */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
@@ -42,7 +49,7 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
             aria-label="Previous log page"
             variant="ghost"
             size="sm"
-            disabled={page <= 0}
+            disabled={page <= 0 || isPlaceholderData}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -54,7 +61,9 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
             aria-label="Next log page"
             variant="ghost"
             size="sm"
-            disabled={totalPages <= 1 || page >= totalPages - 1}
+            disabled={isPlaceholderData || totalPages <= 1 || page >= totalPages - 1}
+            onMouseEnter={prefetchNext}
+            onFocus={prefetchNext}
             onClick={() => setPage((p) => p + 1)}
           >
             <ArrowRight className="h-4 w-4" />
@@ -62,6 +71,7 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
         </div>
       </div>
 
+      {isFetching && <div role="status" className="text-xs text-muted-foreground">{isPlaceholderData ? 'Loading next page; showing previous results…' : 'Refreshing logs…'}</div>}
       {/* table */}
       <div className="overflow-x-auto rounded-xl border border-white/5">
         <table className="w-full text-sm">
