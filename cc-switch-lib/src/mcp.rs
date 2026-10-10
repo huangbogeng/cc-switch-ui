@@ -27,25 +27,15 @@ fn write_claude_mcp_json(value: &Value) -> Result<(), AppError> {
 
 /// Sync all enabled MCP servers from the database to ~/.claude.json.
 ///
-/// Reads the current ~/.claude.json, replaces the `mcpServers` node
-/// with the enabled servers from the database, and writes back.
+/// Merges managed entries into `mcpServers`; unrelated servers are preserved.
+/// Disabled managed entries are removed.
 /// Other root fields (e.g. `hasCompletedOnboarding`) are preserved.
 pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppError> {
-    let servers = db.get_enabled_mcp_servers(app_type)?;
+    let servers = db.get_all_mcp_servers(app_type)?;
 
     let mut root = read_claude_mcp_json()?;
 
-    let mut mcp_servers_map = serde_json::Map::new();
-    for server in &servers {
-        let spec = strip_internal_fields(&server.server_spec);
-        mcp_servers_map.insert(server.id.clone(), spec);
-    }
-
-    let root_obj = root
-        .as_object_mut()
-        .ok_or_else(|| AppError::Config("~/.claude.json root is not an object".into()))?;
-
-    root_obj.insert("mcpServers".into(), Value::Object(mcp_servers_map));
+    merge_managed(&mut root, &servers)?;
 
     write_claude_mcp_json(&root)?;
 
@@ -54,6 +44,47 @@ pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppEr
         servers.len(),
         app_type
     );
+    Ok(())
+}
+
+fn merge_managed(root: &mut Value, servers: &[McpServerRecord]) -> Result<(), AppError> {
+    let root_obj = root
+        .as_object_mut()
+        .ok_or_else(|| AppError::Config("~/.claude.json root is not an object".into()))?;
+    let node = root_obj
+        .entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}));
+    let map = node.as_object_mut().ok_or_else(|| {
+        AppError::Config("mcpServers is not an object; refusing to overwrite".into())
+    })?;
+    for server in servers {
+        if server.enabled {
+            map.insert(
+                server.id.clone(),
+                strip_internal_fields(&server.server_spec),
+            );
+        } else {
+            map.remove(&server.id);
+        }
+    }
+
+    Ok(())
+}
+
+/// Remove one managed server without changing external entries.
+pub fn remove_from_claude(id: &str) -> Result<(), AppError> {
+    let mut root = read_claude_mcp_json()?;
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| AppError::Config("~/.claude.json root is not an object".into()))?;
+    if let Some(node) = obj.get_mut("mcpServers") {
+        let map = node.as_object_mut().ok_or_else(|| {
+            AppError::Config("mcpServers is not an object; refusing to overwrite".into())
+        })?;
+        if map.remove(id).is_some() {
+            write_claude_mcp_json(&root)?;
+        }
+    }
     Ok(())
 }
 
@@ -133,6 +164,39 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn server(id: &str, enabled: bool) -> McpServerRecord {
+        McpServerRecord {
+            id: id.into(),
+            name: id.into(),
+            app_type: "claude_code".into(),
+            enabled,
+            server_spec: json!({"command": "new", "name": "internal"}),
+        }
+    }
+
+    #[test]
+    fn sync_preserves_external_servers_and_root_fields() {
+        let mut root = json!({"mcpServers": {"external": {"command": "keep"}, "enabled": {"command": "old"}, "disabled": {}}, "other": 42});
+        merge_managed(
+            &mut root,
+            &[server("enabled", true), server("disabled", false)],
+        )
+        .unwrap();
+        assert_eq!(root["mcpServers"]["external"], json!({"command": "keep"}));
+        assert_eq!(root["mcpServers"]["enabled"], json!({"command": "new"}));
+        assert!(root["mcpServers"].get("disabled").is_none());
+        assert_eq!(root["other"], 42);
+    }
+
+    #[test]
+    fn sync_refuses_malformed_config_without_overwriting_it() {
+        for mut root in [json!([]), json!({"mcpServers": "invalid"})] {
+            let original = root.clone();
+            assert!(merge_managed(&mut root, &[server("enabled", true)]).is_err());
+            assert_eq!(root, original);
+        }
+    }
 
     #[test]
     fn strip_internal_fields_removes_ui_only_keys() {

@@ -231,3 +231,9 @@ CC Switch UI 基于开源项目 [cc-switch](https://github.com/farion1231/cc-swi
 ## License
 
 本项目基于 [MIT License](LICENSE) 开源。
+
+### MCP 与 Skills 同步保护
+
+保存或启停托管的 MCP/Skill 会同步应用到 Claude Code。记录已保存但同步失败时，API 返回 `saved: true`；修复错误原因后点击 **Sync** 重试。一次同步可能在处理后续 Skill 失败前已经应用前面的条目，重试会继续应用期望状态。
+
+同步保留尚未导入或添加到 CC Switch 的 MCP 条目和 Skill 目录。禁用、删除托管 Skill 或替换已有安装时，旧目录会移入 `~/.claude/skills/.cc-switch-backups/`，备份需要手动清理。恢复时先禁用对应的托管记录，再把备份复制回原 Skill 目录。删除记录会保留 `~/.cc-switch/skills/` 中的源文件。Skill 目录只能使用单个目录名；托管目录或源内容包含符号链接时会拒绝操作，不会跟随链接。

@@ -25,79 +25,124 @@ fn get_claude_skills_dir() -> PathBuf {
     config::get_claude_config_dir().join("skills")
 }
 
-/// Sync all enabled skills from the database to ~/.claude/skills/.
-///
-/// Two-phase:
-/// 1. Cleanup — remove directories in the target that are not in the
-///    enabled set (orphaned skills from previous syncs).
-/// 2. Write — copy each enabled skill from SSOT to the target dir.
+/// Sync managed skills only. External directories are preserved; replaced or
+/// disabled installations are moved to `.cc-switch-backups` for recovery.
 pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppError> {
-    let skills = db.get_enabled_skills(app_type)?;
-    let ssot_dir = get_ssot_dir();
-    let target_dir = get_claude_skills_dir();
+    let skills = db.get_all_skills(app_type)?;
+    sync_skills(&skills, &get_ssot_dir(), &get_claude_skills_dir())
+}
 
-    // Index enabled skills by directory name
-    let enabled_dirs: std::collections::HashSet<String> =
-        skills.iter().map(|s| s.directory.clone()).collect();
-
-    // Phase 1: Cleanup orphaned skills in target dir
-    if target_dir.exists() {
-        for entry in fs::read_dir(&target_dir).map_err(|e| AppError::io(&target_dir, e))? {
-            let entry = entry.map_err(|e| AppError::io(&target_dir, e))?;
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if dir_name.starts_with('.') {
-                continue;
-            }
-            if !enabled_dirs.contains(&dir_name) {
-                log::info!("Removing orphaned skill from target: {}", dir_name);
-                if let Err(e) = fs::remove_dir_all(&path) {
-                    log::warn!("Failed to remove orphaned skill '{}': {}", dir_name, e);
-                }
-            }
+fn sync_skills(skills: &[SkillRecord], ssot_dir: &Path, target_dir: &Path) -> Result<(), AppError> {
+    let mut directories = std::collections::HashSet::new();
+    for skill in skills {
+        validate_directory(&skill.directory)?;
+        if !directories.insert(&skill.directory) {
+            return Err(AppError::Config(format!(
+                "Duplicate managed skill directory: {}",
+                skill.directory
+            )));
         }
     }
-
-    // Phase 2: Copy enabled skills
-    fs::create_dir_all(&target_dir).map_err(|e| AppError::io(&target_dir, e))?;
-
-    for skill in &skills {
+    reject_symlink(ssot_dir)?;
+    reject_symlink(target_dir)?;
+    fs::create_dir_all(target_dir).map_err(|e| AppError::io(target_dir, e))?;
+    for skill in skills {
         let source = ssot_dir.join(&skill.directory);
         let dest = target_dir.join(&skill.directory);
-
-        if !source.exists() {
-            log::warn!(
-                "Skill '{}' not found in SSOT at {}, skipping",
-                skill.directory,
-                source.display()
-            );
+        reject_symlink(&dest)?;
+        if !skill.enabled {
+            backup_target(&dest, target_dir)?;
             continue;
         }
-
-        // Remove existing target before copy
-        if dest.exists() {
-            if let Err(e) = fs::remove_dir_all(&dest) {
-                log::warn!(
-                    "Failed to remove existing skill dir '{}': {}",
-                    dest.display(),
-                    e
-                );
-                continue;
-            }
+        reject_symlink(&source)?;
+        if !source.join("SKILL.md").is_file() {
+            return Err(AppError::Config(format!(
+                "Skill '{}' has no SKILL.md; target preserved",
+                skill.directory
+            )));
         }
-
-        copy_dir_recursive(&source, &dest)?;
-        log::debug!("Synced skill '{}' to {}", skill.directory, dest.display());
+        // Finish copying before touching the previous installation.
+        let stage = tempfile::tempdir_in(target_dir).map_err(|e| AppError::io(target_dir, e))?;
+        let staged = stage.path().join("skill");
+        copy_dir_recursive(&source, &staged)?;
+        let backup = backup_target(&dest, target_dir)?;
+        if let Err(error) = fs::rename(&staged, &dest) {
+            if let Some(backup) = backup {
+                fs::rename(&backup, &dest).map_err(|restore| {
+                    AppError::Config(format!(
+                        "Publish failed: {error}; restore failed: {restore}; backup: {}",
+                        backup.display()
+                    ))
+                })?;
+            }
+            return Err(AppError::io(&dest, error));
+        }
     }
 
     log::info!(
-        "Synced {} skills to ~/.claude/skills/ for app_type={}",
-        skills.len(),
-        app_type
+        "Synced {} enabled skills to {}",
+        skills.iter().filter(|skill| skill.enabled).count(),
+        target_dir.display()
     );
+    Ok(())
+}
+
+/// Skill directories are a single portable path component, never a filesystem path.
+pub fn validate_directory(directory: &str) -> Result<(), AppError> {
+    if directory.is_empty()
+        || directory.trim() != directory
+        || directory.starts_with('.')
+        || directory.ends_with('.')
+        || directory
+            .chars()
+            .any(|c| c == '/' || c == '\\' || c == ':' || c.is_control())
+    {
+        return Err(AppError::InvalidInput(
+            "Skill directory must be a single non-hidden directory name".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_symlink(path: &Path) -> Result<(), AppError> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(AppError::InvalidInput(format!(
+            "Refusing symlink: {}",
+            path.display()
+        ))),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(AppError::io(path, e)),
+    }
+}
+
+fn backup_target(dest: &Path, target_dir: &Path) -> Result<Option<PathBuf>, AppError> {
+    if !dest.exists() {
+        return Ok(None);
+    }
+    let backup_root = target_dir.join(".cc-switch-backups");
+    reject_symlink(&backup_root)?;
+    fs::create_dir_all(&backup_root).map_err(|e| AppError::io(&backup_root, e))?;
+    let backup = backup_root.join(format!(
+        "{}-{}",
+        dest.file_name().unwrap().to_string_lossy(),
+        uuid::Uuid::new_v4()
+    ));
+    fs::rename(dest, &backup).map_err(|e| AppError::io(dest, e))?;
+    log::info!(
+        "Previous skill installation backed up to {}",
+        backup.display()
+    );
+    Ok(Some(backup))
+}
+
+pub fn remove_from_claude(directory: &str) -> Result<(), AppError> {
+    validate_directory(directory)?;
+    let target = get_claude_skills_dir();
+    reject_symlink(&target)?;
+    let dest = target.join(directory);
+    reject_symlink(&dest)?;
+    backup_target(&dest, &target)?;
     Ok(())
 }
 
@@ -108,6 +153,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), AppError> {
     for entry in fs::read_dir(src).map_err(|e| AppError::io(src, e))? {
         let entry = entry.map_err(|e| AppError::io(src, e))?;
         let path = entry.path();
+        reject_symlink(&path)?;
         let dest_path = dest.join(entry.file_name());
 
         if path.is_dir() {
@@ -150,27 +196,28 @@ fn parse_skill_md(path: &Path) -> (String, Option<String>) {
 /// Write a SKILL.md file to the SSOT for a given skill record.
 /// Creates the directory and file if they don't exist.
 pub fn ensure_skill_ssot(skill: &SkillRecord) -> Result<(), AppError> {
+    validate_directory(&skill.directory)?;
     let ssot_dir = get_ssot_dir();
+    reject_symlink(&ssot_dir)?;
     let skill_dir = ssot_dir.join(&skill.directory);
 
+    reject_symlink(&skill_dir)?;
+    reject_symlink(&skill_dir.join("SKILL.md"))?;
     if skill_dir.join("SKILL.md").exists() {
         return Ok(());
     }
 
     fs::create_dir_all(&skill_dir).map_err(|e| AppError::io(&skill_dir, e))?;
 
-    let content = format!(
-        "---\nname: {}\n{}\n---\n",
-        skill.name,
-        skill
-            .description
-            .as_ref()
-            .map(|d| format!("description: \"{}\"", d.replace('"', "\\\"")))
-            .unwrap_or_default(),
-    );
+    let mut metadata = serde_json::json!({"name": skill.name});
+    if let Some(description) = &skill.description {
+        metadata["description"] = serde_json::json!(description);
+    }
+    let yaml = serde_yaml::to_string(&metadata)
+        .map_err(|e| AppError::Config(format!("Invalid skill metadata: {e}")))?;
+    let content = format!("---\n{yaml}---\n");
 
-    fs::write(skill_dir.join("SKILL.md"), &content)
-        .map_err(|e| AppError::io(skill_dir.join("SKILL.md"), e))?;
+    config::atomic_write(&skill_dir.join("SKILL.md"), content.as_bytes())?;
 
     log::info!(
         "Created SSOT for skill '{}' at {}",
@@ -198,6 +245,13 @@ fn scan_for_skills(
     result: &mut Vec<(PathBuf, String)>,
     depth: usize,
 ) -> Result<(), AppError> {
+    if fs::symlink_metadata(current)
+        .map_err(|e| AppError::io(current, e))?
+        .file_type()
+        .is_symlink()
+    {
+        return Ok(());
+    }
     if depth > 8 {
         return Ok(());
     }
@@ -287,7 +341,10 @@ fn import_skill_from_dir(
     source_dir: &Path,
     dir_name: &str,
 ) -> Result<usize, AppError> {
+    validate_directory(dir_name)?;
+    reject_symlink(source_dir)?;
     let skill_md = source_dir.join("SKILL.md");
+    reject_symlink(&skill_md)?;
     let (name, description) = parse_skill_md(&skill_md);
     let display_name = if name.is_empty() {
         dir_name.to_string()
@@ -298,9 +355,14 @@ fn import_skill_from_dir(
     // Copy whole skill directory to SSOT
     let ssot_dir = get_ssot_dir();
     let ssot_dest = ssot_dir.join(dir_name);
+    reject_symlink(&ssot_dir)?;
+    reject_symlink(&ssot_dest)?;
     if !ssot_dest.exists() {
         fs::create_dir_all(&ssot_dir).map_err(|e| AppError::io(&ssot_dir, e))?;
-        copy_dir_recursive(source_dir, &ssot_dest)?;
+        let stage = tempfile::tempdir_in(&ssot_dir).map_err(|e| AppError::io(&ssot_dir, e))?;
+        let staged = stage.path().join("skill");
+        copy_dir_recursive(source_dir, &staged)?;
+        fs::rename(&staged, &ssot_dest).map_err(|e| AppError::io(&ssot_dest, e))?;
     }
 
     let collection = derive_collection(source_dir);
@@ -345,6 +407,8 @@ fn import_skill_from_dir(
 /// Existing skills with a missing collection field get backfilled.
 /// Returns the count of newly imported + backfilled skills.
 pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppError> {
+    reject_symlink(&get_ssot_dir())?;
+    reject_symlink(&get_claude_skills_dir())?;
     let all_existing = db.get_all_skills(app_type)?;
     let mut existing_dirs: std::collections::HashSet<String> =
         all_existing.iter().map(|s| s.directory.clone()).collect();
@@ -433,6 +497,138 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn skill(directory: &str, enabled: bool) -> SkillRecord {
+        serde_json::from_value(serde_json::json!({"id": directory, "name": directory,
+            "directory": directory, "appType": "claude_code", "enabled": enabled}))
+        .unwrap()
+    }
+
+    fn install(root: &Path, name: &str, content: &str) {
+        fs::create_dir_all(root.join(name)).unwrap();
+        fs::write(root.join(name).join("SKILL.md"), content).unwrap();
+    }
+
+    #[test]
+    fn sync_preserves_external_skills_and_backs_up_managed_installations() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("ssot");
+        let target = temp.path().join("target");
+        install(&source, "enabled", "new content");
+        install(&target, "enabled", "old content");
+        install(&target, "disabled", "disabled content");
+        install(&target, "external", "user content");
+        sync_skills(
+            &[skill("enabled", true), skill("disabled", false)],
+            &source,
+            &target,
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(target.join("enabled/SKILL.md")).unwrap(),
+            "new content"
+        );
+        assert_eq!(
+            fs::read_to_string(target.join("external/SKILL.md")).unwrap(),
+            "user content"
+        );
+        assert!(!target.join("disabled").exists());
+        let mut backups: Vec<String> = fs::read_dir(target.join(".cc-switch-backups"))
+            .unwrap()
+            .map(|entry| fs::read_to_string(entry.unwrap().path().join("SKILL.md")).unwrap())
+            .collect();
+        backups.sort();
+        assert_eq!(backups, vec!["disabled content", "old content"]);
+        sync_skills(&[], &source, &target).unwrap();
+        assert!(target.join("external/SKILL.md").exists());
+    }
+
+    #[test]
+    fn missing_source_preserves_previous_installation() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("ssot");
+        let target = temp.path().join("target");
+        install(&target, "enabled", "old content");
+        assert!(sync_skills(&[skill("enabled", true)], &source, &target).is_err());
+        assert_eq!(
+            fs::read_to_string(target.join("enabled/SKILL.md")).unwrap(),
+            "old content"
+        );
+        assert!(!target.join(".cc-switch-backups").exists());
+    }
+
+    #[test]
+    fn invalid_directories_are_rejected_before_filesystem_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        for directory in [
+            "",
+            "..",
+            "../escape",
+            "a/b",
+            "a\\b",
+            "C:escape",
+            ".hidden",
+            "trailing.",
+            " leading",
+        ] {
+            assert!(
+                sync_skills(&[skill(directory, true)], temp.path(), &target).is_err(),
+                "{directory}"
+            );
+            assert!(!target.exists());
+        }
+    }
+
+    #[test]
+    fn legacy_duplicate_directories_fail_before_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        assert!(sync_skills(
+            &[skill("same", true), skill("same", false)],
+            temp.path(),
+            &target
+        )
+        .is_err());
+        assert!(!target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_staging_copy_preserves_old_target_and_external_symlink_contents() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("ssot");
+        let target = temp.path().join("target");
+        let external = temp.path().join("private");
+        fs::write(&external, "private").unwrap();
+        install(&source, "enabled", "new content");
+        install(&target, "enabled", "old content");
+        std::os::unix::fs::symlink(&external, source.join("enabled/linked")).unwrap();
+        assert!(sync_skills(&[skill("enabled", true)], &source, &target).is_err());
+        assert_eq!(
+            fs::read_to_string(target.join("enabled/SKILL.md")).unwrap(),
+            "old content"
+        );
+        assert_eq!(fs::read_to_string(external).unwrap(), "private");
+        assert!(!target.join(".cc-switch-backups").exists());
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disable_refuses_symlink_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        let external = temp.path().join("external");
+        install(&external, "enabled", "user content");
+        fs::create_dir(&target).unwrap();
+        std::os::unix::fs::symlink(external.join("enabled"), target.join("enabled")).unwrap();
+        assert!(sync_skills(&[skill("enabled", false)], temp.path(), &target).is_err());
+        assert_eq!(
+            fs::read_to_string(external.join("enabled/SKILL.md")).unwrap(),
+            "user content"
+        );
+    }
 
     /// `copy_dir_recursive` is tested indirectly through the live config tests.
     /// This test validates basic recursive copy behavior.
