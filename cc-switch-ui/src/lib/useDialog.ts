@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
 
+const openDialogs: symbol[] = [];
+let previousOverflow = '';
+let previousPadding = '';
+
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',
@@ -24,6 +28,17 @@ export function useDialog(open: boolean, onClose: () => void, canClose = true) {
 
   useEffect(() => {
     if (!open) return;
+    const id = Symbol('dialog');
+    if (openDialogs.length === 0) {
+      previousOverflow = document.body.style.overflow;
+      previousPadding = document.body.style.paddingRight;
+      const gap = window.innerWidth - document.documentElement.clientWidth;
+      if (gap > 0 && document.documentElement.clientWidth > 0) {
+        document.body.style.paddingRight = `${parseFloat(getComputedStyle(document.body).paddingRight || '0') + gap}px`;
+      }
+      document.body.style.overflow = 'hidden';
+    }
+    openDialogs.push(id);
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -35,6 +50,7 @@ export function useDialog(open: boolean, onClose: () => void, canClose = true) {
     (focusable()[0] ?? dialog)?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (openDialogs.at(-1) !== id) return;
       if (event.key === 'Escape' && canCloseRef.current) {
         event.preventDefault();
         closeRef.current();
@@ -61,7 +77,13 @@ export function useDialog(open: boolean, onClose: () => void, canClose = true) {
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
+      const wasTop = openDialogs.at(-1) === id;
+      openDialogs.splice(openDialogs.indexOf(id), 1);
+      if (openDialogs.length === 0) {
+        document.body.style.overflow = previousOverflow;
+        document.body.style.paddingRight = previousPadding;
+      }
+      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
     };
   }, [open]);
 

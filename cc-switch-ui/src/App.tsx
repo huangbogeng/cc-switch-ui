@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
+import { ServerStatus } from '@/components/ServerStatus';
 import LoginPage from './pages/LoginPage';
 import { queryClient } from '@/lib/queryClient';
 import { cacheClear } from '@/lib/fetchCache';
@@ -146,10 +147,7 @@ export default function App() {
             <div className="rounded-2xl border border-white/5 bg-black/20 p-4 backdrop-blur-md relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Workspace</div>
-              <div className="mt-1.5 flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                <span className="truncate text-sm font-medium text-foreground">Local Server</span>
-              </div>
+              <ServerStatus />
             </div>
           </div>
 
@@ -160,7 +158,7 @@ export default function App() {
         </aside>
 
         <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 relative">
-          <div className="mx-auto w-full max-w-[1200px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div key={currentPage} className="mx-auto w-full max-w-[1200px] page-enter">
             <Suspense fallback={<div role="status" className="min-h-64 rounded-2xl border border-white/10 bg-card/40 p-6 text-sm text-muted-foreground">Loading page…</div>}>
               {currentPage === 'dashboard' && <DashboardPage />}
               {currentPage === 'providers' && <ProvidersPage />}

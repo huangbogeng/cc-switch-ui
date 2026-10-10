@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import {
   getClaudeUserSettings, saveClaudeUserSettings, restoreClaudeUserSettings,
@@ -14,6 +15,7 @@ import { ErrorAlert } from '@/components/ErrorAlert';
 const defaults: ClaudeUserValues = { timeoutMs: null, nonessentialTraffic: null };
 
 export function ClaudeUserSettingsPanel() {
+  const { confirmAction, confirmation } = useConfirm();
   const [snapshot, setSnapshot] = useState<ClaudeUserSettings | null>(null);
   const [values, setValues] = useState<ClaudeUserValues>(defaults);
   const [baseline, setBaseline] = useState(defaults);
@@ -56,7 +58,7 @@ export function ClaudeUserSettingsPanel() {
     setNotice('');
     if (restore) {
       const original = snapshot.initialValues;
-      if (!original || !window.confirm(`Restore these two user settings from the original configuration backup?\n\nAPI Timeout MS: ${original.timeoutMs ?? 'Claude Code default'}\nNonessential traffic: ${original.nonessentialTraffic === '1' ? 'Disabled' : original.nonessentialTraffic === '0' ? 'Allowed' : original.nonessentialTraffic ?? 'Claude Code default'}\n\nAny unsaved changes in this panel will be discarded. Provider credentials and other settings are preserved.`)) return;
+      if (!original || !await confirmAction(`Restore these two user settings from the original configuration backup?\n\nAPI Timeout MS: ${original.timeoutMs ?? 'Claude Code default'}\nNonessential traffic: ${original.nonessentialTraffic === '1' ? 'Disabled' : original.nonessentialTraffic === '0' ? 'Allowed' : original.nonessentialTraffic ?? 'Claude Code default'}\n\nAny unsaved changes in this panel will be discarded. Provider credentials and other settings are preserved.`, { title: 'Restore configuration?', confirmLabel: 'Restore' })) return;
     } else if (values.timeoutMs !== baseline.timeoutMs && values.timeoutMs !== null
       && (!/^[0-9]+$/.test(values.timeoutMs) || BigInt(values.timeoutMs) <= 0n || BigInt(values.timeoutMs) > 18446744073709551615n)) {
       setError('API timeout must be a positive integer in milliseconds, or blank to use Claude Code default.');
@@ -81,6 +83,7 @@ export function ClaudeUserSettingsPanel() {
 
   return (
     <Card>
+      {confirmation}
       <CardHeader>
         <CardTitle>Claude Code User Settings</CardTitle>
         <p className="text-xs text-muted-foreground">Saved directly to the live file. Provider switching preserves these settings. Start a new Claude Code session to pick up changes.</p>

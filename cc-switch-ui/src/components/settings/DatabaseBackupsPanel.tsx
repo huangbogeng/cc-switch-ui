@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import { getDatabaseBackups, createDatabaseBackup, deleteDatabaseBackup, scheduleDatabaseRestore, cancelDatabaseRestore, type DatabaseBackupStatus, type DatabaseBackup } from '@/api';
 import { Button } from '@/components/ui/button';
@@ -5,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorAlert } from '@/components/ErrorAlert';
 
 export function DatabaseBackupsPanel() {
+  const { confirmAction, confirmation } = useConfirm();
   const [status, setStatus] = useState<DatabaseBackupStatus | null>(null);
   const [busy, setBusy] = useState(true);
   const [needsReload, setNeedsReload] = useState(false);
@@ -31,16 +33,17 @@ export function DatabaseBackupsPanel() {
       if (completed) setNeedsReload(true);
     } finally { setBusy(false); }
   };
-  const restore = (entry: DatabaseBackup) => {
-    if (!confirm(`Restore the database backup from ${new Date(entry.createdAt).toLocaleString()} on the next server restart?\n\nProvider, MCP and Skills records, settings stored in the database, and usage history will be replaced. Live Claude files, installed Skills, OAuth logins and device preferences are not restored. Select a direct provider again afterward.\n\nA safety backup of the current database will be kept before replacement. Changes made before restart will only remain in that safety backup.`)) return;
+  const restore = async (entry: DatabaseBackup) => {
+    if (!await confirmAction(`Restore the database backup from ${new Date(entry.createdAt).toLocaleString()} on the next server restart?\n\nProvider, MCP and Skills records, settings stored in the database, and usage history will be replaced. Live Claude files, installed Skills, OAuth logins and device preferences are not restored. Select a direct provider again afterward.\n\nA safety backup of the current database will be kept before replacement. Changes made before restart will only remain in that safety backup.`, { title: 'Restore configuration?', confirmLabel: 'Restore' })) return;
     void run(() => scheduleDatabaseRestore(entry.id), 'Restore staged. Restart the CC Switch server and reload this page to apply it, then select your direct provider. The current database is unchanged until restart.');
   };
-  const remove = (entry: DatabaseBackup) => {
-    if (!confirm(`Delete the ${entry.kind === 'safety' ? 'safety' : 'manual'} backup from ${new Date(entry.createdAt).toLocaleString()}?`)) return;
+  const remove = async (entry: DatabaseBackup) => {
+    if (!await confirmAction(`Delete the ${entry.kind === 'safety' ? 'safety' : 'manual'} backup from ${new Date(entry.createdAt).toLocaleString()}?`, { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     void run(() => deleteDatabaseBackup(entry.id), 'Backup deleted.');
   };
   const disabled = busy || needsReload;
   return <Card>
+    {confirmation}
     <CardHeader><CardTitle>Database Backups</CardTitle>
       <p className="text-sm text-muted-foreground">Save provider, MCP and Skills records, database settings and usage history. Claude files, installed Skills and OAuth logins are separate.</p>
     </CardHeader>

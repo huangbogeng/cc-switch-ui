@@ -50,17 +50,16 @@ it('keeps a conflicting draft and requires confirmation before reloading it', as
 });
 
 it('previews backup values and only restores after confirmation', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   render(<ClaudeUserSettingsPanel />);
   await screen.findByLabelText('API Timeout MS');
   fireEvent.click(screen.getByRole('button', { name: 'Restore user settings' }));
-  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('API Timeout MS: Claude Code default'));
+  expect(screen.getByRole('alertdialog').textContent).toContain('API Timeout MS: Claude Code default');
   expect(restoreClaudeUserSettings).not.toHaveBeenCalled();
-  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   fireEvent.click(screen.getByRole('button', { name: 'Restore user settings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
   await waitFor(() => expect(restoreClaudeUserSettings).toHaveBeenCalledWith('version-1'));
   expect(await screen.findByRole('status')).toHaveProperty('textContent', 'User settings restored to the live file.');
-  confirm.mockRestore();
 });
 
 it('reports a completed write when refresh fails and prevents another write until reload', async () => {

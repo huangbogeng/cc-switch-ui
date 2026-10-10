@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const routeTarget = providerList.find((provider) => provider.id === proxyStatus?.active_target_provider_id) ?? null;
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8">
       <PageHeader
         title="Dashboard"
         description="Read-only runtime overview. Manage providers and local route from the Providers page."

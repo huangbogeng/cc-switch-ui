@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -130,6 +131,7 @@ const emptyItem: ModelPricingItem = {
 };
 
 export default function ModelPricingPanel() {
+  const { confirmAction, confirmation } = useConfirm();
   const { data: pricing, isLoading } = useModelPricing();
   const upsert = useUpsertModelPricing();
   const del = useDeleteModelPricing();
@@ -162,8 +164,8 @@ export default function ModelPricingPanel() {
     });
   };
 
-  const handleDelete = (modelId: string) => {
-    if (!confirm(`Delete pricing for ${modelId}?`)) return;
+  const handleDelete = async (modelId: string) => {
+    if (!await confirmAction(`Delete pricing for ${modelId}?`, { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     del.mutate(modelId);
   };
 
@@ -176,6 +178,7 @@ export default function ModelPricingPanel() {
 
   return (
     <Card>
+      {confirmation}
       <CardHeader className="flex flex-row items-center justify-between py-3">
         <CardTitle className="text-sm font-medium">Model Pricing</CardTitle>
         {!adding && (

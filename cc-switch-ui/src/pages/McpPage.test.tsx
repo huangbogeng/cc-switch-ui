@@ -89,10 +89,10 @@ it('refreshes committed deletion and blocks mutations while exposing live cleanu
   vi.mocked(deleteMcpServer).mockRejectedValue(new ApiError('Record deleted, live cleanup unfinished.', true));
   render(<McpPage />);
   await screen.findByRole('button', { name: 'Edit Test' });
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
   vi.mocked(listMcpServers).mockResolvedValue({ servers: [] });
   vi.mocked(getManagedDeletion).mockResolvedValue({ pending: { operationId: 'nonce', id: 'test', name: 'Test', kind: 'mcp' } });
   await userEvent.click(screen.getByRole('button', { name: 'Delete Test' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await screen.findByText(/record deleted, live cleanup unfinished/);
   expect(screen.queryByRole('button', { name: 'Edit Test' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Sync' }).hasAttribute('disabled')).toBe(true);
