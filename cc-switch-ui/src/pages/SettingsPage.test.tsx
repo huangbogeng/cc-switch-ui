@@ -1,0 +1,57 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import * as api from '@/api';
+import SettingsPage from './SettingsPage';
+vi.mock('@/api', () => ({ getProxyPort: vi.fn(), getProxyConfig: vi.fn(), setProxyPort: vi.fn(), setProxyConfig: vi.fn(), deleteProxyConfig: vi.fn() }));
+vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => undefined, cacheSet: vi.fn() }));
+vi.mock('@/components/settings/BackupCenter', () => ({ BackupCenter: () => null }));
+vi.mock('@/components/settings/ClaudeUserSettingsPanel', () => ({ ClaudeUserSettingsPanel: () => null }));
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(api.getProxyPort).mockResolvedValue({ port: 15721 });
+  vi.mocked(api.getProxyConfig).mockResolvedValue({ enabled: true, proxy_type: 'http', host: 'localhost', port: 10809 });
+});
+it('requires a successful read before allowing configuration writes and offers retry', async () => {
+  vi.mocked(api.getProxyPort).mockRejectedValueOnce(new Error('Port read failed')).mockResolvedValue({ port: 15722 });
+  vi.mocked(api.getProxyConfig).mockRejectedValueOnce(new Error('Proxy read failed')).mockResolvedValue({ enabled: false, proxy_type: 'http', host: 'localhost', port: 10809 });
+  render(<SettingsPage />);
+  await screen.findByRole('button', { name: 'Retry port configuration' });
+  expect(screen.queryByRole('button', { name: 'Save Port' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Save Outbound Proxy' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry port configuration' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry outbound configuration' }));
+  expect(await screen.findByLabelText('Route Listen Port')).toHaveProperty('value', '15722');
+  await screen.findByRole('button', { name: 'Save Outbound Proxy' });
+  expect(api.setProxyPort).not.toHaveBeenCalled();
+  expect(api.setProxyConfig).not.toHaveBeenCalled();
+});
+it('preserves empty and zero ports for validation instead of silently saving defaults', async () => {
+  render(<SettingsPage />);
+  const route = await screen.findByLabelText('Route Listen Port');
+  fireEvent.change(route, { target: { value: '' } });
+  expect(route).toHaveProperty('value', '');
+  fireEvent.click(screen.getByRole('button', { name: 'Save Port' }));
+  await screen.findByText('Route port must be an integer between 1024 and 65535.');
+  expect(api.setProxyPort).not.toHaveBeenCalled();
+  const outbound = screen.getByLabelText('Port');
+  fireEvent.change(outbound, { target: { value: '0' } });
+  expect(outbound).toHaveProperty('value', '0');
+  fireEvent.click(screen.getByRole('button', { name: 'Save Outbound Proxy' }));
+  await screen.findByText('Proxy port must be an integer between 1 and 65535.');
+  expect(api.setProxyConfig).not.toHaveBeenCalled();
+});
+it('locks fields while saving and clears the saved indicator when the draft changes', async () => {
+  let finish: () => void = () => {};
+  vi.mocked(api.setProxyPort).mockImplementation(() => new Promise(resolve => { finish = () => resolve({ success: true }); }));
+  render(<SettingsPage />);
+  const route = await screen.findByLabelText('Route Listen Port');
+  fireEvent.change(route, { target: { value: '15722' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Port' }));
+  expect(route.hasAttribute('disabled')).toBe(true);
+  finish();
+  await screen.findByRole('button', { name: 'Saved' });
+  await waitFor(() => expect(route.hasAttribute('disabled')).toBe(false));
+  fireEvent.change(route, { target: { value: '15723' } });
+  expect(screen.queryByRole('button', { name: 'Saved' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Save Port' })).toBeTruthy();
+});
