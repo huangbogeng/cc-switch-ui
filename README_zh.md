@@ -1,7 +1,6 @@
 <p align="center">
   <img src="docs/assets/readme-banner.svg" width="960" alt="CC Switch UI — providers, accounts and local routes in one browser">
 </p>
-<p align="center">在浏览器中管理 Claude Code 服务商、订阅账号与本地路由。</p>
 <p align="center">
   <a href="https://github.com/huangbogeng/cc-switch-ui/releases"><img src="https://img.shields.io/github/v/release/huangbogeng/cc-switch-ui?color=3b82f6" alt="Latest release"></a>
   <a href="https://github.com/huangbogeng/cc-switch-ui/actions/workflows/ci.yml"><img src="https://github.com/huangbogeng/cc-switch-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>

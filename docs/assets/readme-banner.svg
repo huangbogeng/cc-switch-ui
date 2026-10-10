@@ -1,42 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
   <title id="title">CC Switch UI</title>
-  <desc id="desc">Providers, accounts and local routes in one browser. Dark blue project banner with the CC Switch route mark.</desc>
-  <defs>
-    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#101923"/><stop offset="1" stop-color="#0B1018"/>
-    </linearGradient>
-    <radialGradient id="light"><stop stop-color="#3B82F6" stop-opacity=".14"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0"/></radialGradient>
-  </defs>
-  <rect x=".5" y=".5" width="1279" height="319" rx="28" fill="url(#surface)" stroke="#243143"/>
-  <ellipse cx="1080" cy="130" rx="240" ry="155" fill="url(#light)"/>
-  <g fill="none" stroke="#29405B" stroke-width="1.5" opacity=".65">
-    <path d="M905 80h110q24 0 24 24v28q0 24 24 24h95"/>
-    <path d="M915 235h58q24 0 24-24v-28q0-24 24-24h137"/>
-    <circle cx="905" cy="80" r="5" fill="#101923"/><circle cx="915" cy="235" r="5" fill="#101923"/>
-    <circle cx="1158" cy="156" r="6" fill="#60A5FA" stroke="#60A5FA"/>
+  <desc id="desc">A minimal CC monogram above the name CC Switch UI. One place for Claude Code providers and local routes.</desc>
+  <rect width="1280" height="360" rx="20" fill="#0D1117"/>
+  <g transform="translate(606 58) scale(1.42)" fill="none" stroke-linecap="round" stroke-width="3.6">
+    <path d="M33.9 14.1a14 14 0 1 0 0 19.8" stroke="#DCE9FB"/>
+    <path d="M29 19a7.07 7.07 0 1 0 0 10" stroke="#60A5FA"/>
   </g>
-  <g transform="translate(64 66) scale(1.8)">
-    <rect width="48" height="48" rx="14" fill="#141C27" stroke="#2A3544"/>
-    <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5">
-      <path d="M13 28v-6a9 9 0 0 1 9-9h12m-5-5 5 5-5 5" stroke="#60A5FA"/>
-      <path d="M35 20v6a9 9 0 0 1-9 9H14m5-5-5 5 5 5" stroke="#3B82F6"/>
-    </g>
-  </g>
-  <g font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif">
-    <text x="180" y="106" fill="#F3F6FA" font-size="46" font-weight="600" letter-spacing="-1.5">CC Switch UI</text>
-    <text x="180" y="143" fill="#A3B1C3" font-size="21">Providers, accounts and local routes. In one browser.</text>
-    <g font-size="14" fill="#B4C6DF">
-      <rect x="64" y="218" width="98" height="32" rx="16" fill="#162234" stroke="#293B53"/>
-      <text x="113" y="239" text-anchor="middle">Providers</text>
-      <rect x="174" y="218" width="86" height="32" rx="16" fill="#162234" stroke="#293B53"/>
-      <text x="217" y="239" text-anchor="middle">OAuth</text>
-      <rect x="272" y="218" width="74" height="32" rx="16" fill="#162234" stroke="#293B53"/>
-      <text x="309" y="239" text-anchor="middle">MCP</text>
-      <rect x="358" y="218" width="80" height="32" rx="16" fill="#162234" stroke="#293B53"/>
-      <text x="398" y="239" text-anchor="middle">Skills</text>
-      <rect x="450" y="218" width="82" height="32" rx="16" fill="#162234" stroke="#293B53"/>
-      <text x="491" y="239" text-anchor="middle">Usage</text>
-    </g>
-    <text x="1180" y="240" text-anchor="end" fill="#7891AF" font-size="13" letter-spacing="2">WEB + RUST</text>
+  <g font-family="Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" text-anchor="middle">
+    <text x="640" y="208" fill="#F0F4FA" font-size="58" font-weight="500" letter-spacing="-2">CC Switch UI</text>
+    <text x="640" y="256" fill="#8F9CAF" font-size="21" font-weight="400" letter-spacing="-.2">One place for Claude Code providers and local routes.</text>
   </g>
 </svg>

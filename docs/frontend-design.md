@@ -24,4 +24,4 @@ Keep page imports lazy and preserve reduced-motion support. Typography must work
 
 Provider brands use the shared `ProviderLogo` component and the bundled assets documented in `public/logos/README.md`. Use the same icon identifier in preset selection and saved providers. Preserve original brand shapes, use a neutral icon for unknown providers, and keep logo display independent from third-party network services.
 
-The app brand uses `BrandMark` and `public/brand-mark.svg`: two opposing rounded routes represent provider switching. The sidebar, login screen and About panel share this mark. `public/favicon.svg` is the same asset at browser-tab scale; version its URL when replacing the mark to avoid stale favicon caches.
+The app brand uses `BrandMark` and `public/brand-mark.svg`: two concentric open C arcs form a compact monogram. The sidebar, login screen and About panel share this mark. The mark has a transparent background and uses the existing blue accent with a pale outer arc. `public/favicon.svg` is the same asset at browser-tab scale; version its URL when replacing the mark to avoid stale favicon caches.
