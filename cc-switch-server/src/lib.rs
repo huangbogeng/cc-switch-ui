@@ -430,6 +430,22 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             "/api/managed-deletion/keep-files",
             post(handlers::managed_deletion::keep_files),
         )
+        .route(
+            "/api/managed-items/:kind/candidates",
+            get(handlers::managed_items::candidates),
+        )
+        .route(
+            "/api/managed-items/:kind/removed",
+            get(handlers::managed_items::removed),
+        )
+        .route(
+            "/api/managed-items/:kind/import",
+            post(handlers::managed_items::import),
+        )
+        .route(
+            "/api/managed-items/:kind/restore",
+            post(handlers::managed_items::restore),
+        )
         .route("/api/skill-backups", get(skills::list_skill_backups))
         .route(
             "/api/skill-backups/restore",
@@ -440,6 +456,10 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/skills/import", post(skills::import_skills))
         .route("/api/skills/sync", post(skills::sync_skills))
         .route("/api/skills/:id/toggle", post(skills::toggle_skill))
+        .route(
+            "/api/skills/collection-state",
+            post(skills::set_collection_enabled),
+        )
         .route("/api/skills/:id", delete(skills::delete_skill))
         .route("/api/usage/summary", get(usage::get_usage_summary))
         .route("/api/usage/provider-stats", get(usage::get_provider_stats))

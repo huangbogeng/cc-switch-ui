@@ -591,3 +591,57 @@ async fn provider_edits_and_failed_selection_recover_without_overwriting_externa
     );
     assert_eq!(service.live(), live);
 }
+
+#[tokio::test]
+async fn selected_import_removal_and_explicit_restore_survive_service_restart() {
+    let mut service = Service::new();
+    let source = service.path(".claude/plugins/example/skills/demo");
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("SKILL.md"), "demo").unwrap();
+    service.start().await;
+    let candidates = service.get("/api/managed-items/skill/candidates").await;
+    assert_eq!(candidates["items"][0]["id"], "demo");
+    assert!(service.get("/api/skills").await["skills"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    service
+        .success("/api/managed-items/skill/import", json!({"ids":["demo"]}))
+        .await;
+    service.success("/api/skills/sync", json!({})).await;
+    assert!(service.path(".claude/skills/demo/SKILL.md").is_file());
+    service
+        .request(Method::DELETE, "/api/skills/local:demo", Value::Null, 200)
+        .await;
+    service.stop();
+    service.start().await;
+    assert!(
+        service.get("/api/managed-items/skill/candidates").await["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        service.post("/api/skills/import", json!({})).await["imported"],
+        0
+    );
+    service.success("/api/skills/sync", json!({})).await;
+    assert!(!service.path(".claude/skills/demo").exists());
+    assert_eq!(
+        service.get("/api/managed-items/skill/removed").await[0]["id"],
+        "demo"
+    );
+    service
+        .success("/api/managed-items/skill/restore", json!({"ids":["demo"]}))
+        .await;
+    assert_eq!(
+        service.get("/api/skills").await["skills"][0]["enabled"],
+        false
+    );
+    service.success("/api/skills/sync", json!({})).await;
+    assert!(!service.path(".claude/skills/demo").exists());
+    service
+        .success("/api/skills/local:demo/toggle", json!({}))
+        .await;
+    assert!(service.path(".claude/skills/demo/SKILL.md").is_file());
+}

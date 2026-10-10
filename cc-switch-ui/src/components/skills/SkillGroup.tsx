@@ -27,11 +27,10 @@ const SkillItem = memo(function SkillItem({
   busy: boolean;
 }) {
   return (
-    <div className="group flex items-start justify-between px-5 py-3 sm:px-6 hover:bg-accent/30">
+    <div className="group flex items-center justify-between px-5 py-3 sm:px-6 hover:bg-accent/30">
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="text-[15px] font-medium">{skill.name || skill.id}</span>
-          <Switch checked={skill.enabled} aria-label={`${skill.enabled ? 'Disable' : 'Enable'} ${skill.name || skill.id}`} disabled={busy} onCheckedChange={() => onToggle(skill)} />
         </div>
         {skill.description && (
           <p className="text-xs text-muted-foreground line-clamp-1">{skill.description}</p>
@@ -57,7 +56,7 @@ const SkillItem = memo(function SkillItem({
         <Pencil className="h-3.5 w-3.5" />
       </Button>
       <Button
-        aria-label={`Delete ${skill.name || skill.id}`}
+        aria-label={`Remove ${skill.name || skill.id}`}
         variant="ghost"
         size="icon"
         onClick={() => onDelete(skill.id)}
@@ -66,6 +65,7 @@ const SkillItem = memo(function SkillItem({
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
+      <Switch className="ml-2" checked={skill.enabled} aria-label={`${skill.enabled ? 'Disable' : 'Enable'} ${skill.name || skill.id}`} disabled={busy} onCheckedChange={() => onToggle(skill)} />
       </div>
     </div>
   );
@@ -78,6 +78,8 @@ export const SkillGroup = memo(function SkillGroup({
   onToggle,
   onDelete,
   onEdit,
+  onToggleGroup,
+  groupSkills = skills,
   busySkillId,
   busy = false,
 }: {
@@ -87,12 +89,19 @@ export const SkillGroup = memo(function SkillGroup({
   onToggle: (skill: Skill) => void;
   onDelete: (id: string) => void;
   onEdit: (skill: Skill) => void;
+  onToggleGroup: (collection: string, enabled: boolean) => void;
+  groupSkills?: Skill[];
   busySkillId?: string | null;
   busy?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(MAX_VISIBLE);
   const listId = useId();
+
+  const enabledCount = groupSkills.filter(skill => skill.enabled).length;
+  const allEnabled = enabledCount === groupSkills.length;
+  const mixed = enabledCount > 0 && !allEnabled;
+  const stateId = useId();
 
   const isOpen = isSearching || open;
   const limitReached = !isSearching && skills.length > visibleCount;
@@ -101,12 +110,13 @@ export const SkillGroup = memo(function SkillGroup({
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-card">
+      <div className="flex items-center gap-3 pr-5 sm:pr-6">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-controls={isOpen ? listId : undefined}
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 sm:px-6 text-left hover:bg-accent/50"
+        className="flex min-w-0 flex-1 items-center justify-between gap-3 px-5 py-4 sm:px-6 text-left hover:bg-accent/50"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <ChevronRight
@@ -121,6 +131,12 @@ export const SkillGroup = memo(function SkillGroup({
           </Badge>
         </div>
       </button>
+      <span id={stateId} className="shrink-0 text-xs text-muted-foreground">{mixed ? 'Partially enabled' : allEnabled ? 'All enabled' : 'All disabled'} · {enabledCount}/{groupSkills.length}</span>
+      <Switch checked={allEnabled} mixed={mixed} disabled={busy || !!busySkillId}
+        aria-label={`${allEnabled ? 'Disable' : 'Enable'} all skills in ${collection}`}
+        aria-describedby={stateId}
+        onCheckedChange={enabled => onToggleGroup(collection, enabled)} />
+      </div>
       {isOpen && (
         <div id={listId} className="divide-y divide-border border-t animate-in fade-in">
           {visible.map((skill) => (

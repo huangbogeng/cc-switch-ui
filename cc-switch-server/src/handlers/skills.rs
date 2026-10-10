@@ -146,6 +146,49 @@ pub async fn import_skills(State(state): State<Arc<AppState>>) -> impl IntoRespo
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CollectionState {
+    collection: String,
+    enabled: bool,
+}
+
+pub async fn set_collection_enabled(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CollectionState>,
+) -> impl IntoResponse {
+    super::file_mutation(move || {
+        let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
+        match state
+            .db
+            .set_skill_collection_enabled(APP_TYPE, &body.collection, body.enabled)
+        {
+            Ok(0) => (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Skill collection no longer exists"})),
+            )
+                .into_response(),
+            Ok(updated) => match cc_switch_lib::skills::sync_enabled_to_claude(&state.db, APP_TYPE)
+            {
+                Ok(()) => {
+                    Json(json!({"success": true, "enabled": body.enabled, "updated": updated}))
+                        .into_response()
+                }
+                Err(e) => super::sync_failure("Skills", &e),
+            },
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response(),
+        }
+    })
+    .await
+}
+
 pub async fn toggle_skill(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -332,6 +375,115 @@ mod tests {
             .await
             .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn collection_state_is_atomic_scoped_and_synced_once() {
+        use crate::state::{AppState, TestHome as SharedHome};
+        use cc_switch_lib::oauth::{codex::CodexOAuthManager, copilot::CopilotAuthManager};
+        let _env = crate::state::TEST_ENV_LOCK.lock().await;
+        let home = SharedHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        let state = Arc::new(AppState {
+            db: db.clone(),
+            token: "test".into(),
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+            proxy_host: "127.0.0.1".into(),
+            proxy_listen_port: 0,
+        });
+        let live = home.path.join(".claude/skills");
+        for name in ["one", "two", "other"] {
+            fs::create_dir_all(live.join(name)).unwrap();
+            fs::write(live.join(name).join("SKILL.md"), "instructions").unwrap();
+        }
+        cc_switch_lib::skills::import_from_claude(&db, APP_TYPE).unwrap();
+        let conn = rusqlite::Connection::open(home.path.join(".cc-switch/cc-switch.db")).unwrap();
+        conn.execute_batch("UPDATE skills SET collection='Team' WHERE directory IN ('one','two'); UPDATE skills SET enabled=0 WHERE directory='two';").unwrap();
+        let (status, body) = response_json(
+            set_collection_enabled(
+                State(state.clone()),
+                Json(CollectionState {
+                    collection: "Team".into(),
+                    enabled: false,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["updated"], 2);
+        assert!(!live.join("one").exists());
+        assert!(!live.join("two").exists());
+        assert!(live.join("other/SKILL.md").exists());
+        // Repeated requests set the target state, rather than toggling it again.
+        let (status, _) = response_json(
+            set_collection_enabled(
+                State(state.clone()),
+                Json(CollectionState {
+                    collection: "Team".into(),
+                    enabled: false,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        conn.execute_batch("CREATE TRIGGER reject_group BEFORE UPDATE ON skills WHEN NEW.directory='two' BEGIN SELECT RAISE(ABORT, 'group failed'); END;").unwrap();
+        let (status, _) = response_json(
+            set_collection_enabled(
+                State(state.clone()),
+                Json(CollectionState {
+                    collection: "Team".into(),
+                    enabled: true,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(db
+            .get_all_skills(APP_TYPE)
+            .unwrap()
+            .iter()
+            .filter(|s| s.collection.as_deref() == Some("Team"))
+            .all(|s| !s.enabled));
+        assert!(!live.join("one").exists());
+        conn.execute_batch("DROP TRIGGER reject_group").unwrap();
+        let (status, _) = response_json(
+            set_collection_enabled(
+                State(state.clone()),
+                Json(CollectionState {
+                    collection: "Team".into(),
+                    enabled: true,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(live.join("one/SKILL.md").exists());
+        assert!(live.join("two/SKILL.md").exists());
+        let (status, _) = response_json(
+            set_collection_enabled(
+                State(state),
+                Json(CollectionState {
+                    collection: "Missing".into(),
+                    enabled: false,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        conn.execute_batch("UPDATE skills SET collection=NULL WHERE directory='other'")
+            .unwrap();
+        assert_eq!(
+            db.set_skill_collection_enabled(APP_TYPE, "Other", false)
+                .unwrap(),
+            1
+        );
     }
 
     #[tokio::test]

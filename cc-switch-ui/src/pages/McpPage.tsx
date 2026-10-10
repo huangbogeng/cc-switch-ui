@@ -1,3 +1,5 @@
+import { ManagedImportDialog } from '@/components/ManagedImportDialog';
+import { restoreRemovedItems } from '@/api';
 import { useDialog } from '@/lib/useDialog';
 import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
@@ -39,6 +41,7 @@ function emptyForm(): McpServer {
 export default function McpPage() {
   const cached = cacheGet<McpServer[]>('mcp-servers');
   const { confirmAction, confirmation } = useConfirm();
+  const [importMode, setImportMode] = useState<'Import' | 'Restore' | null>(null);
   const [servers, setServers] = useState<McpServer[]>(cached ?? []);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
@@ -52,7 +55,7 @@ export default function McpPage() {
   const [notice, setNotice] = useState('');
   const [deletionRefresh, setDeletionRefresh] = useState(0);
   const [hasPendingDeletion, setHasPendingDeletion] = useState(false);
-  const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' } | null>(null);
+  const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' | 'Restore' } | null>(null);
   const [baseline, setBaseline] = useState('');
   const draft = JSON.stringify([form, specText]);
   const canDiscard = useUnsavedChanges(showForm && draft !== baseline, saving || pendingAction !== null);
@@ -129,7 +132,7 @@ export default function McpPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!await confirmAction('Delete this managed MCP server and remove it from Claude Code?', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
+    if (!await confirmAction('Remove this MCP server from management and Claude Code? Future imports will skip it until you restore it.', { title: 'Remove managed item?', confirmLabel: 'Remove', destructive: true })) return;
     try {
       setPendingAction(`delete:${id}`);
       setError('');
@@ -157,11 +160,11 @@ export default function McpPage() {
     finally { setPendingAction(null); }
   };
 
-  const handleImport = async () => {
+  const handleImport = async (ids: string[]) => {
     setPendingAction('import');
     setNotice(''); setOperation(null); setError('');
     try {
-      const report = await importMcpServers();
+      const report = await importMcpServers(ids);
       setOperation({ report, action: 'Import' });
       if (!await loadServers()) setError((previous) => `Import results are retained, but refreshing records failed: ${previous}`);
     } catch (e) {
@@ -169,6 +172,19 @@ export default function McpPage() {
       const message = e instanceof Error ? e.message : 'Import failed';
       const refreshed = await loadServers();
       setError((previous) => refreshed ? message : `${message}. Refresh failed: ${previous}`);
+    } finally { setPendingAction(null); }
+  };
+
+  const handleRestore = async (ids: string[]) => {
+    setPendingAction('restore');
+    setNotice(''); setOperation(null); setError('');
+    try {
+      const report = await restoreRemovedItems('mcp', ids);
+      setOperation({ report, action: 'Restore' });
+      if (!await loadServers()) setError(previous => `Restore results are retained, but refreshing records failed: ${previous}`);
+    } catch (e) {
+      await loadServers();
+      throw e;
     } finally { setPendingAction(null); }
   };
 
@@ -229,14 +245,16 @@ export default function McpPage() {
   return (
     <div className="space-y-6">
       {confirmation}
+      {importMode && <ManagedImportDialog kind="mcp" mode={importMode} onClose={() => setImportMode(null)} onApply={importMode === 'Import' ? handleImport : handleRestore} />}
       <PageHeader
         title="MCP Servers"
         description="Manage servers available to Claude Code."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={handleImport} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
+            <Button variant="outline" onClick={() => setImportMode('Import')} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
               <Download className="h-3.5 w-3.5" /> {pendingAction === 'import' ? 'Importing...' : 'Import'}
             </Button>
+            <Button variant="outline" onClick={() => setImportMode('Restore')} disabled={pendingAction !== null || saving || hasPendingDeletion}>Restore removed</Button>
             <Button variant="outline" onClick={handleSync} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" /> {pendingAction === 'sync' ? 'Syncing...' : 'Sync'}
             </Button>
@@ -289,7 +307,7 @@ export default function McpPage() {
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
-                    aria-label={`Delete ${srv.name || srv.id}`}
+                    aria-label={`Remove ${srv.name || srv.id}`}
                     variant="ghost"
                     size="icon"
                     onClick={() => handleDelete(srv.id)}

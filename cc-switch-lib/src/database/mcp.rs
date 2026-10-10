@@ -59,22 +59,29 @@ impl super::Database {
         let conn = self.conn();
         let spec_str = serde_json::to_string(&server.server_spec)
             .map_err(|e| AppError::JsonSerialize { source: e })?;
-        conn.execute(
-            "INSERT INTO mcp_servers (id, name, server_spec, app_type, enabled)
+        let transaction = conn.unchecked_transaction()?;
+        transaction
+            .execute(
+                "INSERT INTO mcp_servers (id, name, server_spec, app_type, enabled)
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(id, app_type) DO UPDATE SET
                 name = excluded.name,
                 server_spec = excluded.server_spec,
                 enabled = excluded.enabled",
-            params![
-                server.id,
-                server.name,
-                spec_str,
-                server.app_type,
-                server.enabled as i32,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+                params![
+                    server.id,
+                    server.name,
+                    spec_str,
+                    server.app_type,
+                    server.enabled as i32,
+                ],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        transaction.execute(
+            "DELETE FROM managed_removed WHERE app_type=?1 AND kind=?2 AND item_key=?3",
+            params![server.app_type, "mcp", server.id],
+        )?;
+        transaction.commit()?;
         Ok(())
     }
 

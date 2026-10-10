@@ -1,3 +1,5 @@
+import { ManagedImportDialog } from '@/components/ManagedImportDialog';
+import { restoreRemovedItems } from '@/api';
 import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { DeletionRecoveryPanel } from '@/components/DeletionRecoveryPanel';
@@ -12,6 +14,7 @@ import {
   syncSkills,
   importSkills,
   toggleSkill,
+  setSkillCollectionEnabled,
   type Skill,
 } from '../api';
 import { PageHeader } from '@/components/PageHeader';
@@ -40,6 +43,7 @@ function groupByCollection(skills: Skill[]): [string, Skill[]][] {
 export default function SkillsPage() {
   const cached = cacheGet<Skill[]>('skills');
   const { confirmAction, confirmation } = useConfirm();
+  const [importMode, setImportMode] = useState<'Import' | 'Restore' | null>(null);
   const [skills, setSkills] = useState<Skill[]>(cached ?? []);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
@@ -51,12 +55,13 @@ export default function SkillsPage() {
   const [importing, setImporting] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
+  const [pendingCollection, setPendingCollection] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [deletionRefresh, setDeletionRefresh] = useState(0);
   const [hasPendingDeletion, setHasPendingDeletion] = useState(false);
-  const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' } | null>(null);
+  const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' | 'Restore' } | null>(null);
   const [recovering, setRecovering] = useState(false);
-  const operationBusy = syncing || importing || pendingSkillId !== null || recovering;
+  const operationBusy = pendingCollection !== null || syncing || importing || pendingSkillId !== null || recovering;
   const busy = operationBusy || hasPendingDeletion;
   useUnsavedChanges(false, operationBusy);
 
@@ -97,11 +102,12 @@ export default function SkillsPage() {
   const searchLimit = searchWindow.query === deferredSearch ? searchWindow.limit : SEARCH_BATCH;
   const visibleResults = useMemo(() => isSearching ? filtered.slice(0, searchLimit) : filtered, [filtered, isSearching, searchLimit]);
   const groups = useMemo(() => groupByCollection(visibleResults), [visibleResults]);
+  const fullGroups = useMemo(() => new Map(groupByCollection(skills)), [skills]);
   const updatingSearch = searchQuery.trim().toLowerCase() !== deferredSearch;
   const handleEdit = useCallback((skill: Skill) => { setEditingSkill(skill); setShowForm(true); }, []);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!await confirmAction('Delete this managed skill? Its live directory will be backed up; source files are retained.', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
+    if (!await confirmAction('Remove this skill from management and Claude Code? Its live directory will be backed up, source files retained, and future imports will skip it until you restore it.', { title: 'Remove managed item?', confirmLabel: 'Remove', destructive: true })) return;
     try {
       setPendingSkillId(id);
       setError('');
@@ -129,11 +135,11 @@ export default function SkillsPage() {
     finally { setSyncing(false); }
   };
 
-  const handleImport = async () => {
+  const handleImport = async (ids: string[]) => {
     setImporting(true);
     setNotice(''); setOperation(null); setError('');
     try {
-      const report = await importSkills();
+      const report = await importSkills(ids);
       setOperation({ report, action: 'Import' });
       if (!await loadSkills()) setError((previous) => `Import results are retained, but refreshing records failed: ${previous}`);
     } catch (e) {
@@ -141,6 +147,19 @@ export default function SkillsPage() {
       const message = e instanceof Error ? e.message : 'Import failed';
       const refreshed = await loadSkills();
       setError((previous) => refreshed ? message : `${message}. Refresh failed: ${previous}`);
+    } finally { setImporting(false); }
+  };
+
+  const handleRestore = async (ids: string[]) => {
+    setImporting(true);
+    setNotice(''); setOperation(null); setError('');
+    try {
+      const report = await restoreRemovedItems('skill', ids);
+      setOperation({ report, action: 'Restore' });
+      if (!await loadSkills()) setError(previous => `Restore results are retained, but refreshing records failed: ${previous}`);
+    } catch (e) {
+      await loadSkills();
+      throw e;
     } finally { setImporting(false); }
   };
 
@@ -166,6 +185,21 @@ export default function SkillsPage() {
     }
   }, [loadSkills]);
 
+  const handleToggleGroup = useCallback(async (collection: string, enabled: boolean) => {
+    setPendingCollection(collection);
+    setError(''); setNotice(''); setOperation(null);
+    try {
+      await setSkillCollectionEnabled(collection, enabled);
+      setNotice(`All skills in ${collection} ${enabled ? 'enabled' : 'disabled'} and synced to Claude Code.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Group update failed');
+    } finally {
+      // Refresh even after a lost response or a committed state with failed file sync.
+      await loadSkills();
+      setPendingCollection(null);
+    }
+  }, [loadSkills]);
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -178,14 +212,16 @@ export default function SkillsPage() {
   return (
     <div className="space-y-6">
       {confirmation}
+      {importMode && <ManagedImportDialog kind="skill" mode={importMode} onClose={() => setImportMode(null)} onApply={importMode === 'Import' ? handleImport : handleRestore} />}
       <PageHeader
         title="Skills"
         description="Manage skills available to Claude Code."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={handleImport} className="gap-1.5" disabled={busy || showForm}>
+            <Button variant="outline" onClick={() => setImportMode('Import')} className="gap-1.5" disabled={busy || showForm}>
               <Download className={importing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {importing ? 'Importing...' : 'Import'}
             </Button>
+            <Button variant="outline" onClick={() => setImportMode('Restore')} disabled={busy || showForm}>Restore removed</Button>
             <Button variant="outline" onClick={handleSync} className="gap-1.5" disabled={busy || showForm}>
               <RefreshCw className={syncing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {syncing ? 'Syncing...' : 'Sync'}
             </Button>
@@ -239,6 +275,8 @@ export default function SkillsPage() {
                 key={collection}
                 collection={collection}
                 skills={collSkills}
+                groupSkills={fullGroups.get(collection)}
+                onToggleGroup={handleToggleGroup}
                 isSearching={isSearching}
                 onToggle={handleToggle}
                 onDelete={handleDelete}

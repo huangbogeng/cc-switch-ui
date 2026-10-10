@@ -503,8 +503,7 @@ fn import_skill_from_dir(
 /// and a database record is created. Skills already in the DB are skipped.
 /// Existing skills with a missing collection field get backfilled.
 /// Every candidate has an outcome. A failed scan is included without hiding completed imports.
-pub fn import_from_claude(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
-    let existing = db.get_all_skills(app_type)?;
+fn scan_candidates() -> Result<(Vec<(PathBuf, String)>, OperationReport), AppError> {
     reject_symlink(&get_ssot_dir())?;
     let mut report = OperationReport::new();
     let live = get_claude_skills_dir();
@@ -540,9 +539,82 @@ pub fn import_from_claude(db: &Database, app_type: &str) -> Result<OperationRepo
     }
     plugin_candidates.sort_by(|a, b| a.0.cmp(&b.0));
     candidates.extend(plugin_candidates);
+    Ok((candidates, report))
+}
+
+pub fn import_from_claude(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
+    let existing = db.get_all_skills(app_type)?;
+    let (candidates, mut report) = scan_candidates()?;
     import_candidates(db, app_type, &existing, candidates, &mut report);
     Ok(report)
 }
+
+pub fn discover_imports(
+    db: &Database,
+    app_type: &str,
+) -> Result<crate::managed_items::Discovery, AppError> {
+    let existing = db.get_all_skills(app_type)?;
+    let (candidates, report) = scan_candidates()?;
+    let mut seen = std::collections::HashSet::new();
+    let mut items = Vec::new();
+    for (path, name) in candidates {
+        if existing.iter().any(|s| s.directory == name)
+            || crate::managed_items::is_removed(db, app_type, "skill", &name)?
+            || !seen.insert(name.clone())
+        {
+            continue;
+        }
+        items.push(crate::managed_items::Candidate {
+            id: name.clone(),
+            name,
+            source: if path.starts_with(get_claude_skills_dir()) {
+                "Claude Code"
+            } else {
+                "Plugin"
+            }
+            .into(),
+        });
+    }
+    Ok(crate::managed_items::Discovery { items, report })
+}
+
+pub fn import_selected(
+    db: &Database,
+    app_type: &str,
+    ids: &[String],
+) -> Result<OperationReport, AppError> {
+    let existing = db.get_all_skills(app_type)?;
+    let (candidates, mut report) = scan_candidates()?;
+    for id in ids.iter().collect::<std::collections::BTreeSet<_>>() {
+        let selected: Vec<_> = candidates
+            .iter()
+            .filter(|(_, name)| name == id)
+            .cloned()
+            .collect();
+        if selected.is_empty() {
+            report.record(
+                id,
+                "failed",
+                Some("No longer available. Scan again.".into()),
+            );
+        } else {
+            import_candidates(db, app_type, &existing, selected, &mut report);
+        }
+    }
+    Ok(report)
+}
+
+pub fn require_retained_source(directory: &str) -> Result<(), AppError> {
+    validate_directory(directory)?;
+    let root = get_ssot_dir();
+    let source = root.join(directory);
+    reject_symlink(&root)?;
+    reject_symlink(&source)?;
+    reject_symlink(&source.join("SKILL.md"))?;
+    fs::read(source.join("SKILL.md")).map_err(|e| AppError::io(&source, e))?;
+    Ok(())
+}
+
 fn import_candidates(
     db: &Database,
     app_type: &str,
@@ -557,6 +629,9 @@ fn import_candidates(
             continue;
         }
         let result = (|| -> Result<&'static str, AppError> {
+            if crate::managed_items::is_removed(db, app_type, "skill", &name)? {
+                return Ok("skipped");
+            }
             validate_directory(&name)?;
             reject_symlink(&path)?;
             reject_symlink(&path.join("SKILL.md"))?;

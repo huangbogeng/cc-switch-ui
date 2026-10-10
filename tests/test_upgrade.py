@@ -154,7 +154,7 @@ else:
     def test_idle_upgrade_migrates_preserves_data_and_does_not_leave_service_running(self):
         result = self.run_installer()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assert_data(4)
+        self.assert_data(5)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'new frontend')
         backups = list((self.data / 'backups/upgrades').glob('*.db'))
         self.assertEqual(len(backups), 1)
@@ -171,7 +171,7 @@ else:
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIsNotNone(old.poll())
         self.wait_health()
-        self.assert_data(4)
+        self.assert_data(5)
 
     def test_running_upgrade_preserves_explicit_port_and_login_token(self):
         # Stored defaults deliberately differ from the currently running command.
@@ -183,7 +183,7 @@ else:
         request = urllib.request.Request(f'http://127.0.0.1:{self.port}/api/managed-deletion', headers={'Authorization': 'Bearer original-login-token'})
         with urllib.request.urlopen(request, timeout=2) as response:
             self.assertEqual(response.status, 200)
-        self.assert_data(4)
+        self.assert_data(5)
 
     def test_failed_running_upgrade_restores_original_program_data_and_old_service(self):
         old_hash = hashlib.sha256((self.install / 'cc-switch-ui').read_bytes()).digest()
@@ -310,7 +310,7 @@ else:
         result = self.run_update(force=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.wait_health()
-        self.assert_data(4)
+        self.assert_data(5)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'new frontend')
 
     def test_update_command_propagates_failure_and_restores_idle_installation(self):

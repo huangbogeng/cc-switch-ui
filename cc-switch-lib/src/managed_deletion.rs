@@ -75,20 +75,26 @@ pub fn begin(db: &Database, kind: &str, id: &str) -> Result<bool, AppError> {
             "Cancel the planned database restore before deleting managed items".into(),
         ));
     }
-    let intent = match kind {
+    let (intent, record_json, item_key) = match kind {
         "mcp" => {
             let records = db.get_all_mcp_servers(DEFAULT_APP_TYPE)?;
             let Some(record) = records.into_iter().find(|record| record.id == id) else {
                 return Ok(false);
             };
             let expected = crate::mcp::read_claude_mcp_servers()?.remove(id);
-            Intent {
-                operation_id: uuid::Uuid::new_v4().to_string(),
-                id: id.into(),
-                name: record.name,
-                path: config::get_claude_mcp_path(),
-                target: Target::Mcp { expected },
-            }
+            let record_json = serde_json::to_string(&record)
+                .map_err(|source| AppError::JsonSerialize { source })?;
+            (
+                Intent {
+                    operation_id: uuid::Uuid::new_v4().to_string(),
+                    id: id.into(),
+                    name: record.name,
+                    path: config::get_claude_mcp_path(),
+                    target: Target::Mcp { expected },
+                },
+                record_json,
+                id.to_string(),
+            )
         }
         "skill" => {
             let records = db.get_all_skills(DEFAULT_APP_TYPE)?;
@@ -96,16 +102,23 @@ pub fn begin(db: &Database, kind: &str, id: &str) -> Result<bool, AppError> {
                 return Ok(false);
             };
             let (path, expected) = skills::deletion_snapshot(&record.directory)?;
-            Intent {
-                operation_id: uuid::Uuid::new_v4().to_string(),
-                id: id.into(),
-                name: record.name,
-                path,
-                target: Target::Skill {
-                    directory: record.directory,
-                    expected,
+            let item_key = record.directory.clone();
+            let record_json = serde_json::to_string(&record)
+                .map_err(|source| AppError::JsonSerialize { source })?;
+            (
+                Intent {
+                    operation_id: uuid::Uuid::new_v4().to_string(),
+                    id: id.into(),
+                    name: record.name,
+                    path,
+                    target: Target::Skill {
+                        directory: record.directory,
+                        expected,
+                    },
                 },
-            }
+                record_json,
+                item_key,
+            )
         }
         _ => {
             return Err(AppError::InvalidInput(
@@ -138,6 +151,11 @@ pub fn begin(db: &Database, kind: &str, id: &str) -> Result<bool, AppError> {
     transaction.execute(
         "INSERT INTO managed_deletion (id,intent_json) VALUES (1,?1)",
         [&bytes],
+    )?;
+    transaction.execute(
+        "INSERT INTO managed_removed(app_type,kind,item_key,name,record_json) VALUES (?1,?2,?3,?4,?5)
+        ON CONFLICT(app_type,kind,item_key) DO UPDATE SET name=excluded.name,record_json=excluded.record_json",
+        rusqlite::params![DEFAULT_APP_TYPE, kind, item_key, intent.name, record_json],
     )?;
     transaction.commit()?;
     Ok(true)

@@ -37,6 +37,10 @@ A pending cleanup means the managed record was deleted but live cleanup did not 
 
 如果旧的清理目标已被外部程序修改，先核对内容，再决定保留文件还是恢复原状态后重试。未解决的删除会阻止 MCP/Skills 写入和数据库备份/恢复。成功处理后，面板应消失；若仍显示，刷新确认服务返回的状态。
 
+## Removed items appear again
+
+Current removal records are remembered and skipped by Import. Use **Restore removed** to bring a chosen item back disabled. **Sync** does not discover new records. If an item was removed before this feature existed, the application has no retained removal decision; removing it once with the new version records that decision. A restored database may also contain older management/removal states. Plugin originals remain installed independently of managed copies.
+
 ## Save succeeded but Sync failed
 
 The record may already be saved. Import/Sync item reports distinguish completed, skipped and failed items; HTTP success alone is not proof that every item succeeded. Review failed details, fix invalid JSON, a missing Skills source or permissions, then retry **Sync**. Earlier completed changes remain. Import itself does not sync.

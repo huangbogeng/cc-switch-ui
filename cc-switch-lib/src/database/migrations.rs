@@ -155,7 +155,7 @@ pub fn migrate_session_log_schema(conn: &Connection) -> Result<(), AppError> {
 }
 
 /// Current schema version for PRAGMA user_version-based migration tracking.
-pub(crate) const SCHEMA_VERSION: u32 = 4;
+pub(crate) const SCHEMA_VERSION: u32 = 5;
 
 pub(crate) fn ensure_supported_version(conn: &Connection) -> Result<(), AppError> {
     let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -197,6 +197,15 @@ pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS managed_deletion (
             id INTEGER PRIMARY KEY CHECK (id = 1), intent_json TEXT NOT NULL
+        );",
+        )?;
+    }
+    if current_version < 5 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS managed_removed (
+            app_type TEXT NOT NULL, kind TEXT NOT NULL, item_key TEXT NOT NULL,
+            name TEXT NOT NULL, record_json TEXT NOT NULL,
+            PRIMARY KEY (app_type, kind, item_key)
         );",
         )?;
     }

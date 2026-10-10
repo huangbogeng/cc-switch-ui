@@ -578,7 +578,8 @@ export async function syncMcpServers() {
   return api<OperationReport>('/mcp/servers/sync', { method: 'POST' });
 }
 
-export async function importMcpServers() {
+export async function importMcpServers(ids?: string[]) {
+  if (ids) return api<OperationReport>('/managed-items/mcp/import', { method: 'POST', body: JSON.stringify({ ids }) });
   return api<OperationReport>('/mcp/servers/import', { method: 'POST' });
 }
 
@@ -623,8 +624,15 @@ export async function syncSkills() {
   return api<OperationReport>('/skills/sync', { method: 'POST' });
 }
 
-export async function importSkills() {
+export async function importSkills(ids?: string[]) {
+  if (ids) return api<OperationReport>('/managed-items/skill/import', { method: 'POST', body: JSON.stringify({ ids }) });
   return api<OperationReport>('/skills/import', { method: 'POST' });
+}
+
+export async function setSkillCollectionEnabled(collection: string, enabled: boolean) {
+  return api<{ success: boolean; enabled: boolean; updated: number }>('/skills/collection-state', {
+    method: 'POST', body: JSON.stringify({ collection, enabled }),
+  });
 }
 
 export async function toggleSkill(id: string) {
@@ -732,3 +740,9 @@ export async function finishManagedDeletion(operationId: string, keepFiles: bool
     method: 'POST', body: JSON.stringify({ operationId }),
   });
 }
+
+export type ManagedKind = 'skill' | 'mcp';
+export interface ImportCandidate { id: string; name: string; source: string }
+export function listImportCandidates(kind: ManagedKind) { return api<{ items: ImportCandidate[]; report: OperationReport }>(`/managed-items/${kind}/candidates`); }
+export function listRemovedItems(kind: ManagedKind) { return api<ImportCandidate[]>(`/managed-items/${kind}/removed`); }
+export function restoreRemovedItems(kind: ManagedKind, ids: string[]) { return api<OperationReport>(`/managed-items/${kind}/restore`, { method: 'POST', body: JSON.stringify({ ids }) }); }
