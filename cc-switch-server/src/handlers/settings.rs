@@ -239,3 +239,156 @@ pub async fn set_proxy_port(
 
     Json(serde_json::json!({"success": true})).into_response()
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RestoreUserSettingsRequest {
+    revision: String,
+}
+
+fn user_settings_error(error: cc_switch_lib::error::AppError) -> axum::response::Response {
+    use cc_switch_lib::error::AppError;
+    let status = match &error {
+        AppError::Conflict { .. } => StatusCode::CONFLICT,
+        AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (
+        status,
+        Json(serde_json::json!({"error": error.to_string()})),
+    )
+        .into_response()
+}
+
+pub async fn get_claude_user_settings() -> axum::response::Response {
+    match tokio::task::spawn_blocking(|| {
+        cc_switch_lib::live::user_settings::read(&cc_switch_lib::config::get_claude_settings_path())
+    })
+    .await
+    {
+        Ok(Ok(settings)) => Json(settings).into_response(),
+        Ok(Err(error)) => user_settings_error(error),
+        Err(error) => {
+            user_settings_error(cc_switch_lib::error::AppError::Message(error.to_string()))
+        }
+    }
+}
+
+pub async fn save_claude_user_settings(
+    Json(request): Json<cc_switch_lib::live::user_settings::SaveRequest>,
+) -> axum::response::Response {
+    match tokio::task::spawn_blocking(move || {
+        cc_switch_lib::live::user_settings::save(
+            &cc_switch_lib::config::get_claude_settings_path(),
+            &request,
+        )
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(serde_json::json!({"success": true})).into_response(),
+        Ok(Err(error)) => user_settings_error(error),
+        Err(error) => {
+            user_settings_error(cc_switch_lib::error::AppError::Message(error.to_string()))
+        }
+    }
+}
+
+pub async fn restore_claude_user_settings(
+    Json(request): Json<RestoreUserSettingsRequest>,
+) -> axum::response::Response {
+    match tokio::task::spawn_blocking(move || {
+        cc_switch_lib::live::user_settings::restore(
+            &cc_switch_lib::config::get_claude_settings_path(),
+            &request.revision,
+        )
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(serde_json::json!({"success": true})).into_response(),
+        Ok(Err(error)) => user_settings_error(error),
+        Err(error) => {
+            user_settings_error(cc_switch_lib::error::AppError::Message(error.to_string()))
+        }
+    }
+}
+
+#[cfg(test)]
+mod user_settings_tests {
+    use super::*;
+    use cc_switch_lib::live::user_settings::{SaveRequest, UserValues};
+    use serde_json::{json, Value};
+
+    async fn body(response: axum::response::Response) -> (StatusCode, Value) {
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 1_000_000)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn user_settings_api_preserves_credentials_and_returns_conflicts() {
+        let _env = crate::state::TEST_ENV_LOCK.lock().await;
+        let _home = crate::state::TestHome::new();
+        let path = cc_switch_lib::config::get_claude_settings_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"env":{"ANTHROPIC_AUTH_TOKEN":"test-secret","API_TIMEOUT_MS":"10"}}"#,
+        )
+        .unwrap();
+        let (status, loaded) = body(get_claude_user_settings().await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!loaded.to_string().contains("test-secret"));
+        let revision = loaded["revision"].as_str().unwrap().to_string();
+        let (status, _) = body(
+            save_claude_user_settings(Json(SaveRequest {
+                revision: revision.clone(),
+                values: UserValues {
+                    timeout_ms: Some("0".into()),
+                    nonessential_traffic: None,
+                },
+            }))
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = body(
+            save_claude_user_settings(Json(SaveRequest {
+                revision: revision.clone(),
+                values: UserValues {
+                    timeout_ms: Some("20".into()),
+                    nonessential_traffic: Some("1".into()),
+                },
+            }))
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) =
+            body(restore_claude_user_settings(Json(RestoreUserSettingsRequest { revision })).await)
+                .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let (_, loaded) = body(get_claude_user_settings().await).await;
+        assert_eq!(loaded["initialValues"]["timeoutMs"], "10");
+        let (status, _) = body(
+            restore_claude_user_settings(Json(RestoreUserSettingsRequest {
+                revision: loaded["revision"].as_str().unwrap().into(),
+            }))
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let current: Value = cc_switch_lib::config::read_json_file(&path).unwrap();
+        assert_eq!(current["env"]["API_TIMEOUT_MS"], "10");
+        assert_eq!(current["env"]["ANTHROPIC_AUTH_TOKEN"], "test-secret");
+        assert_eq!(
+            current["env"].get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"),
+            None
+        );
+        assert_eq!(
+            current["env"],
+            json!({"ANTHROPIC_AUTH_TOKEN":"test-secret", "API_TIMEOUT_MS":"10"})
+        );
+    }
+}

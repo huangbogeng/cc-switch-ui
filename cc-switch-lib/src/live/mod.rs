@@ -17,6 +17,7 @@ use serde_json::{Map, Value};
 use std::path::PathBuf;
 
 pub mod floor;
+pub mod user_settings;
 
 /// Get the path to the live Claude settings file
 pub fn get_live_settings_path() -> PathBuf {
@@ -310,11 +311,11 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    fn acquire_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    pub(super) fn acquire_env_lock() -> std::sync::MutexGuard<'static, ()> {
         env_lock().lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn setup_test_home() -> std::path::PathBuf {
+    pub(super) fn setup_test_home() -> std::path::PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time")
@@ -330,7 +331,7 @@ mod tests {
         test_home
     }
 
-    fn cleanup(test_home: std::path::PathBuf) {
+    pub(super) fn cleanup(test_home: std::path::PathBuf) {
         unsafe {
             std::env::remove_var("CC_SWITCH_TEST_HOME");
         }

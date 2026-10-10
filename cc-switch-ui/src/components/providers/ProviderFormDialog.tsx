@@ -482,7 +482,8 @@ export function ProviderFormDialog({
 
               <p className="text-xs text-muted-foreground">
                 API timeout and nonessential traffic are user settings. Edit them in
-                ~/.claude/settings.json; provider switching preserves them.
+                the live Claude Code configuration; provider switching preserves them.
+                {' '}<a href="#settings" className="underline text-primary">Open Settings</a>
               </p>
 
               <div className="grid gap-4 sm:grid-cols-2">
