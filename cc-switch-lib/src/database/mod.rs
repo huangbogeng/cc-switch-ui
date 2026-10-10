@@ -281,6 +281,35 @@ mod tests {
     }
 
     #[test]
+    fn version_four_upgrade_preserves_records_and_snapshots_before_adding_removed_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("cc-switch.db");
+        let db = Database::init_at(&path).unwrap();
+        db.conn()
+            .execute_batch("DROP TABLE managed_removed; PRAGMA user_version=4;")
+            .unwrap();
+        drop(db);
+        let upgraded = Database::init_at(&path).unwrap();
+        assert_eq!(
+            upgraded
+                .conn()
+                .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+                .unwrap(),
+            5
+        );
+        assert_eq!(
+            std::fs::read_dir(directory.path().join("backups/upgrades"))
+                .unwrap()
+                .count(),
+            1
+        );
+        assert!(upgraded
+            .conn()
+            .prepare("SELECT * FROM managed_removed")
+            .is_ok());
+    }
+
+    #[test]
     fn release_upgrade_preserves_records_and_creates_one_private_original_snapshot() {
         let directory = tempfile::tempdir().unwrap();
         let path = legacy_database(directory.path());
@@ -289,7 +318,7 @@ mod tests {
             db.conn()
                 .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
                 .unwrap(),
-            4
+            migrations::SCHEMA_VERSION
         );
         for table in ["providers", "skills", "mcp_servers"] {
             assert_eq!(

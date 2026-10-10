@@ -50,11 +50,13 @@ The **Claude Official** preset clears third-party connection settings and relies
 
 ## MCP and Skills / 管理与同步
 
-**Import** discovers existing configurations; it does not sync imported records automatically. Review enabled states, then use **Sync**. Saving or toggling managed records applies the desired state to Claude Code. Unmanaged MCP entries and Skills directories are preserved.
+**Import** opens a read-only discovery dialog. Select the items to add, then click **Import selected**; cancelling changes no records or files. Existing enabled states are preserved. Import does not sync automatically. Review the list, then use **Sync**. Saving or toggling managed records applies the desired state to Claude Code. Unmanaged MCP entries and Skills directories are preserved.
 
 导入和同步会报告每一项的结果。部分失败不代表全部回滚：已完成的项目会保留，修复失败原因后重试 **Sync**。Skills 内容不变时跳过替换和重复备份。
 
-Deleting a record may leave pending live cleanup. **Deletion recovery → Retry live cleanup** completes it. **Keep current files** clears the intent after confirmation and leaves the files unmanaged, potentially still active. See [deletion recovery](troubleshooting.md#deletion-recovery-keeps-appearing).
+The row switch enables or disables a managed item. **Remove** deletes its managed record, cleans the captured live entry/directory, and remembers that decision so ordinary Import will skip it, including after restart. **Restore removed** lists retained removal records and restores chosen items as disabled; enable them explicitly when ready. Skill source files and plugin originals remain available. Plugin controls affect the managed copy, not the original plugin installation.
+
+Removing a record may leave pending live cleanup. **Deletion recovery → Retry live cleanup** completes it. **Keep current files** clears the intent after confirmation and leaves the files unmanaged, potentially still active. See [deletion recovery](troubleshooting.md#deletion-recovery-keeps-appearing).
 
 ## Settings and backups / 用户配置与备份
 
@@ -67,3 +69,7 @@ Deleting a record may leave pending live cleanup. **Deletion recovery → Retry 
 The **Usage** page distinguishes local proxy logs from imported Claude Code session data. Choose the data source and date range before comparing totals. Session import is optional; requests made outside the local route will not appear as proxy logs. Request details and model/provider breakdowns help locate upstream failures.
 
 用量页面显示的是所选数据来源下的记录，不应当作订阅剩余额度或服务商账单。模型价格配置可能影响成本估算；请同时核对服务商实际计费。
+
+### Skill collection controls
+
+Use the switch beside a collection title to enable or disable every managed skill in that collection. A centered switch and the enabled count indicate a partially enabled group; clicking it enables the whole group. Group controls include members hidden by search or pagination. Individual skill switches remain independent. The group state is saved together and synced once; if file sync fails, the saved state remains visible and Sync can retry it.

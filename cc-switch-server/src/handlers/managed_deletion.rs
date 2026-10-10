@@ -262,4 +262,202 @@ mod tests {
             StatusCode::NOT_FOUND
         );
     }
+    #[tokio::test]
+    async fn removed_plugin_skills_stay_removed_across_import_sync_and_restart() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        let record: SkillRecord = serde_json::from_value(json!({"id":"local:test","name":"Test","directory":"test","appType":"claude_code","enabled":true})).unwrap();
+        state.db.save_skill(&record).unwrap();
+        for dir in [
+            home.path.join(".claude/skills/test"),
+            home.path.join(".cc-switch/skills/test"),
+            home.path.join(".claude/plugins/example/skills/test"),
+        ] {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), "original").unwrap();
+        }
+        managed_deletion::begin(&state.db, "skill", "local:test").unwrap();
+        managed_deletion::finish(&state.db, None, false).unwrap();
+        let db = Database::init().unwrap();
+        let report =
+            cc_switch_lib::skills::import_from_claude(&db, cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap();
+        assert_eq!(report.imported, 0);
+        assert_eq!(report.skipped, 1);
+        assert!(
+            cc_switch_lib::skills::discover_imports(&db, cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        cc_switch_lib::skills::sync_report(&db, cc_switch_lib::DEFAULT_APP_TYPE)
+            .unwrap()
+            .ensure_success()
+            .unwrap();
+        assert!(!home.path.join(".claude/skills/test").exists());
+        let restored = cc_switch_lib::managed_items::restore(
+            &db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            "skill",
+            &["test".into()],
+        )
+        .unwrap();
+        assert_eq!(restored.imported, 1);
+        assert!(!db.get_all_skills(cc_switch_lib::DEFAULT_APP_TYPE).unwrap()[0].enabled);
+        assert!(!cc_switch_lib::managed_items::is_removed(
+            &db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            "skill",
+            "test"
+        )
+        .unwrap());
+        assert!(!home.path.join(".claude/skills/test").exists());
+    }
+
+    #[tokio::test]
+    async fn removed_mcp_ignores_external_reappearance_and_restores_disabled_without_exposing_credentials(
+    ) {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        let mut record = server("test");
+        record.server_spec = json!({"command":"npx","env":{"TOKEN":"private-secret"}});
+        state.db.save_mcp_server(&record).unwrap();
+        let path = cc_switch_lib::config::get_claude_mcp_path();
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&json!({"mcpServers":{"test":record.server_spec}})).unwrap(),
+        )
+        .unwrap();
+        managed_deletion::begin(&state.db, "mcp", "test").unwrap();
+        managed_deletion::finish(&state.db, None, false).unwrap();
+        std::fs::write(&path, r#"{"mcpServers":{"test":{"command":"external"}}}"#).unwrap();
+        assert_eq!(
+            cc_switch_lib::mcp::import_from_claude(&state.db, cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()
+                .imported,
+            0
+        );
+        assert!(
+            cc_switch_lib::mcp::discover_imports(&state.db, cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        let removed = cc_switch_lib::managed_items::removed(
+            &state.db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            "mcp",
+        )
+        .unwrap();
+        assert!(!serde_json::to_string(&removed)
+            .unwrap()
+            .contains("private-secret"));
+        let before = std::fs::read(&path).unwrap();
+        let conn = rusqlite::Connection::open(home.path.join(".cc-switch/cc-switch.db")).unwrap();
+        conn.execute_batch("CREATE TRIGGER block_marker_clear BEFORE DELETE ON managed_removed BEGIN SELECT RAISE(ABORT,'Cannot clear removal'); END;").unwrap();
+        let failed = cc_switch_lib::managed_items::restore(
+            &state.db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            "mcp",
+            &["test".into()],
+        )
+        .unwrap();
+        assert_eq!(failed.failed, 1);
+        assert!(state
+            .db
+            .get_all_mcp_servers(cc_switch_lib::DEFAULT_APP_TYPE)
+            .unwrap()
+            .is_empty());
+        assert!(cc_switch_lib::managed_items::is_removed(
+            &state.db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            "mcp",
+            "test"
+        )
+        .unwrap());
+        conn.execute_batch("DROP TRIGGER block_marker_clear")
+            .unwrap();
+        cc_switch_lib::managed_items::restore(
+            &state.db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            "mcp",
+            &["test".into()],
+        )
+        .unwrap()
+        .ensure_success()
+        .unwrap();
+        assert!(
+            !state
+                .db
+                .get_all_mcp_servers(cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()[0]
+                .enabled
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn removal_marker_failure_rolls_back_record_and_keeps_live_files() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        state.db.save_mcp_server(&server("test")).unwrap();
+        let path = cc_switch_lib::config::get_claude_mcp_path();
+        std::fs::write(&path, r#"{"mcpServers":{"test":{"command":"npx"}}}"#).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let conn = rusqlite::Connection::open(home.path.join(".cc-switch/cc-switch.db")).unwrap();
+        conn.execute_batch("CREATE TRIGGER reject_removed BEFORE INSERT ON managed_removed BEGIN SELECT RAISE(ABORT,'Cannot retain removal'); END;").unwrap();
+        assert!(managed_deletion::begin(&state.db, "mcp", "test").is_err());
+        assert_eq!(
+            state
+                .db
+                .get_all_mcp_servers(cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(managed_deletion::pending(&state.db).unwrap().is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn discovery_is_read_only_and_import_adds_only_selected_items() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        for name in ["one", "two"] {
+            let dir = home.path.join(".claude/plugins/example/skills").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), name).unwrap();
+        }
+        let discovery =
+            cc_switch_lib::skills::discover_imports(&state.db, cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap();
+        assert_eq!(discovery.items.len(), 2);
+        assert!(state
+            .db
+            .get_all_skills(cc_switch_lib::DEFAULT_APP_TYPE)
+            .unwrap()
+            .is_empty());
+        assert!(!home.path.join(".cc-switch/skills").exists());
+        let report = cc_switch_lib::skills::import_selected(
+            &state.db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            &["one".into(), "../../escape".into()],
+        )
+        .unwrap();
+        assert_eq!(report.imported, 1);
+        assert_eq!(report.failed, 1);
+        assert_eq!(
+            state
+                .db
+                .get_all_skills(cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()[0]
+                .directory,
+            "one"
+        );
+        assert!(!home.path.join(".cc-switch/skills/two").exists());
+    }
 }

@@ -144,7 +144,9 @@ fn import_servers(
     current.sort_by(|a, b| a.0.cmp(&b.0));
     let mut report = OperationReport::new();
     for (id, spec) in current {
-        if existing.iter().any(|s| s.id == id) {
+        if existing.iter().any(|s| s.id == id)
+            || crate::managed_items::is_removed(db, app_type, "mcp", &id)?
+        {
             report.record(id, "skipped", None);
             continue;
         }
@@ -179,6 +181,60 @@ pub fn sync_report(db: &Database, app_type: &str) -> Result<OperationReport, App
         match &result {
             Ok(()) => report.record(id, "applied", None),
             Err(error) => report.record(id, "failed", Some(error.to_string())),
+        }
+    }
+    Ok(report)
+}
+
+pub fn discover_imports(
+    db: &Database,
+    app_type: &str,
+) -> Result<crate::managed_items::Discovery, AppError> {
+    let existing = db.get_all_mcp_servers(app_type)?;
+    let mut current: Vec<_> = read_claude_mcp_servers()?.into_keys().collect();
+    current.sort();
+    let mut items = Vec::new();
+    for id in current {
+        if !existing.iter().any(|s| s.id == id)
+            && !crate::managed_items::is_removed(db, app_type, "mcp", &id)?
+        {
+            items.push(crate::managed_items::Candidate {
+                name: id.clone(),
+                id,
+                source: "Claude Code".into(),
+            });
+        }
+    }
+    Ok(crate::managed_items::Discovery {
+        items,
+        report: OperationReport::new(),
+    })
+}
+
+pub fn import_selected(
+    db: &Database,
+    app_type: &str,
+    ids: &[String],
+) -> Result<OperationReport, AppError> {
+    let current = read_claude_mcp_servers()?;
+    let mut report = OperationReport::new();
+    for id in ids.iter().collect::<std::collections::BTreeSet<_>>() {
+        match current.get(id) {
+            Some(spec) => {
+                let item = import_servers(
+                    db,
+                    app_type,
+                    [(id.to_string(), spec.clone())].into_iter().collect(),
+                )?;
+                for entry in item.items {
+                    report.record(entry.id, entry.outcome, entry.error);
+                }
+            }
+            None => report.record(
+                id,
+                "failed",
+                Some("No longer available. Scan again.".into()),
+            ),
         }
     }
     Ok(report)

@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { ToastNotice } from '@/components/ToastNotice';
 import type { OperationReport } from '@/api';
 
-export function OperationResults({ report, action }: { report: OperationReport; action: 'Import' | 'Sync' }) {
+export function OperationResults({ report, action }: { report: OperationReport; action: 'Import' | 'Sync' | 'Restore' }) {
   const [dismissedReport, setDismissedReport] = useState<OperationReport | null>(null);
   if (dismissedReport === report) return null;
 
   const failed = !report.success && report.failed === report.items.length;
   const outcome = report.success ? 'completed' : failed ? 'failed' : 'partially completed';
-  const message = `${action} ${outcome}: ${action === 'Import' ? `${report.imported} imported, ${report.updated} updated` : `${report.applied} applied`}, ${report.skipped} skipped, ${report.failed} failed.`;
+  const message = `${action} ${outcome}: ${action !== 'Sync' ? `${report.imported} ${action === 'Restore' ? 'restored' : 'imported'}, ${report.updated} updated` : `${report.applied} applied`}, ${report.skipped} skipped, ${report.failed} failed.`;
 
   return <ToastNotice tone={report.success ? 'success' : failed ? 'error' : 'warning'} message={message} onDismiss={() => setDismissedReport(report)}>
     <details open={!report.success} className="mt-2 text-xs text-muted-foreground">

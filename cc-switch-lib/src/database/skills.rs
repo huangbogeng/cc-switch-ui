@@ -5,6 +5,20 @@ use crate::error::AppError;
 use rusqlite::params;
 
 impl super::Database {
+    /// Change a whole collection in one statement, including members hidden by search.
+    pub fn set_skill_collection_enabled(
+        &self,
+        app_type: &str,
+        collection: &str,
+        enabled: bool,
+    ) -> Result<usize, AppError> {
+        let conn = self.conn();
+        Ok(conn.execute(
+            "UPDATE skills SET enabled = ?1 WHERE app_type = ?2 AND COALESCE(NULLIF(collection, ''), 'Other') = ?3",
+            params![enabled, app_type, collection],
+        )?)
+    }
+
     pub fn get_all_skills(&self, app_type: &str) -> Result<Vec<SkillRecord>, AppError> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
@@ -87,7 +101,8 @@ impl super::Database {
     pub fn save_skill(&self, skill: &SkillRecord) -> Result<(), AppError> {
         self.validate_skill(skill)?;
         let conn = self.conn();
-        conn.execute(
+        let transaction = conn.unchecked_transaction()?;
+        transaction.execute(
             "INSERT INTO skills (id, name, description, directory, app_type, enabled, collection,
                 installed_at, repo_owner, repo_name, repo_branch, readme_url)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
@@ -119,6 +134,11 @@ impl super::Database {
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
+        transaction.execute(
+            "DELETE FROM managed_removed WHERE app_type=?1 AND kind=?2 AND item_key=?3",
+            params![skill.app_type, "skill", skill.directory],
+        )?;
+        transaction.commit()?;
         Ok(())
     }
 

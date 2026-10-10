@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { listSkills, importSkills, syncSkills, getManagedDeletion } from '@/api';
+import { listImportCandidates, listSkills, importSkills, syncSkills, getManagedDeletion, setSkillCollectionEnabled } from '@/api';
 import SkillsPage from './SkillsPage';
 vi.mock('@/api', async (original) => ({ ...await original<typeof import('@/api')>(),
-  listSkills: vi.fn(), importSkills: vi.fn(), syncSkills: vi.fn(), getManagedDeletion: vi.fn(),
+  listImportCandidates: vi.fn(), listSkills: vi.fn(), importSkills: vi.fn(), syncSkills: vi.fn(), setSkillCollectionEnabled: vi.fn(), getManagedDeletion: vi.fn(),
 }));
 vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => undefined, cacheSet: vi.fn() }));
-beforeEach(() => { vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null }); vi.mocked(listSkills).mockResolvedValue({ skills: [] }); });
+beforeEach(() => { vi.mocked(listImportCandidates).mockResolvedValue({ items: [{ id: 'candidate', name: 'Candidate', source: 'Claude Code' }], report: { success: true, imported: 0, updated: 0, applied: 0, skipped: 0, failed: 0, items: [] } }); vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null }); vi.mocked(listSkills).mockResolvedValue({ skills: [] }); });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 const partial = { success: false, imported: 0, updated: 1, applied: 0, skipped: 1, failed: 1,
   items: [{ id: 'blocked', outcome: 'failed' as const, error: 'Collection save failed' },
@@ -15,7 +15,7 @@ const partial = { success: false, imported: 0, updated: 1, applied: 0, skipped: 
 it('separates collection updates from imports and refreshes partial results', async () => {
   vi.mocked(importSkills).mockResolvedValue(partial);
   const { container } = render(<SkillsPage />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Import' }));
+  await performImport();
   await screen.findByText('Import partially completed: 0 imported, 1 updated, 1 skipped, 1 failed.');
   await waitFor(() => expect(listSkills).toHaveBeenCalledTimes(2));
   expect(screen.getByText(/Collection save failed/)).toBeTruthy();
@@ -48,4 +48,23 @@ it('bounds broad search results and resets the batch when searching a different 
   expect(screen.getAllByRole('button', { name: /^Edit Demo/ })).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Edit Demo 499' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Show next .* matches/ })).toBeNull();
+});
+
+async function performImport() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Import' }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: /Candidate/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
+}
+
+it('changes the full group while searching and refreshes after a lost response', async () => {
+  const skills = [true, false].map((enabled, index) => ({ id: `group-${index}`, name: `Member ${index}`, directory: `group-${index}`, collection: 'Team', appType: 'claude_code', enabled, installedAt: 0 }));
+  vi.mocked(listSkills).mockResolvedValue({ skills });
+  vi.mocked(setSkillCollectionEnabled).mockRejectedValue(new Error('Connection lost'));
+  render(<SkillsPage />);
+  await userEvent.type(await screen.findByRole('textbox', { name: 'Search skills' }), 'Member 0');
+  await screen.findByText('1 matching skills · 1 loaded');
+  await userEvent.click(screen.getByRole('switch', { name: 'Enable all skills in Team' }));
+  expect(setSkillCollectionEnabled).toHaveBeenCalledWith('Team', true);
+  await screen.findByText('Connection lost');
+  await waitFor(() => expect(listSkills).toHaveBeenCalledTimes(2));
 });
