@@ -65,7 +65,10 @@ export function useDialog(open: boolean, onClose: () => void, canClose = true) {
       }
       const first = elements[0];
       const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (!dialog?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -83,7 +86,13 @@ export function useDialog(open: boolean, onClose: () => void, canClose = true) {
         document.body.style.overflow = previousOverflow;
         document.body.style.paddingRight = previousPadding;
       }
-      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
+      if (wasTop && previousFocus?.isConnected) {
+        previousFocus.focus();
+        // The opener can become disabled while an asynchronous action runs.
+        if (document.activeElement !== previousFocus) {
+          previousFocus.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')?.focus();
+        }
+      }
     };
   }, [open]);
 

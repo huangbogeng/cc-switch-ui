@@ -49,3 +49,32 @@ it('cancels an unresolved confirmation on unmount without performing the action'
   await waitFor(() => expect(result).toHaveBeenCalledExactlyOnceWith(false));
   expect(document.body.style.overflow).toBe('');
 });
+
+it('traps Tab back into the outer dialog when the confirmation opener becomes disabled', async () => {
+  const result = vi.fn();
+  function Editor() {
+    const ref = useDialog(true, vi.fn());
+    const { confirmAction, confirmation } = useConfirm();
+    return <div ref={ref} role="dialog" tabIndex={-1}>
+      <button onClick={() => { void confirmAction('Apply?', { confirmLabel: 'Apply' }).then(result); }}>Open confirmation</button>
+      <button>Other editor control</button>
+      {confirmation}
+    </div>;
+  }
+  const view = render(<Editor />);
+  const opener = screen.getByRole('button', { name: 'Open confirmation' }) as HTMLButtonElement;
+  await userEvent.click(opener);
+  opener.disabled = true;
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(result).toHaveBeenCalledWith(true));
+  expect(document.activeElement).toBe(screen.getByRole('dialog'));
+  await userEvent.tab();
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Other editor control' }));
+  // Recover focus even if another caller programmatically moves it to the background.
+  document.body.tabIndex = -1;
+  document.body.focus();
+  await userEvent.tab({ shift: true });
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Other editor control' }));
+  document.body.removeAttribute('tabindex');
+  view.unmount();
+});
