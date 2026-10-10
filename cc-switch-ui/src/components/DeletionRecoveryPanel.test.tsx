@@ -33,6 +33,7 @@ it('retries the captured operation and clears pending state after completion', a
   vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
   await userEvent.click(screen.getByRole('button', { name: 'Retry live cleanup' }));
   await screen.findByText(/Deletion finished. Captured live configuration/);
+  expect(screen.queryByText('Deletion recovery')).toBeNull();
   expect(finishManagedDeletion).toHaveBeenCalledWith('operation-uuid', false);
   expect(callbacks.onResolved).toHaveBeenCalledOnce();
   await waitFor(() => expect(callbacks.onPendingChange).toHaveBeenLastCalledWith(false));

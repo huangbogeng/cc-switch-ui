@@ -98,3 +98,13 @@ it('refreshes committed deletion and blocks mutations while exposing live cleanu
   expect(screen.getByRole('button', { name: 'Sync' }).hasAttribute('disabled')).toBe(true);
   expect(screen.getByRole('button', { name: 'Retry live cleanup' }).hasAttribute('disabled')).toBe(false);
 });
+
+it('opens the MCP editor as a dialog and restores focus after Escape', async () => {
+  render(<McpPage />);
+  const edit = await screen.findByRole('button', { name: 'Edit Test' });
+  await userEvent.click(edit);
+  expect(screen.getByRole('dialog', { name: 'Edit MCP Server' })).toBeTruthy();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+});

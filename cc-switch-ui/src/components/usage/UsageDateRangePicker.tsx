@@ -60,7 +60,7 @@ export default function UsageDateRangePicker({ selection, onChange }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] px-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <Calendar className="h-3.5 w-3.5" />
         {formatRangeLabel(selection, resolved)}
@@ -78,7 +78,7 @@ export default function UsageDateRangePicker({ selection, onChange }: Props) {
           <div
             role="dialog"
             aria-label="Usage date range"
-            className="absolute right-0 top-full z-50 mt-1 min-w-[280px] rounded-xl border border-white/10 bg-card p-3 shadow-2xl"
+            className="absolute right-0 top-full z-50 mt-1 w-[min(320px,calc(100vw-2rem))] rounded-xl border border-white/10 bg-card p-3 shadow-lg"
           >
             <div className="grid grid-cols-5 gap-1">
               {PRESETS.map((preset) => (

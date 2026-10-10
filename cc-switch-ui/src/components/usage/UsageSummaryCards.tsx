@@ -1,5 +1,6 @@
 import { Activity, Type, Braces, CheckCircle } from 'lucide-react';
 import type { ProxyUsageSummaryResponse } from '@/api';
+import { Card, CardContent } from '@/components/ui/card';
 
 function formatNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -16,28 +17,17 @@ interface StatCardProps {
 }
 
 function StatCard({ icon: Icon, label, value, sub, accent }: StatCardProps) {
-  const accentMap: Record<string, string> = {
-    primary: 'from-primary/10 bg-primary/15 text-primary',
-    amber: 'from-amber-500/10 bg-amber-500/15 text-amber-500',
-    emerald: 'from-emerald-500/10 bg-emerald-500/15 text-emerald-500',
-    violet: 'from-violet-500/10 bg-violet-500/15 text-violet-500',
-  };
-  const [, iconBg, iconText] = accentMap[accent].split(' ');
-
+  const iconColor = { primary: 'text-primary', amber: 'text-amber-400', emerald: 'text-emerald-400', violet: 'text-muted-foreground' }[accent];
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-card to-card/50 p-5 shadow-xl transition-all duration-300 hover:border-white/20 hover:shadow-2xl">
-      <div className={`absolute inset-0 bg-gradient-to-br ${accentMap[accent].split(' ')[0]} via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-      <div className="flex items-start justify-between">
-        <div className={`rounded-xl ${iconBg} p-2.5 shadow-inner`}>
-          <Icon className={`h-5 w-5 ${iconText}`} />
+    <Card>
+      <CardContent className="p-5 sm:p-6">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Icon className={`h-4 w-4 ${iconColor}`} />{label}
         </div>
-      </div>
-      <div className="mt-4">
-        <div className="text-2xl font-bold tracking-tight text-foreground tabular-nums">{value}</div>
-        <div className="mt-1 text-sm font-medium text-muted-foreground">{label}</div>
-        {sub && <div className="mt-1 text-xs text-muted-foreground/70">{sub}</div>}
-      </div>
-    </div>
+        <div title={value} className="mt-3 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+        <div className="mt-1 min-h-5 text-xs leading-5 text-muted-foreground">{sub ?? '\u00a0'}</div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -99,7 +89,7 @@ export default function UsageSummaryCards({ data, loading }: Props) {
           {data.sources.map((s) => (
             <div
               key={s.app_type}
-              className="rounded-xl border border-white/10 bg-card/50 px-3 py-1.5 text-xs"
+              className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-xs"
             >
               <span className="text-muted-foreground">{s.app_type}: </span>
               <span className="font-medium text-foreground">{s.request_count.toLocaleString()} req</span>

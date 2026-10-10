@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -91,7 +92,7 @@ export function ClaudeUserSettingsPanel() {
       <CardContent className="space-y-4">
         {snapshot && <p className="break-all font-mono text-xs text-muted-foreground">{snapshot.path}</p>}
         {error && <ErrorAlert message={error} />}
-        {notice && <p role="status" className="text-sm text-emerald-400">{notice}</p>}
+        {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
         {snapshot && <fieldset disabled={busy || needsReload} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="claude-api-timeout">API Timeout MS</Label>

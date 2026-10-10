@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import { finishManagedDeletion, getManagedDeletion, type PendingDeletion } from '@/api';
@@ -45,7 +46,7 @@ export function DeletionRecoveryPanel({ refreshKey, disabled, onBusyChange, onRe
       try { await load(); } catch { /* Keep the pending snapshot and original error for retry. */ }
     } finally { setBusy(false); onBusyChange(false); }
   };
-  if (!pending && !error && !notice) return null;
+  if (!pending && !error) return notice ? <ToastNotice message={notice} onDismiss={() => setNotice('')} /> : null;
   return (
     <div className="space-y-3 rounded-lg border p-4 text-sm">
       {confirmation}
@@ -54,7 +55,7 @@ export function DeletionRecoveryPanel({ refreshKey, disabled, onBusyChange, onRe
         <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => void refresh()}>Refresh deletion status</Button>
       </div>
       {error && <ErrorAlert message={error} />}
-      {notice && <p role="status">{notice}</p>}
+      {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
       {pending && <>
         <p role="status">{pending.kind === 'mcp' ? 'MCP server' : 'Skill'} {pending.name} ({pending.id}): record deleted, live cleanup unfinished.</p>
         <p className="text-muted-foreground">MCP/Skills changes are blocked until this deletion finishes. Retry removes only the captured configuration; changed files are preserved and reported as a conflict. Keep current files leaves them unmanaged and potentially active.</p>

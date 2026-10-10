@@ -1,3 +1,4 @@
+import { ProviderLogo } from './ProviderLogo';
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -120,9 +121,9 @@ export function ProviderFormDialog({
   };
 
   return (
-    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
-      <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-2xl overflow-hidden [contain:layout_paint]">
-        <CardContent className="max-h-[90vh] overflow-y-auto overscroll-contain p-6 [scrollbar-gutter:stable] [will-change:scroll-position]">
+    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+      <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="dialog-panel w-full max-w-2xl [contain:layout_paint]">
+        <CardContent className="dialog-body [scrollbar-gutter:stable]">
           <div className="mb-5">
             <h2 id={titleId} className="text-xl font-semibold leading-7 text-foreground">
               {editingId ? 'Edit Provider' : selectedPreset ? `Add ${selectedPreset.name}` : 'Add Custom Provider'}
@@ -146,9 +147,8 @@ export function ProviderFormDialog({
           {selectedPreset && (
             <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge style={{ background: selectedPreset.iconColor }} className="border-transparent text-white">
-                  {selectedPreset.name}
-                </Badge>
+                <ProviderLogo icon={selectedPreset.icon} />
+                <span className="text-[15px] font-semibold">{selectedPreset.name}</span>
                 <Badge variant="outline">{usesOAuthProxy ? 'OAuth Account' : noAuth ? 'Subscription' : 'API Key'}</Badge>
               </div>
               {selectedPreset.description && (
@@ -344,7 +344,7 @@ export function ProviderFormDialog({
                 Diagnostics
               </summary>
               <div className="space-y-4 pt-4">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
@@ -407,7 +407,7 @@ export function ProviderFormDialog({
                   )}
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
@@ -523,7 +523,7 @@ export function ProviderFormDialog({
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="dialog-actions">
               <Button type="button" variant="ghost" onClick={requestCancel} disabled={saving}>
                 Cancel
               </Button>

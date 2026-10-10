@@ -48,14 +48,14 @@ export default function RequestLogDetailPanel({ logId, onClose }: Props) {
   return (
     <div className="dialog-overlay fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="relative w-full max-w-lg bg-background border-l border-border shadow-xl animate-in slide-in-from-right">
-        <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
-          <CardTitle id={titleId} className="text-sm font-medium">Request Detail</CardTitle>
-          <Button aria-label="Close request detail" variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="relative w-full max-w-lg flex h-dvh flex-col bg-card border-l border-white/10 shadow-lg animate-in slide-in-from-right">
+        <CardHeader className="flex shrink-0 flex-row items-center justify-between">
+          <CardTitle id={titleId} >Request Detail</CardTitle>
+          <Button aria-label="Close request detail" variant="ghost" size="icon" className="h-9 w-9" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent className="p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {isLoading ? (
             <div className="text-sm text-muted-foreground py-8 text-center">Loading...</div>
           ) : !data ? (

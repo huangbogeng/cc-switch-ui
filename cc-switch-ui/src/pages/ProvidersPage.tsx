@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
@@ -15,7 +16,7 @@ import {
 import type { CodexAccount } from '../api';
 import type { ProviderPreset } from '@/config/providerPresets';
 import { LocalRoutePanel } from '@/components/providers/LocalRoutePanel';
-import { ProviderCard } from '@/components/providers/ProviderCard';
+import { ProviderList } from '@/components/providers/ProviderList';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
 import {
   buildProvider,
@@ -262,7 +263,7 @@ export default function ProvidersPage() {
       {confirmation}
       <PageHeader
         title="Providers"
-        description="Manage provider configs. Local route control is separated below."
+        description="Your connections, direct configuration, and local route."
         action={
           <Button onClick={handleAdd} disabled={pendingAction !== null || saving}>
             <Plus className="h-4 w-4" />
@@ -271,11 +272,8 @@ export default function ProvidersPage() {
         }
       />
 
-      {error && (
-        <div role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      {error && <ToastNotice tone="error" message={error} onDismiss={() => setError('')} />}
+
 
       {saveRecoveryRequired && (
         <div role="alert" className="mb-4 rounded-xl border px-4 py-3 text-sm">
@@ -284,34 +282,14 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {operationNotice && (
-        <div role="status" className="mb-4 rounded-xl border border-primary/30 px-4 py-2.5 text-sm">
-          {operationNotice}
-        </div>
-      )}
+      {operationNotice && <ToastNotice message={operationNotice} onDismiss={() => setOperationNotice('')} />}
 
-      {proxyError && (
-        <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-sm">
-          {proxyError}
-        </div>
-      )}
 
-      {!loading && providerList.length > 0 && (
-        <LocalRoutePanel
-          providers={providerList}
-          currentProviderId={currentProviderId}
-          proxyRunning={proxyStatus?.running ?? false}
-          recoveryRequired={proxyStatus?.recovery_required ?? false}
-          proxyTargetId={proxyStatus?.active_target_provider_id ?? currentProviderId ?? providerList[0]?.id ?? null}
-          busy={pendingAction !== null || saving}
-          onTargetChange={(providerId) => void handleProxyTargetChange(providerId)}
-          onStartProxy={(providerId) => void handleStartProxy(providerId)}
-          onStopProxy={handleStopProxy}
-        />
-      )}
+      {proxyError && <ToastNotice tone="error" message={proxyError} onDismiss={() => setProxyError('')} />}
+
 
       {loading ? (
-        <Card className="border-white/5 bg-card/40">
+        <Card>
           <CardContent className="p-12 flex flex-col items-center justify-center text-sm leading-5 text-muted-foreground">
             <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin mb-4"></div>
             Loading providers...
@@ -332,18 +310,23 @@ export default function ProvidersPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {providerList.map((provider) => (
-            <ProviderCard
-              key={provider.id}
-              provider={provider}
-              active={provider.id === currentProviderId}
-              onSwitch={handleSwitch}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <ProviderList providers={providerList} currentProviderId={currentProviderId} busy={pendingAction !== null || saving}
+            onSwitch={handleSwitch} onEdit={handleEdit} onDelete={handleDelete} />
+          <aside aria-label="Local route controls" className="min-w-0 xl:sticky xl:top-6">
+            <LocalRoutePanel
+              providers={providerList}
+              currentProviderId={currentProviderId}
+              proxyRunning={proxyStatus?.running ?? false}
+              recoveryRequired={proxyStatus?.recovery_required ?? false}
+              statusUnavailable={routeQuery.isLoading || Boolean(routeQuery.error)}
+              proxyTargetId={proxyStatus?.active_target_provider_id ?? currentProviderId ?? providerList[0]?.id ?? null}
               busy={pendingAction !== null || saving}
+              onTargetChange={(providerId) => void handleProxyTargetChange(providerId)}
+              onStartProxy={(providerId) => void handleStartProxy(providerId)}
+              onStopProxy={handleStopProxy}
             />
-          ))}
+          </aside>
         </div>
       )}
 

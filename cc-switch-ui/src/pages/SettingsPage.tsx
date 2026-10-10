@@ -1,3 +1,4 @@
+import { BrandMark } from '@/components/BrandMark';
 import { useCallback, useEffect, useState } from 'react';
 import { Check, RotateCcw, Save } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
@@ -156,22 +157,22 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="max-w-[1000px] mx-auto">
+    <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Adjust local interface and route behavior."
+        description="Manage user settings, backups, and local connections."
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 items-start xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <div id="claude-user-settings"><ClaudeUserSettingsPanel /></div>
           <BackupCenter />
-          <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
-            <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-              <CardTitle className="text-[15px] font-bold tracking-tight">Local Route Port</CardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-[15px] font-semibold tracking-tight">Local Route Port</CardTitle>
               <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the local Claude Code endpoint port. Restart the CC Switch server after saving to apply a new port.</p>
             </CardHeader>
-            <CardContent className="space-y-5 pt-6">
+            <CardContent className="space-y-5">
               {portError && (
                 <ErrorAlert message={portError} />
               )}
@@ -184,7 +185,7 @@ export default function SettingsPage() {
               ) : (
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="space-y-2.5 flex-1 max-w-[240px]">
-                    <Label htmlFor="proxy-port-setting" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Route Listen Port</Label>
+                    <Label htmlFor="proxy-port-setting" className="text-xs font-medium text-muted-foreground">Route Listen Port</Label>
                     <Input
                       id="proxy-port-setting"
                       type="number"
@@ -192,7 +193,7 @@ export default function SettingsPage() {
                       onChange={(e) => setProxyPortState(parseInt(e.target.value) || 15721)}
                       min={1024}
                       max={65535}
-                      className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      className="h-10 rounded-lg font-mono"
                     />
                   </div>
                   <Button onClick={handlePortSave} disabled={portLoading || savingPort} className="h-10 rounded-xl shadow-sm px-6">
@@ -208,12 +209,12 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
-            <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-              <CardTitle className="text-[15px] font-bold tracking-tight">Outbound Network Proxy</CardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-[15px] font-semibold tracking-tight">Outbound Network Proxy</CardTitle>
               <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Optional network proxy used when the local route connects to upstream providers and OAuth services.</p>
             </CardHeader>
-            <CardContent className="space-y-5 pt-6">
+            <CardContent className="space-y-5">
               {outboundError && (
                 <ErrorAlert message={outboundError} />
               )}
@@ -237,7 +238,7 @@ export default function SettingsPage() {
 
                   <div className="grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)_120px]">
                     <div className="space-y-2.5">
-                      <Label htmlFor="outbound-proxy-type" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Type</Label>
+                      <Label htmlFor="outbound-proxy-type" className="text-xs font-medium text-muted-foreground">Type</Label>
                       <Select
                         id="outbound-proxy-type"
                         value={outboundProxy.proxy_type}
@@ -249,18 +250,18 @@ export default function SettingsPage() {
                       </Select>
                     </div>
                     <div className="space-y-2.5">
-                      <Label htmlFor="outbound-proxy-host" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Host</Label>
+                      <Label htmlFor="outbound-proxy-host" className="text-xs font-medium text-muted-foreground">Host</Label>
                       <Input
                         id="outbound-proxy-host"
                         value={outboundProxy.host}
                         onChange={(e) => setOutboundProxy({ ...outboundProxy, host: e.target.value })}
                         disabled={!outboundProxy.enabled}
                         placeholder="127.0.0.1"
-                        className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                        className="h-10 rounded-lg font-mono"
                       />
                     </div>
                     <div className="space-y-2.5">
-                      <Label htmlFor="outbound-proxy-port" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Port</Label>
+                      <Label htmlFor="outbound-proxy-port" className="text-xs font-medium text-muted-foreground">Port</Label>
                       <Input
                         id="outbound-proxy-port"
                         type="number"
@@ -269,7 +270,7 @@ export default function SettingsPage() {
                         disabled={!outboundProxy.enabled}
                         min={1}
                         max={65535}
-                        className="h-10 rounded-xl border-white/10 bg-black/20 font-mono shadow-inner transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                        className="h-10 rounded-lg font-mono"
                       />
                     </div>
                   </div>
@@ -290,17 +291,15 @@ export default function SettingsPage() {
           </Card>
         </div>
 
-        <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300 h-fit">
-          <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-            <CardTitle className="text-[15px] font-bold tracking-tight">About</CardTitle>
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="text-[15px] font-semibold tracking-tight">About</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5 pt-6 text-sm text-muted-foreground">
+          <CardContent className="space-y-5 text-sm text-muted-foreground">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-inner">
-                <span className="font-bold text-primary text-lg tracking-tight">CC</span>
-              </div>
+              <BrandMark className="h-12 w-12" />
               <div>
-                <div className="text-base font-bold tracking-tight text-foreground">CC Switch Web</div>
+                <div className="text-base font-semibold tracking-tight text-foreground">CC Switch Web</div>
                 <div className="mt-0.5 text-xs font-semibold text-primary/80 bg-primary/10 w-fit px-2 py-0.5 rounded-md">Version {__APP_VERSION__}</div>
               </div>
             </div>

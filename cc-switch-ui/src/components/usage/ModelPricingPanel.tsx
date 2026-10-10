@@ -101,12 +101,12 @@ function ReadonlyRow({
 }) {
   return (
     <tr className="border-b border-border hover:bg-muted/30">
-      <td className="p-2 text-xs font-mono">{item.modelId}</td>
-      <td className="p-2 text-sm">{item.displayName}</td>
-      <td className="p-2 text-xs font-mono">{item.inputCostPerMillion}</td>
-      <td className="p-2 text-xs font-mono">{item.outputCostPerMillion}</td>
-      <td className="p-2 text-xs font-mono">{item.cacheReadCostPerMillion}</td>
-      <td className="p-2 text-xs font-mono">{item.cacheCreationCostPerMillion}</td>
+      <td className="px-4 py-3 text-xs font-mono">{item.modelId}</td>
+      <td className="px-4 py-3 text-sm">{item.displayName}</td>
+      <td className="px-4 py-3 text-xs font-mono">{item.inputCostPerMillion}</td>
+      <td className="px-4 py-3 text-xs font-mono">{item.outputCostPerMillion}</td>
+      <td className="px-4 py-3 text-xs font-mono">{item.cacheReadCostPerMillion}</td>
+      <td className="px-4 py-3 text-xs font-mono">{item.cacheCreationCostPerMillion}</td>
       <td className="p-2">
         <div className="flex gap-1">
           <Button aria-label={`Edit pricing for ${item.modelId}`} variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit} disabled={busy}>
@@ -179,16 +179,16 @@ export default function ModelPricingPanel() {
   return (
     <Card>
       {confirmation}
-      <CardHeader className="flex flex-row items-center justify-between py-3">
-        <CardTitle className="text-sm font-medium">Model Pricing</CardTitle>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <CardTitle >Model Pricing</CardTitle>
         {!adding && (
-          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setAdding(true)} disabled={busy}>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setAdding(true)} disabled={busy}>
             <Plus className="mr-1 h-3.5 w-3.5" />
             Add Model
           </Button>
         )}
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 sm:px-0">
         {(validationError || upsert.error || del.error) && (
           <div className="p-3">
             <ErrorAlert message={validationError || errorMessage(upsert.error ?? del.error, 'Pricing update failed')} />
@@ -198,13 +198,13 @@ export default function ModelPricingPanel() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
-                <th className="p-2 text-left font-medium">Model ID</th>
-                <th className="p-2 text-left font-medium">Display Name</th>
-                <th className="p-2 text-right font-medium">Input (per M)</th>
-                <th className="p-2 text-right font-medium">Output (per M)</th>
-                <th className="p-2 text-right font-medium">Cache Read (per M)</th>
-                <th className="p-2 text-right font-medium">Cache Creation (per M)</th>
-                <th className="p-2 text-center font-medium w-20">Actions</th>
+                <th className="px-4 py-3 text-left font-medium">Model ID</th>
+                <th className="px-4 py-3 text-left font-medium">Display Name</th>
+                <th className="px-4 py-3 text-right font-medium">Input (per M)</th>
+                <th className="px-4 py-3 text-right font-medium">Output (per M)</th>
+                <th className="px-4 py-3 text-right font-medium">Cache Read (per M)</th>
+                <th className="px-4 py-3 text-right font-medium">Cache Creation (per M)</th>
+                <th className="px-4 py-3 text-center font-medium w-20">Actions</th>
               </tr>
             </thead>
             <tbody>

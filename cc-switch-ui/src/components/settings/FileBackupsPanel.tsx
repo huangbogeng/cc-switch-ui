@@ -27,7 +27,7 @@ export function FileBackupsPanel() {
         {error && <ErrorAlert message={error} />}
         {error && loaded && <p className="text-xs text-muted-foreground">The list below is from the previous successful refresh.</p>}
         {loaded && items.map((item) => (
-          <div key={item.id} className="space-y-2 rounded-lg border p-3 text-sm">
+          <div key={item.id} className="space-y-2 rounded-xl border border-white/[0.07] p-4 text-sm">
             <h3 className="font-semibold">{item.label}</h3>
             <p className="break-all font-mono text-xs text-muted-foreground">Live file: {item.sourcePath}</p>
             {item.status === 'missing' && <p>No first-write backup for this path yet.</p>}

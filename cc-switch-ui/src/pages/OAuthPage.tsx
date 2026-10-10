@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -14,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Check, CheckCircle2, Circle, Loader2, Server, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ErrorAlert } from '@/components/ErrorAlert';
 import { errorMessage } from '@/lib/errors';
 import { useDialog } from '@/lib/useDialog';
 
@@ -226,24 +226,24 @@ export default function OAuthPage() {
         description="Manage account connections used by OAuth-backed routes."
       />
 
-      {error && <ErrorAlert message={error} className="mb-6" />}
+      {error && <ToastNotice tone="error" message={error} onDismiss={() => setError('')} />}
 
       <div className="space-y-6">
         {/* Codex OAuth Section */}
-        <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
-          <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-            <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
-              <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2.5 text-[15px] font-semibold text-foreground tracking-tight">
+              <div className="text-muted-foreground">
                 <Server className="h-4 w-4 text-primary" />
               </div>
               ChatGPT Codex OAuth
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-2xl bg-black/20 border border-white/5 p-4 shadow-inner">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-xl bg-white/[0.025] border border-white/[0.07] p-4">
               <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-4">
                 {codexStatus?.authenticated ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/15">
                     <CheckCircle2 className="h-5 w-5 text-emerald-400 drop-shadow-sm" />
                   </div>
                 ) : (
@@ -252,8 +252,8 @@ export default function OAuthPage() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <div className="truncate text-[15px] font-bold tracking-tight leading-5">ChatGPT Codex</div>
-                  <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+                  <div className="truncate text-[15px] font-semibold tracking-tight leading-5">ChatGPT Codex</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
                     {codexStatus?.authenticated
                       ? codexStatus.accounts.find((a) => a.is_default)?.login || codexStatus.accounts[0]?.login || 'Connected'
                       : 'OAuth route provider only'}
@@ -267,9 +267,9 @@ export default function OAuthPage() {
 
             {codexStatus?.accounts && codexStatus.accounts.length > 0 && (
               <div className="space-y-2.5 pt-2">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 px-1">Linked Accounts</div>
+                <div className="text-xs font-medium text-muted-foreground">Linked Accounts</div>
                 {codexStatus.accounts.map((account) => (
-                  <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3 transition-colors hover:bg-white/[0.04]">
+                  <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] px-1 py-3 last:border-b-0 transition-colors hover:bg-white/[0.04]">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-semibold leading-5 text-foreground">{account.login}</div>
                       <div className="truncate font-mono text-[10px] leading-4 text-muted-foreground/60">{account.id}</div>
@@ -294,16 +294,16 @@ export default function OAuthPage() {
         </Card>
 
         {/* Copilot OAuth Section */}
-        <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
-          <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-            <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
-              <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2.5 text-[15px] font-semibold text-foreground tracking-tight">
+              <div className="text-muted-foreground">
                 <Server className="h-4 w-4 text-primary" />
               </div>
               GitHub Copilot OAuth
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-5">
+          <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="github-domain">GitHub domain</Label>
               <Input
@@ -314,10 +314,10 @@ export default function OAuthPage() {
                 disabled={copilotPending || pendingAction !== null}
               />
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-2xl bg-black/20 border border-white/5 p-4 shadow-inner">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-xl bg-white/[0.025] border border-white/[0.07] p-4">
               <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-4">
                 {copilotStatus?.authenticated ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/15">
                     <CheckCircle2 className="h-5 w-5 text-emerald-400 drop-shadow-sm" />
                   </div>
                 ) : (
@@ -326,8 +326,8 @@ export default function OAuthPage() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <div className="truncate text-[15px] font-bold tracking-tight leading-5">GitHub Copilot</div>
-                  <div className="mt-1 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+                  <div className="truncate text-[15px] font-semibold tracking-tight leading-5">GitHub Copilot</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
                     {copilotStatus?.authenticated
                       ? copilotStatus.accounts.find((a) => a.id === copilotStatus.default_account_id)?.login || 'Connected'
                       : 'Not connected'}
@@ -341,9 +341,9 @@ export default function OAuthPage() {
 
             {copilotStatus?.accounts && copilotStatus.accounts.length > 0 && (
               <div className="space-y-2.5 pt-2">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 px-1">Linked Accounts</div>
+                <div className="text-xs font-medium text-muted-foreground">Linked Accounts</div>
                 {copilotStatus.accounts.map((account) => (
-                  <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3 transition-colors hover:bg-white/[0.04]">
+                  <div key={account.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] px-1 py-3 last:border-b-0 transition-colors hover:bg-white/[0.04]">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-semibold leading-5 text-foreground">{account.login}</div>
                       <div className="truncate font-mono text-[10px] leading-4 text-muted-foreground/60">{account.github_domain}</div>
@@ -460,8 +460,8 @@ function DeviceOAuthModal({
   }, [checkAuthorization]);
 
   return (
-    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="oauth-dialog-title" className="w-full max-w-md rounded-3xl border border-white/10 bg-card/95 p-6 shadow-2xl shadow-black/30">
+    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="oauth-dialog-title" className="dialog-panel w-full max-w-md p-5 sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 id="oauth-dialog-title" className="text-xl font-semibold">{title}</h2>
           <button aria-label="Close authorization dialog" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -478,7 +478,7 @@ function DeviceOAuthModal({
           {verificationUri}
         </a>
         <div className="mb-6 text-center">
-          <div className="rounded-2xl bg-secondary/50 py-6 font-mono text-5xl font-bold tracking-widest text-primary">
+          <div className="rounded-2xl bg-secondary/50 py-6 font-mono text-4xl font-semibold sm:text-5xl tracking-widest text-primary">
             {userCode}
           </div>
         </div>

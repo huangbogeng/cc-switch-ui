@@ -1,7 +1,8 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { useState } from 'react';
 import { ApiError, listSkillBackups, restoreSkillBackup, type SkillBackup } from '@/api';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -57,16 +58,16 @@ export function SkillBackupsPanel({ disabled, onRestored, onBusyChange }: {
   return (
     <Card>
       {confirmation}
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-4">
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-sm font-semibold">Skill backups</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Recover files from before replacement, disabling, or deletion. Selected backups are kept; the current source files are backed up before recovery.</p>
+            <CardTitle>Skill backups</CardTitle>
+            <CardDescription className="mt-1.5">Recover files from before replacement, disabling, or deletion. Selected backups are kept; the current source files are backed up before recovery.</CardDescription>
           </div>
           <Button size="sm" variant="outline" onClick={load} disabled={disabled || busy}>{busy ? 'Working...' : loaded ? 'Refresh backups' : 'Load backups'}</Button>
-        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
         {error && <ErrorAlert message={error} />}
-        {notice && <p role="status" className="text-sm text-emerald-400">{notice}</p>}
+        {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
         {loaded && backups.length === 0 && <p className="text-sm text-muted-foreground">No skill backups available.</p>}
         {backups.length > 0 && (
           <div className="flex flex-wrap items-end gap-3">

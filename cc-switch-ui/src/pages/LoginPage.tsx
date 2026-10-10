@@ -1,5 +1,6 @@
+import { BrandMark } from '@/components/BrandMark';
 import { useState } from 'react';
-import { LockKeyhole, Shield } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 import { login as apiLogin, setAuthToken } from '../api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,12 +39,10 @@ export default function LoginPage({ onLogin }: Props) {
     <div className="flex min-h-screen items-center justify-center px-4 py-10 relative overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
 
       
-      <Card className="w-full max-w-[420px] overflow-hidden bg-card shadow-xl shadow-black/10 relative z-10">
+      <Card className="relative z-10 w-full max-w-[420px]">
         
-        <CardHeader className="items-center border-b border-white/5 bg-black/10 py-8 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
-            <Shield className="h-7 w-7 text-primary" />
-          </div>
+        <CardHeader className="items-center  py-8 text-center">
+          <BrandMark className="mb-2 h-14 w-14" />
           <CardTitle className="text-3xl font-semibold tracking-[-0.04em]">CC Switch</CardTitle>
           <p className="mt-1.5 text-sm text-muted-foreground">Web Admin Interface</p>
         </CardHeader>
@@ -60,7 +59,7 @@ export default function LoginPage({ onLogin }: Props) {
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   placeholder="Enter admin token"
-                  className="pl-10 h-12 rounded-xl border-white/10 bg-black/20 font-mono shadow-none transition-[border-color,box-shadow] focus:border-primary/50 focus:ring-2 focus:ring-primary/20 relative z-10"
+                  className="relative z-10 h-11 pl-10 font-mono"
                   autoFocus
                 />
               </div>

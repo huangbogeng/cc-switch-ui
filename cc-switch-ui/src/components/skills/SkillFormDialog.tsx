@@ -66,13 +66,13 @@ export function SkillFormDialog({
   };
 
   return (
-    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
-      <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-lg overflow-hidden border-primary/30">
-        <CardContent className="space-y-4 p-6">
-          <h2 id={titleId} className="text-lg font-semibold">{initialSkill ? 'Edit Skill' : 'Add Skill'}</h2>
+    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+      <Card ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="dialog-panel w-full max-w-lg">
+        <CardContent className="dialog-body space-y-5">
+          <h2 id={titleId} className="text-xl font-semibold leading-7">{initialSkill ? 'Edit Skill' : 'Add Skill'}</h2>
           <p className="text-sm text-muted-foreground">Save applies enabled skills to Claude Code. These fields describe the record; edit instructions in ~/.cc-switch/skills/{form.directory || '<directory>'}/SKILL.md.</p>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="skill-id">ID</Label>
                 <Input
@@ -124,7 +124,7 @@ export function SkillFormDialog({
                 onChange={(e) => setForm({ ...form, collection: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="skill-repo-owner">Repo Owner</Label>
                 <Input
@@ -152,9 +152,9 @@ export function SkillFormDialog({
             <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</div>
           )}
 
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={requestClose} disabled={saving}>Cancel</Button>
-            <Button size="sm" onClick={handleSave} disabled={saving}>
+          <div className="dialog-actions">
+            <Button variant="outline" onClick={requestClose} disabled={saving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>

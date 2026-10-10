@@ -1,6 +1,22 @@
+import { useState } from 'react';
+import { ToastNotice } from '@/components/ToastNotice';
 import type { OperationReport } from '@/api';
 
 export function OperationResults({ report, action }: { report: OperationReport; action: 'Import' | 'Sync' }) {
+  const [dismissedReport, setDismissedReport] = useState<OperationReport | null>(null);
+  if (report.success) {
+    if (dismissedReport === report) return null;
+    const message = `${action} completed: ${action === 'Import' ? `${report.imported} imported, ${report.updated} updated` : `${report.applied} applied`}, ${report.skipped} skipped, 0 failed.`;
+    return <ToastNotice message={message} onDismiss={() => setDismissedReport(report)}>
+      <details className="mt-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Item results</summary>
+        {action === 'Import' && <p className="mt-2">Use Sync to apply the reviewed configuration.</p>}
+        <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+          {report.items.map((item, index) => <li key={`${item.id}:${index}`} className="break-words">{item.id}: {item.outcome}</li>)}
+        </ul>
+      </details>
+    </ToastNotice>;
+  }
   return (
     <div className="space-y-3 rounded-lg border p-4 text-sm" role="status">
       <p className="font-medium">{action} {report.success ? 'completed' : report.failed === report.items.length ? 'failed' : 'partially completed'}: {action === 'Import' ? `${report.imported} imported, ${report.updated} updated` : `${report.applied} applied`}, {report.skipped} skipped, {report.failed} failed.</p>

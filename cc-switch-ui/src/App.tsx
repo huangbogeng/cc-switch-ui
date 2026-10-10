@@ -1,5 +1,6 @@
+import { BrandMark } from '@/components/BrandMark';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { LayoutDashboard, Settings, Users, LogOut, Shield, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, LogOut, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
 import { ServerStatus } from '@/components/ServerStatus';
 import LoginPage from './pages/LoginPage';
 import { queryClient } from '@/lib/queryClient';
@@ -98,9 +99,7 @@ export default function App() {
         <aside className="border-b border-white/[0.06] bg-card/40 px-4 py-4 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:px-5 lg:py-8 flex flex-col">
           <div className="flex items-center justify-between gap-3 lg:block">
             <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.035]">
-                <Shield className="h-5 w-5 text-primary" />
-              </div>
+              <BrandMark />
               <div className="min-w-0">
                 <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-foreground">CC Switch</div>
                 <div className="truncate text-xs text-muted-foreground">Provider Desk</div>
