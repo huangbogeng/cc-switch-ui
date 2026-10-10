@@ -1,16 +1,16 @@
-# CC Switch UI
+<p align="center">
+  <img src="docs/assets/readme-banner-monogram.svg" width="960" alt="CC Switch UI — providers, accounts and local routes in one browser">
+</p>
+<p align="center">
+  <a href="https://github.com/huangbogeng/cc-switch-ui/releases"><img src="https://img.shields.io/github/v/release/huangbogeng/cc-switch-ui?color=3b82f6" alt="Latest release"></a>
+  <a href="https://github.com/huangbogeng/cc-switch-ui/actions/workflows/ci.yml"><img src="https://github.com/huangbogeng/cc-switch-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b" alt="MIT license"></a>
+</p>
+<p align="center"><a href="README_zh.md">中文</a> · <a href="#quick-start">Quick start</a> · <a href="docs/README.md">Documentation</a> · <a href="https://github.com/huangbogeng/cc-switch-ui/releases">Releases</a></p>
 
-**A browser-first provider manager and local routing service for Claude Code.**
+A Web + Rust fork of [cc-switch](https://github.com/farion1231/cc-switch), focused on Claude Code and suitable for local or headless machines. Manage providers, Codex / Copilot OAuth, MCP, Skills, usage and protocol conversion through a consistent English interface.
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-[中文文档](README_zh.md)
-
-CC Switch UI manages Claude Code providers, OAuth accounts, MCP servers, Skills, usage data, and a local protocol-converting proxy from one web interface. It is a Web/Rust fork of [cc-switch](https://github.com/farion1231/cc-switch), designed for headless machines and browser-based administration.
-
-> The admin API listens on `127.0.0.1` by default. Only use `--host 0.0.0.0` on a trusted network and protect the admin token.
+> This guide describes the current repository; released binaries may lag behind. Automatic upgrades require release checksum assets. See the [upgrade guide](docs/upgrading.md) for the first upgrade from an older version. The admin API binds to `127.0.0.1` by default.
 
 ## Contents
 
@@ -18,6 +18,7 @@ CC Switch UI manages Claude Code providers, OAuth accounts, MCP servers, Skills,
 - [Features](#features)
 - [Supported providers](#supported-providers)
 - [Quick start](#quick-start)
+- [Updates and recovery](#updates-and-recovery)
 - [Configuration and data](#configuration-and-data)
 - [Architecture](#architecture)
 - [Development](#development)
@@ -36,27 +37,33 @@ Changing the route target does not overwrite the selected direct provider. Stopp
 
 ## Features
 
-- **Provider management:** maintained presets, custom compatible endpoints, endpoint detection, model discovery, and one-click switching.
-- **Local routing:** Anthropic, OpenAI Chat, OpenAI Responses, and Gemini adapters; streaming conversion; circuit breaker; and failover queue.
-- **OAuth accounts:** device-code flows and multi-account management for Codex and GitHub Copilot, including GHES support.
-- **MCP servers:** CRUD, import, per-server enable/disable, and merge-safe synchronization to `~/.claude.json`.
-- **Claude Code Skills:** CRUD, collections, import, and synchronization from `~/.cc-switch/skills/` to `~/.claude/skills/`.
-- **Usage monitoring:** proxy request logs plus optional import of Claude Code session JSONL files, with source breakdown and trend charts.
-- **Live configuration:** merge-only updates preserve unrelated fields in Claude Code configuration files.
+| Everyday management | Routing and configuration protection |
+|---------------------|--------------------------------------|
+| **Providers** — 17 presets, custom endpoints, model discovery and search | **Local Route** — Anthropic / OpenAI / Gemini adapters, streaming, circuit breaking and failover |
+| **OAuth** — Codex and GitHub Copilot multi-account management | **Codex subscription** — OAuth through the local route, without an API key |
+| **MCP / Skills** — import, enable/disable, collections and sync | **Guarded writes** — preserve user fields, detect conflicts and recover interrupted operations |
+| **Usage** — request logs, session imports, trends and source breakdown | **Backup Center** — database, configuration-file and Skills recovery |
 
 ## Supported providers
 
-The UI includes seven maintained presets and also accepts custom compatible endpoints.
+The UI includes **17 presets across 14 provider brands**, plus custom compatible endpoints. Logos are bundled locally and shared by the picker and provider list. Presets are starting configurations; account access and available models depend on the service.
 
-| Provider | Type | Authentication | Notes |
-|----------|------|----------------|-------|
-| DeepSeek | Official | API key | DeepSeek chat and reasoning models |
-| Codex | OpenAI | OAuth | ChatGPT Plus/Pro subscription |
-| MiniMax | Official | API key | MiniMax models |
-| SiliconFlow | Aggregator | API key | Multi-model catalog |
-| OpenRouter | Aggregator | API key | Multi-provider model catalog |
-| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | Aggregator | API key | Native Anthropic API and multi-provider model catalog |
-| Gemini Native | Google | API key | Native Gemini API format |
+| Provider | Authentication | Presets |
+|----------|------------------------|----------------|
+| Claude Official | Existing Claude Code login | Claude Official |
+| Codex | Managed ChatGPT OAuth; local route | Codex |
+| DeepSeek | API key | DeepSeek |
+| MiniMax | API key | MiniMax |
+| SiliconFlow | API key | SiliconFlow |
+| OpenRouter | API key | OpenRouter |
+| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | API key | OrcaRouter |
+| Google | API key | Gemini Native |
+| Kimi | API key | Kimi, Kimi For Coding, Kimi For Coding Global |
+| Zhipu | API key | Zhipu GLM, Zhipu GLM en |
+| Volcengine | API key | Volcengine Coding Plan |
+| Qwen | API key | Qwen Coding Plan |
+| AiHubMix | API key | AiHubMix |
+| PPIO | API key | PPIO |
 
 To use OrcaRouter, [create an account or obtain an API key through the project link](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21), then select the built-in **OrcaRouter** preset. The preset can fetch the current model list from the service.
 
@@ -103,9 +110,9 @@ cc-switch-ui start --host 0.0.0.0 --port 5007 --proxy-port 15721
 1. Open **Providers**.
 2. Choose a preset or create a custom provider.
 3. Enter the required API key or complete OAuth authorization.
-4. Save the provider and select **Switch**.
+4. Save the provider and select **Select**.
 
-Claude Code immediately uses the selected direct provider.
+With the route stopped, Claude Code uses the selected direct provider. During routing, the selection applies after stopping. Codex OAuth requires the local route; follow the [subscription routing guide](docs/user-guide.md).
 
 ### 4. Optional: enable the local route
 
@@ -113,6 +120,28 @@ Claude Code immediately uses the selected direct provider.
 2. Start the local route.
 
 Claude Code now sends requests to the local proxy, which adapts and forwards them to the route target. Stop the route to return to direct configuration.
+
+### Codex subscription: no API key
+
+**OAuth → ChatGPT Codex → Connect** → add the **Codex** preset → choose **ChatGPT Account** → **Route Target → Start Route**.
+
+The local service forwards requests with managed OAuth credentials and protocol conversion. Connecting an account does not start routing. Follow the [user guide](docs/user-guide.md) for the complete workflow.
+
+## Updates and recovery
+
+```bash
+cc-switch-ui update          # Latest stable release; Linux/macOS release installations
+cc-switch-ui update --force  # Reinstall the current stable release
+```
+
+An older binary without `update` needs one upgrade through the installer first. Downloads, checksums and binary versions are verified before replacement. Existing databases receive a private pre-migration snapshot; installer upgrades also retain the previous program and complete profile for rollback. A failed health check restores the previous installation and profile when rollback succeeds.
+
+- [Upgrade guide](docs/upgrading.md): first upgrade, backup locations, rollback and release prerequisites.
+- [User guide](docs/user-guide.md): direct providers, Codex subscription routing, MCP, Skills and usage.
+- [Recovery reference](docs/configuration-recovery.md): guarded file writes, conflicts, pending operations and staged database restoration.
+- [Troubleshooting](docs/troubleshooting.md): login, route state, deletion recovery and partial sync results.
+
+**Settings → Claude Code User Settings** owns API timeout and nonessential-traffic overrides. These settings are independent of provider selection. **Settings → Backup Center** groups database, configuration-file and Skills backups; a database snapshot alone does not include the entire profile.
 
 ## Configuration and data
 
@@ -130,7 +159,7 @@ The admin host and port can be changed with `cc-switch-ui start --host ... --por
 
 | Path | Purpose |
 |------|---------|
-| `~/.cc-switch/cc-switch.db` | Providers, accounts, routes, MCP, Skills metadata, and usage data |
+| `~/.cc-switch/cc-switch.db` | Providers, routes, MCP, Skills metadata, and usage data |
 | `~/.cc-switch/cli.json` | CLI host and port settings |
 | `~/.cc-switch/skills/` | Skills source of truth managed by CC Switch UI |
 | `~/.claude/settings.json` | Active Claude Code provider configuration |
@@ -162,58 +191,19 @@ The frontend lives in `cc-switch-ui/` and is built with React, TypeScript, and V
 
 ## Development
 
-Requirements: Node.js 24.15+, npm, and Rust 1.85+ (`rust-toolchain.toml` pins the project toolchain).
-
-### Run from source
+Requires Node.js **24.15+**, npm and Rust **1.95**, pinned in `rust-toolchain.toml`.
 
 ```bash
-# Terminal 1: backend API
+# Repository root, terminal 1
 cargo run -p cc-switch-server
 
-# Terminal 2: frontend development server
+# Terminal 2
 cd cc-switch-ui
 npm ci
 npm run dev
 ```
 
-For a production-style build served by the CLI:
-
-```bash
-cd cc-switch-ui
-npm ci
-npm run build
-cd ..
-cargo run -p cc-switch-cli -- start
-```
-
-### Quality checks
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-
-cd cc-switch-ui
-npm test
-npm run lint
-npm run build
-```
-
-The workspace test command also runs real CLI/HTTP workflow regressions in temporary homes, covering provider edits, route takeover and restart recovery, MCP/Skills synchronization and deletion recovery, and staged database restores. They use loopback ports and a local mock upstream, require no account or API key, and do not read your user configuration. Run them alone with `cargo test -p cc-switch-cli --test workflows`. These verify the APIs used by the UI, SQLite, and live files; browser interactions remain covered separately by frontend tests.
-
-### Repository layout
-
-```text
-cc-switch-cli/       CLI and service lifecycle
-cc-switch-lib/       Shared domain logic and SQLite persistence
-cc-switch-server/    REST API, OAuth handlers, and local proxy
-cc-switch-ui/        React frontend
-install.sh           Linux/macOS installer
-```
-
-Provider and proxy changes should keep protocol-specific behavior inside adapter boundaries, preserve switch/start/stop live-config consistency, and include tests for request, response, streaming, usage, and failure behavior where applicable.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before submitting a change.
+See the [development guide](docs/development.md) for production builds, frontend/Rust checks, isolated workflow tests and old-release upgrade regressions. Follow the [frontend design conventions](docs/frontend-design.md) and [contributing guide](CONTRIBUTING.md).
 
 ## Project scope
 
@@ -233,29 +223,3 @@ CC Switch UI is built from the open-source [cc-switch](https://github.com/farion
 ## License
 
 Licensed under the [MIT License](LICENSE).
-
-### MCP and Skills sync safety
-
-Saving or toggling a managed MCP server or skill applies the desired state to Claude Code. If the record is saved but syncing fails, the API reports `saved: true`; correct the reported cause and retry **Sync**. A sync can apply earlier skills before a later skill fails; retrying applies the remaining desired state.
-
-Sync preserves MCP entries and skill directories that have not been imported or added to CC Switch. Disabling or deleting a managed skill moves its live directory into `~/.claude/skills/.cc-switch-backups/`; replacements also preserve the previous installation there. Backups remain until manually removed. To restore one, disable the managed record, then copy its backup to the original skill directory. The source in `~/.cc-switch/skills/` is retained on deletion. Skill directories must be single directory names; symlinked managed directories or source contents are rejected rather than followed.
-
-The Skills page can load and restore backups, including deleted skills. Existing disabled records stay disabled; deleted records are recreated and enabled. Recovery preserves both the selected history and the previous source files. Unchanged syncs no longer create duplicate backups, and detected external edits abort publication. See [configuration protection and recovery](docs/configuration-recovery.md) for first-write snapshots and conflict-detection limits.
-
-### Database upgrade protection
-
-Before upgrading an existing database (including unversioned releases), startup creates a private SQLite snapshot containing committed WAL data in `~/.cc-switch/backups/upgrades/schema-<old>-to-<new>-<UUID>.db`. Backup failure stops startup before migration. All table creation, compatibility migrations and the schema version update commit in one transaction; failure rolls them back. Newer unsupported schemas are rejected. Successful repeat startup creates no additional upgrade snapshot.
-
-Upgrade snapshots retain the original schema, are separate from Settings manual backups, and are not automatically deleted. Stop all services before restoring a snapshot for downgrade and retain a copy of the current data first. Database snapshots do not include OAuth stores, Skills source files or CLI settings; back up the complete `~/.cc-switch` directory as well. Compatibility covers older CC Switch UI releases, not direct sharing of the upstream desktop application's database.
-
-### Release installer upgrades and rollback (Linux/macOS)
-
-Re-run the installer to upgrade. It downloads and verifies the release archive, `.sha256` checksum and binary version before stopping a service from this installation. A private sibling `cc-switch-upgrade-backups/<version>.<suffix>/` directory retains the previous program/frontend and a full data-directory archive, including OAuth stores, CLI settings and Skills sources. Backups contain credentials and are not automatically deleted.
-
-The restarted service preserves explicit supported launch arguments or uses existing CLI defaults and current shell environment. Validation requires the new process to bind successfully before checking `/health`. Failed startup stops the new process, retains the failed state, restores the previous program/data, and restarts a previously running service. Idle installations remain stopped after validation. Unrecognized arguments, foreign services, linked directories and concurrent upgrades are rejected before replacement.
-
-Tokens passed with `--admin-token` or exported as `CC_SWITCH_ADMIN_TOKEN` in the current shell are preserved. A token generated only in the old process, or inherited only from a different shell, cannot be recovered; use the new token shown in the private `startup.log`. Older release assets lack checksum files and are safely rejected by this installer until a new release supplies them. Windows installation remains manual.
-
-### CLI updates
-
-After installing a release containing this feature, run `cc-switch-ui update` for future updates. The command uses the embedded verified upgrade/rollback flow and targets its own release installation. When already current it leaves services and data untouched. Use `cc-switch-ui update --force` to repair/reinstall the current release with the same protections. Source build directories are rejected. Linux/macOS are supported; Windows reports that manual updating is required. Older versions must first be upgraded once using the installer.

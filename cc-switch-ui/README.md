@@ -2,6 +2,10 @@
 
 React frontend for **CC Switch Web**.
 
+[User documentation](../docs/README.md) · [Development guide](../docs/development.md) · [Design conventions](../docs/frontend-design.md)
+
+Use Node.js 24.15+ and the committed npm lockfile. The UI is English; user-defined provider names and content keep their original language.
+
 ## Stack
 
 - React 19
@@ -14,7 +18,7 @@ React frontend for **CC Switch Web**.
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -28,6 +32,7 @@ cargo run --bin cc-switch-server
 
 ```bash
 npm run lint
+npm test
 npm run build
 ```
 
@@ -58,3 +63,9 @@ This project uses Tailwind CSS v3 via PostCSS:
 - `src/index.css`
 
 Do not switch back to Tailwind v4 casually; the current layout was tuned against Tailwind v3 output.
+
+## Branding and feedback
+
+Use `BrandMark` for the app logo and `ProviderLogo` for provider brands. Assets are shipped locally; keep logo mappings consistent between presets and saved providers, and retain [asset attribution](public/logos/README.md).
+
+Use `ToastNotice` and the shared notification viewport for transient outcomes. Keep field validation and actionable recovery controls in place. Shared cards, page headers and dialog classes define the layout; see the [design guide](../docs/frontend-design.md) before adding page-specific styles.

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">CC Switch UI</title>
+  <desc id="desc">A minimal CC monogram above the name CC Switch UI. One place for Claude Code providers and local routes.</desc>
+  <rect width="1280" height="360" rx="20" fill="#0D1117"/>
+  <g transform="translate(606 58) scale(1.42)" fill="none" stroke-linecap="round" stroke-width="3.6">
+    <path d="M33.9 14.1a14 14 0 1 0 0 19.8" stroke="#DCE9FB"/>
+    <path d="M29 19a7.07 7.07 0 1 0 0 10" stroke="#60A5FA"/>
+  </g>
+  <g font-family="Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" text-anchor="middle">
+    <text x="640" y="208" fill="#F0F4FA" font-size="58" font-weight="500" letter-spacing="-2">CC Switch UI</text>
+    <text x="640" y="256" fill="#8F9CAF" font-size="21" font-weight="400" letter-spacing="-.2">One place for Claude Code providers and local routes.</text>
+  </g>
+</svg>

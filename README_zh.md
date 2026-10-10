@@ -1,16 +1,16 @@
-# CC Switch UI
+<p align="center">
+  <img src="docs/assets/readme-banner-monogram.svg" width="960" alt="CC Switch UI — providers, accounts and local routes in one browser">
+</p>
+<p align="center">
+  <a href="https://github.com/huangbogeng/cc-switch-ui/releases"><img src="https://img.shields.io/github/v/release/huangbogeng/cc-switch-ui?color=3b82f6" alt="Latest release"></a>
+  <a href="https://github.com/huangbogeng/cc-switch-ui/actions/workflows/ci.yml"><img src="https://github.com/huangbogeng/cc-switch-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-64748b" alt="MIT license"></a>
+</p>
+<p align="center"><a href="README.md">English</a> · <a href="#快速开始">快速开始</a> · <a href="docs/README.md">使用指南</a> · <a href="https://github.com/huangbogeng/cc-switch-ui/releases">下载</a></p>
 
-**面向 Claude Code 的浏览器 Provider 管理器与本地路由服务。**
+基于 [cc-switch](https://github.com/farion1231/cc-switch) 的 Web + Rust 项目，面向 Claude Code，适合本地使用和无头服务器。统一管理 Provider、Codex / Copilot OAuth、MCP、Skills、用量及协议转换。界面文案统一为英文；本页保留中文操作说明。
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/huangbogeng/cc-switch-ui)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/huangbogeng/cc-switch-ui)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-[English](README.md)
-
-CC Switch UI 在一个 Web 界面中管理 Claude Code 的 Provider、OAuth 账号、MCP Server、Skills、用量数据与本地协议转换代理。项目基于 [cc-switch](https://github.com/farion1231/cc-switch) 演进，采用 Web + Rust 架构，适合无头服务器和浏览器管理场景。
-
-> 管理接口默认只监听 `127.0.0.1`。仅应在可信网络中使用 `--host 0.0.0.0`，并妥善保管 admin token。
+> 本页描述当前仓库代码；已发布版本可能暂未包含最新功能。自动升级需要带校验文件的新版本；旧版首次升级见[升级指南](docs/upgrading.md)。管理接口默认监听 `127.0.0.1`。
 
 ## 目录
 
@@ -18,6 +18,7 @@ CC Switch UI 在一个 Web 界面中管理 Claude Code 的 Provider、OAuth 账�
 - [功能](#功能)
 - [支持的 Provider](#支持的-provider)
 - [快速开始](#快速开始)
+- [升级与恢复](#升级与恢复)
 - [配置与数据](#配置与数据)
 - [架构](#架构)
 - [开发](#开发)
@@ -36,27 +37,33 @@ CC Switch UI 将“直接 Provider”和“本地路由”作为两个彼此独�
 
 ## 功能
 
-- **Provider 管理：** 内置预设、自定义兼容端点、端点检测、模型发现和一键切换。
-- **本地路由：** Anthropic、OpenAI Chat、OpenAI Responses 与 Gemini 适配器，支持流式转换、熔断器和故障转移队列。
-- **OAuth 账号：** Codex 与 GitHub Copilot 设备码授权及多账号管理，并支持 GHES。
-- **MCP Server：** CRUD、导入、独立启停，以及合并式同步到 `~/.claude.json`。
-- **Claude Code Skills：** CRUD、集合管理、导入，并从 `~/.cc-switch/skills/` 同步到 `~/.claude/skills/`。
-- **用量监控：** 代理请求日志及可选的 Claude Code 本地会话 JSONL 导入，提供来源拆分和趋势图。
-- **实时配置：** 采用合并式写入，保留 Claude Code 配置文件中的无关字段。
+| 日常管理 | 路由与配置保护 |
+|----------|----------------|
+| **Providers** — 17 个预设、自定义端点、模型发现与搜索 | **Local Route** — Anthropic / OpenAI / Gemini 适配、流式转换、熔断与故障转移 |
+| **OAuth** — Codex、GitHub Copilot 多账号管理 | **Codex 订阅** — OAuth + 本地路由，不填写 API Key |
+| **MCP / Skills** — 导入、启停、集合管理与同步 | **安全写入** — 保留用户字段、检测冲突、恢复中断操作 |
+| **Usage** — 请求日志、会话导入、趋势与来源统计 | **Backup Center** — 数据库、配置文件和 Skills 的分层恢复 |
 
 ## 支持的 Provider
 
-UI 内置 7 个持续维护的预设，同时支持自定义兼容端点。
+UI 内置 **17 个预设，覆盖 14 个服务商品牌**，也支持自定义兼容端点。选择器和列表共用本地 Logo；预设是初始配置，账号权限和可用模型以服务商为准。
 
-| Provider | 类型 | 认证方式 | 说明 |
-|----------|------|----------|------|
-| DeepSeek | 官方 | API Key | DeepSeek 对话与推理模型 |
-| Codex | OpenAI | OAuth | ChatGPT Plus/Pro 订阅 |
-| MiniMax | 官方 | API Key | MiniMax 模型 |
-| SiliconFlow | 聚合平台 | API Key | 多模型目录 |
-| OpenRouter | 聚合平台 | API Key | 多供应商模型目录 |
-| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | 聚合平台 | API Key | Anthropic 原生接口与多供应商模型目录 |
-| Gemini Native | Google | API Key | Gemini 原生 API 格式 |
+| Provider | 认证 | 预设 |
+|----------|------------------------|----------------|
+| Claude Official | 已有 Claude Code 登录 | Claude Official |
+| Codex | ChatGPT OAuth + 本地路由 | Codex |
+| DeepSeek | API key | DeepSeek |
+| MiniMax | API key | MiniMax |
+| SiliconFlow | API key | SiliconFlow |
+| OpenRouter | API key | OpenRouter |
+| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | API key | OrcaRouter |
+| Google | API key | Gemini Native |
+| Kimi | API key | Kimi, Kimi For Coding, Kimi For Coding Global |
+| Zhipu | API key | Zhipu GLM, Zhipu GLM en |
+| Volcengine | API key | Volcengine Coding Plan |
+| Qwen | API key | Qwen Coding Plan |
+| AiHubMix | API key | AiHubMix |
+| PPIO | API key | PPIO |
 
 使用 OrcaRouter 时，可通过[项目专属链接注册或获取 API Key](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21)，然后选择内置的 **OrcaRouter** 预设。该预设可以从服务端获取当前模型列表。
 
@@ -103,16 +110,38 @@ cc-switch-ui start --host 0.0.0.0 --port 5007 --proxy-port 15721
 1. 打开 **Providers** 页面。
 2. 选择预设，或新建自定义 Provider。
 3. 填写 API Key，或完成 OAuth 授权。
-4. 保存后点击**切换**。
+4. 保存后点击 **Select**。
 
-Claude Code 会立即使用所选的直接 Provider。
+路由停止时，Claude Code 使用所选的直接 Provider；路由运行时，选择会在停止路由后生效。Codex OAuth 必须通过本地路由使用，详见[使用指南](docs/user-guide.md)。
 
 ### 4. 可选：启用本地路由
 
-1. 在 **Providers** 页面的**本地路由**区域选择**路由目标**。
-2. 启动本地路由。
+1. 在 **Providers** 页面的**Local Route** 区域选择 **Route Target**。
+2. 点击 **Start Route**。
 
 此后 Claude Code 的请求会先进入本地代理，再经过适配后转发到路由目标。停止路由即可回到直接配置。
+
+### Codex 订阅：无需 API Key
+
+**OAuth → ChatGPT Codex → Connect** → 添加 **Codex** 预设 → 选择 **ChatGPT Account** → **Route Target → Start Route**。
+
+本地服务使用 OAuth 账号转发请求并完成协议转换。授权完成不会自动启动路由；详细步骤见[使用指南](docs/user-guide.md)。
+
+## 升级与恢复
+
+```bash
+cc-switch-ui update          # 更新到稳定发布版本；Linux/macOS 发布包安装
+cc-switch-ui update --force  # 重新安装当前稳定版本
+```
+
+不支持 `update` 的旧版，需要先通过安装脚本升级一次。更新在替换前验证下载、校验和及二进制版本。数据库迁移前自动保留私有快照；安装升级另保留旧程序和完整用户目录。新服务健康检查失败时会尝试恢复旧程序与数据，并重启原先运行的服务。
+
+- [升级指南](docs/upgrading.md)：旧版首次升级、备份位置、失败回滚与发布条件。
+- [使用指南](docs/user-guide.md)：直接配置、Codex 订阅路由、MCP、Skills 和用量。
+- [恢复参考](docs/configuration-recovery.md)：文件保护、冲突、待恢复操作和数据库恢复。
+- [常见问题](docs/troubleshooting.md)：登录、路由状态、删除恢复与部分同步失败。
+
+**Settings → Claude Code User Settings** 直接修改 API 超时和非必要流量开关，独立于服务商选择。**Settings → Backup Center** 汇总数据库、配置文件和 Skills 备份；数据库快照不等于整个用户目录备份。
 
 ## 配置与数据
 
@@ -130,7 +159,7 @@ Claude Code 会立即使用所选的直接 Provider。
 
 | 路径 | 用途 |
 |------|------|
-| `~/.cc-switch/cc-switch.db` | Provider、账号、路由、MCP、Skills 元数据与用量数据 |
+| `~/.cc-switch/cc-switch.db` | Provider、路由、MCP、Skills 元数据与用量数据 |
 | `~/.cc-switch/cli.json` | CLI host 与 port 配置 |
 | `~/.cc-switch/skills/` | CC Switch UI 管理的 Skills 单一事实源 |
 | `~/.claude/settings.json` | Claude Code 当前 Provider 配置 |
@@ -162,58 +191,19 @@ Rust workspace 包含三个 crate：
 
 ## 开发
 
-环境要求：Node.js 24.15+、npm 与 Rust 1.85+（项目工具链由 `rust-toolchain.toml` 固定）。
-
-### 从源码运行
+环境：Node.js **24.15+**、npm、Rust **1.95**（工具链固定在 `rust-toolchain.toml`）。
 
 ```bash
-# 终端 1：后端 API
+# 项目根目录，终端 1
 cargo run -p cc-switch-server
 
-# 终端 2：前端开发服务器
+# 终端 2
 cd cc-switch-ui
 npm ci
 npm run dev
 ```
 
-如需由 CLI 托管前端构建产物：
-
-```bash
-cd cc-switch-ui
-npm ci
-npm run build
-cd ..
-cargo run -p cc-switch-cli -- start
-```
-
-### 质量检查
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-
-cd cc-switch-ui
-npm test
-npm run lint
-npm run build
-```
-
-上述 workspace 测试也会在临时用户目录中运行真实 CLI/HTTP 流程回归，覆盖 provider 编辑、路由接管与重启恢复、MCP/Skills 同步与删除恢复、数据库备份恢复。测试只使用 loopback 端口和本地模拟上游，无需账号或 API key，不读取实际用户配置。单独执行：`cargo test -p cc-switch-cli --test workflows`。这些回归核对前端使用的 API、SQLite 与 live 文件；浏览器交互仍由前端测试单独验证。
-
-### 仓库结构
-
-```text
-cc-switch-cli/       CLI 与服务生命周期
-cc-switch-lib/       共享领域逻辑与 SQLite 持久化
-cc-switch-server/    REST API、OAuth 处理与本地代理
-cc-switch-ui/        React 前端
-install.sh           Linux/macOS 安装脚本
-```
-
-修改 Provider 或代理行为时，应将协议特定逻辑限制在适配器边界内，保证切换/启动/停止过程中的实时配置一致性，并根据影响范围覆盖请求、响应、流式传输、用量与失败行为测试。
-
-提交修改前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+完整构建、Rust / 前端检查、隔离流程测试和旧版升级回归见[开发指南](docs/development.md)。前端布局、弹窗、通知及品牌约定见[设计指南](docs/frontend-design.md)。贡献前阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 项目定位
 
@@ -233,37 +223,3 @@ CC Switch UI 基于开源项目 [cc-switch](https://github.com/farion1231/cc-swi
 ## License
 
 本项目基于 [MIT License](LICENSE) 开源。
-
-### MCP 与 Skills 同步保护
-
-保存或启停托管的 MCP/Skill 会同步应用到 Claude Code。记录已保存但同步失败时，API 返回 `saved: true`；修复错误原因后点击 **Sync** 重试。一次同步可能在处理后续 Skill 失败前已经应用前面的条目，重试会继续应用期望状态。
-
-同步保留尚未导入或添加到 CC Switch 的 MCP 条目和 Skill 目录。禁用、删除托管 Skill 或替换已有安装时，旧目录会移入 `~/.claude/skills/.cc-switch-backups/`，备份需要手动清理。恢复时先禁用对应的托管记录，再把备份复制回原 Skill 目录。删除记录会保留 `~/.cc-switch/skills/` 中的源文件。Skill 目录只能使用单个目录名；托管目录或源内容包含符号链接时会拒绝操作，不会跟随链接。
-
-Skills 页面支持加载和恢复备份，包括已经删除的 Skill。已有记录保持原来的启停状态；已删除的记录会重建并启用。恢复会保留所选备份，并备份当前源文件。内容相同的同步不会重复生成备份，检测到外部修改时会停止替换。首写快照和冲突检测的边界参见[配置保护与恢复说明](docs/configuration-recovery.md)。
-
-### 数据库升级保护
-
-新版首次打开旧数据库（包括没有 schema 版本号的旧库）时，会先使用 SQLite Backup API 创建包含已提交 WAL 数据的快照，保存到 `~/.cc-switch/backups/upgrades/schema-<旧版本>-to-<新版本>-<UUID>.db`。Unix 上快照权限为 `0600`。备份失败则停止启动，原数据库不进行迁移；所有建表、兼容迁移与版本号更新在同一个事务中提交，失败会回滚。再次正常启动不会重复生成升级快照。新程序拒绝打开高于其支持版本的数据库。
-
-这些快照保留旧 schema，独立于 Settings 的手动数据库备份，不会自动删除。需要降级时先停止所有 CC Switch 服务，备份当前数据，再恢复与旧程序匹配的数据库快照；不要在运行中的数据库上复制文件。OAuth、Skills 源文件与 CLI 设置不包含在数据库快照中，应一并备份整个 `~/.cc-switch`。升级保护针对 CC Switch UI 的旧发布版，并不意味着可以直接共享上游桌面 CC Switch 的数据库。
-
-### 发布安装包升级与回滚（Linux/macOS）
-
-重新运行安装脚本即可升级。脚本先下载新包及 `.sha256` 校验文件，校验版本和包内容，通过后才停止来自当前安装目录的服务。数据库、OAuth、CLI 配置与 Skills 源文件一起备份，旧程序和前端一起保留在安装目录同级的 `cc-switch-upgrade-backups/<版本>.<随机后缀>/`。这些副本含凭证，默认私有且不会自动删除。
-
-新版使用原启动参数（包括显式 host、port、proxy-port、admin-token 和 ui-dir），或已有 CLI 默认配置与当前 shell 的环境变量启动。健康检查必须确认新进程已成功绑定端口，然后检查 `/health`。失败会停止新进程，保留失败现场，恢复旧程序及升级前数据，并重新启动原来运行的服务。原服务没有运行时，验证完成后仍保持停止。已有账号和 Skills 不需要重新导入。
-
-如果旧 token 仅由旧进程随机生成，或者仅来自启动旧服务时的另一个 shell 环境，安装脚本无法恢复该 token；重启后需要使用私有 `startup.log` 中显示的新 token 登录。显式 `--admin-token` 或当前 shell 导出的 `CC_SWITCH_ADMIN_TOKEN` 可保持登录 token。无法可靠识别的启动参数、其他安装目录的服务、符号链接目录和已有升级锁会在替换前拒绝升级。自动流程不能代替所有外部服务的停服协调。
-
-新安装脚本需要下一次发布提供的校验文件；历史发布包缺少校验文件时会安全退出，不会覆盖旧安装。Windows 仍使用手动安装包，此自动升级脚本不适用。升级备份、数据库迁移快照均需用户自行保管和清理。
-
-### 命令行更新
-
-安装包含本功能的新版本后，后续更新只需运行：
-
-```bash
-cc-switch-ui update
-```
-
-命令使用二进制内置的升级流程，更新当前程序所在的发布安装目录，无需再复制安装命令。已经是最新稳定版本时，不会停服、备份或替换文件；需要修复当前安装时可运行 `cc-switch-ui update --force` 强制重装，仍执行完整校验、备份和失败回滚。源码构建目录不能原地更新。Linux/macOS 支持此命令，Windows 会提示手动更新。旧版本没有 `update` 命令，需要先通过安装脚本升级一次。
