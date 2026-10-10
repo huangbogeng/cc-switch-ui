@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme-banner.svg" width="960" alt="CC Switch UI — providers, accounts and local routes in one browser">
+  <img src="docs/assets/readme-banner-monogram.svg" width="960" alt="CC Switch UI — providers, accounts and local routes in one browser">
 </p>
 <p align="center">
   <a href="https://github.com/huangbogeng/cc-switch-ui/releases"><img src="https://img.shields.io/github/v/release/huangbogeng/cc-switch-ui?color=3b82f6" alt="Latest release"></a>
