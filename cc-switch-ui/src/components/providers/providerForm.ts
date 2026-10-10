@@ -1,5 +1,5 @@
 import type { Provider } from '@/api';
-import type { ProviderPreset } from '@/config/providerPresets';
+import { providerPresets, type ProviderPreset } from '@/config/providerPresets';
 
 export type ApiKeyField = 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
 export type ApiFormat = 'anthropic' | 'openai_chat' | 'openai_responses' | 'gemini_native';
@@ -19,8 +19,7 @@ export interface ProviderFormData {
   haikuModel: string;
   sonnetModel: string;
   opusModel: string;
-  apiTimeoutMs: string;
-  disableNonessentialTraffic: boolean;
+  noAuth: boolean;
   promptCacheKey: string;
   codexAccountId: string;
   codexFastMode: boolean;
@@ -43,8 +42,7 @@ export const emptyProviderForm: ProviderFormData = {
   haikuModel: '',
   sonnetModel: '',
   opusModel: '',
-  apiTimeoutMs: '',
-  disableNonessentialTraffic: false,
+  noAuth: false,
   promptCacheKey: '',
   codexAccountId: '',
   codexFastMode: false,
@@ -72,8 +70,7 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
     haikuModel: env.ANTHROPIC_DEFAULT_HAIKU_MODEL || model,
     sonnetModel: env.ANTHROPIC_DEFAULT_SONNET_MODEL || model,
     opusModel: env.ANTHROPIC_DEFAULT_OPUS_MODEL || model,
-    apiTimeoutMs: env.API_TIMEOUT_MS || '',
-    disableNonessentialTraffic: env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1',
+    noAuth: !!preset.noAuth,
     promptCacheKey: '',
     codexAccountId: '',
     codexFastMode: preset.codexFastMode || false,
@@ -106,8 +103,8 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     haikuModel: env.ANTHROPIC_DEFAULT_HAIKU_MODEL || model,
     sonnetModel: env.ANTHROPIC_DEFAULT_SONNET_MODEL || model,
     opusModel: env.ANTHROPIC_DEFAULT_OPUS_MODEL || model,
-    apiTimeoutMs: env.API_TIMEOUT_MS || '',
-    disableNonessentialTraffic: env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1',
+    noAuth: meta.noAuth ?? (providerPresets.some((preset) => preset.id === provider.id && preset.noAuth)
+      && !env.ANTHROPIC_BASE_URL && !env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY),
     promptCacheKey: meta.promptCacheKey || '',
     codexAccountId: meta.authBinding?.accountId || '',
     codexFastMode: meta.codexFastMode || false,
@@ -128,7 +125,7 @@ export function buildProvider(
   const baseUrl = formData.baseUrl.trim();
   const apiKey = formData.apiKey.trim();
   const notes = formData.notes.trim();
-  const apiTimeoutMs = formData.apiTimeoutMs.trim();
+  const noAuth = selectedPreset?.noAuth ?? formData.noAuth;
   const promptCacheKey = formData.promptCacheKey.trim();
   const env: Record<string, string> = existingProvider
     ? providerEnv(existingProvider)
@@ -136,24 +133,24 @@ export function buildProvider(
       ? { ...selectedPreset.settingsConfig.env }
       : {};
 
-  if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
+  if (noAuth) {
+    delete env.ANTHROPIC_BASE_URL;
+    delete env.ANTHROPIC_AUTH_TOKEN;
+    delete env.ANTHROPIC_API_KEY;
+  } else if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
   if (authMode === 'api_key') {
     delete env.ANTHROPIC_AUTH_TOKEN;
     delete env.ANTHROPIC_API_KEY;
-    env[formData.apiKeyField] = apiKey;
+    // Never persist an empty credential field: keyless providers (e.g. the
+    // official Claude subscription) must save a clean env, not a blank token.
+    if (apiKey && !noAuth) env[formData.apiKeyField] = apiKey;
   }
   setOptionalEnv(env, 'ANTHROPIC_MODEL', formData.model);
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_HAIKU_MODEL', formData.haikuModel || formData.model);
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_SONNET_MODEL', formData.sonnetModel || formData.model);
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_OPUS_MODEL', formData.opusModel || formData.model);
-  setOptionalEnv(env, 'API_TIMEOUT_MS', apiTimeoutMs);
   setOptionalEnv(env, 'CLAUDE_CODE_SUBAGENT_MODEL', formData.subagentModel);
   setOptionalEnv(env, 'CLAUDE_CODE_EFFORT_LEVEL', formData.effortLevel);
-  if (formData.disableNonessentialTraffic) {
-    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
-  } else {
-    delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-  }
 
   const existingMeta = existingProvider?.meta && typeof existingProvider.meta === 'object'
     ? existingProvider.meta as Record<string, unknown>
@@ -161,6 +158,7 @@ export function buildProvider(
   const meta: Record<string, unknown> = {
     ...existingMeta,
     authMode,
+    noAuth,
     apiFormat: formData.apiFormat,
     apiKeyField: formData.apiKeyField,
     isFullUrl: formData.isFullUrl,
@@ -221,6 +219,7 @@ function providerMeta(provider: Provider): {
   apiKeyField?: ApiKeyField;
   isFullUrl?: boolean;
   promptCacheKey?: string;
+  noAuth?: boolean;
   authMode?: 'api_key' | 'oauth_proxy';
   providerType?: string;
   authBinding?: { accountId?: string };
@@ -231,6 +230,7 @@ function providerMeta(provider: Provider): {
     apiKeyField?: ApiKeyField;
     isFullUrl?: boolean;
     promptCacheKey?: string;
+    noAuth?: boolean;
     authMode?: 'api_key' | 'oauth_proxy';
     providerType?: string;
     authBinding?: { accountId?: string };

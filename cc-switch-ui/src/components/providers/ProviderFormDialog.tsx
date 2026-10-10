@@ -73,8 +73,9 @@ export function ProviderFormDialog({
   if (!open) return null;
 
   const usesOAuthProxy = formData.authMode === 'oauth_proxy';
-  const showApiKey = !usesOAuthProxy;
-  const showEndpoint = !usesOAuthProxy || !!formData.baseUrl;
+  const noAuth = formData.noAuth;
+  const showApiKey = !usesOAuthProxy && !noAuth;
+  const showEndpoint = !noAuth && (!usesOAuthProxy || !!formData.baseUrl);
   const canFetchModels = !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
   const canDetectEndpointType = canFetchModels && !usesOAuthProxy;
 
@@ -148,7 +149,7 @@ export function ProviderFormDialog({
                 <Badge style={{ background: selectedPreset.iconColor }} className="border-transparent text-white">
                   {selectedPreset.name}
                 </Badge>
-                <Badge variant="outline">{usesOAuthProxy ? 'OAuth Account' : 'API Key'}</Badge>
+                <Badge variant="outline">{usesOAuthProxy ? 'OAuth Account' : noAuth ? 'Subscription' : 'API Key'}</Badge>
               </div>
               {selectedPreset.description && (
                 <p className="mt-2 text-sm leading-5 text-muted-foreground">{selectedPreset.description}</p>
@@ -210,7 +211,13 @@ export function ProviderFormDialog({
             </FormSection>
 
             <FormSection title="Authentication">
-              {showApiKey ? (
+              {noAuth ? (
+                <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-sm leading-5 text-primary">
+                  Uses your logged-in Claude subscription. No API key or base URL is needed —
+                  switching to this provider clears any third-party takeover and restores the
+                  official login.
+                </div>
+              ) : showApiKey ? (
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
                   <div className="space-y-2">
                     <Label htmlFor="api-key">API Key</Label>
@@ -448,16 +455,7 @@ export function ProviderFormDialog({
                     <option value="gemini_native">Gemini Native</option>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="api-timeout">API Timeout MS</Label>
-                  <Input
-                    id="api-timeout"
-                    inputMode="numeric"
-                    value={formData.apiTimeoutMs}
-                    onChange={(e) => setFormData({ ...formData, apiTimeoutMs: e.target.value })}
-                    placeholder="3000000"
-                  />
-                </div>
+
               </div>
 
               <div className="space-y-2">
@@ -482,17 +480,10 @@ export function ProviderFormDialog({
                 </label>
               )}
 
-              <label className="flex items-center gap-2 text-sm leading-5 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={formData.disableNonessentialTraffic}
-                  onChange={(e) =>
-                    setFormData({ ...formData, disableNonessentialTraffic: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                Disable Claude Code nonessential traffic
-              </label>
+              <p className="text-xs text-muted-foreground">
+                API timeout and nonessential traffic are user settings. Edit them in
+                ~/.claude/settings.json; provider switching preserves them.
+              </p>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
