@@ -31,6 +31,16 @@ fn result(value: Result<serde_json::Value, AppError>) -> Response {
 fn json(value: impl serde::Serialize) -> Result<serde_json::Value, AppError> {
     serde_json::to_value(value).map_err(|source| AppError::JsonSerialize { source })
 }
+pub async fn list_files() -> Response {
+    super::file_mutation(|| {
+        result(
+            cc_switch_lib::config::backups::list()
+                .and_then(|items| json(serde_json::json!({"backups":items}))),
+        )
+    })
+    .await
+}
+
 pub async fn list() -> Response {
     super::file_mutation(|| result(backups::status().and_then(json))).await
 }
@@ -113,6 +123,35 @@ mod tests {
             .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
     }
+    #[tokio::test]
+    async fn file_inventory_is_fixed_metadata_only_and_isolates_invalid_snapshots() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let _home = TestHome::new();
+        let path = cc_switch_lib::config::get_claude_settings_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"env":{"ANTHROPIC_AUTH_TOKEN":"inventory-secret"}}"#,
+        )
+        .unwrap();
+        cc_switch_lib::config::update_json_file(&path, |value| {
+            value["changed"] = json!(true);
+            Ok(())
+        })
+        .unwrap();
+        let (status, value) = body(list_files().await).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["backups"].as_array().unwrap().len(), 3);
+        assert_eq!(value["backups"][0]["status"], "available");
+        assert!(!value.to_string().contains("inventory-secret"));
+        let original = value["backups"][0]["originalPath"].as_str().unwrap();
+        std::fs::remove_file(original).unwrap();
+        let (_, value) = body(list_files().await).await;
+        assert_eq!(value["backups"][0]["status"], "invalid");
+        assert_eq!(value["backups"][1]["status"], "missing");
+        assert_eq!(value["backups"][2]["status"], "missing");
+    }
+
     #[tokio::test]
     async fn backup_api_rejects_route_recovery_and_pending_restore_blocks_route_start() {
         let _env = TEST_ENV_LOCK.lock().await;

@@ -696,3 +696,19 @@ export function createDatabaseBackup() { return api<{ success: boolean; id: stri
 export function deleteDatabaseBackup(id: string) { return api<{ success: boolean }>('/database-backups/delete', { method: 'POST', body: JSON.stringify({ id }) }); }
 export function scheduleDatabaseRestore(id: string) { return api<{ success: boolean; restartRequired: boolean }>('/database-backups/restore', { method: 'POST', body: JSON.stringify({ id }) }); }
 export function cancelDatabaseRestore() { return api<{ success: boolean }>('/database-backups/cancel', { method: 'POST' }); }
+
+// Metadata only; full-file configuration snapshots are recovered manually.
+export interface FileBackup {
+  id: string;
+  label: string;
+  sourcePath: string;
+  markerPath: string;
+  originalPath: string | null;
+  status: 'missing' | 'available' | 'originally-absent' | 'invalid';
+  sizeBytes: number | null;
+  modifiedAt: number | null;
+  error: string | null;
+}
+export async function listFileBackups(options?: RequestInit) {
+  return api<{ backups: FileBackup[] }>('/file-backups', options);
+}
