@@ -23,3 +23,8 @@ serde_json.workspace = true
 env_logger.workspace = true
 log.workspace = true
 dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+rusqlite.workspace = true
+axum.workspace = true
