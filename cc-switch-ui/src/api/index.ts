@@ -626,11 +626,11 @@ export interface SkillBackup {
 }
 
 export async function listSkillBackups(options?: RequestInit) {
-  return api<{ backups: SkillBackup[] }>('/skills/backups', options);
+  return api<{ backups: SkillBackup[] }>('/skill-backups', options);
 }
 
 export async function restoreSkillBackup(backupId: string) {
-  return api<{ success: boolean; directory: string; enabled: boolean }>('/skills/backups/restore', {
+  return api<{ success: boolean; directory: string; enabled: boolean }>('/skill-backups/restore', {
     method: 'POST',
     body: JSON.stringify({ backupId }),
   });
