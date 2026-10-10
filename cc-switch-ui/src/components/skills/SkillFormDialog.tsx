@@ -57,8 +57,8 @@ export function SkillFormDialog({
     } catch (e) {
       if (e instanceof ApiError && e.saved) {
         setBaseline(form);
-        await onSaved();
       }
+      await onSaved();
       setFormError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);

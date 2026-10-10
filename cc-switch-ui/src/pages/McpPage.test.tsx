@@ -22,7 +22,7 @@ it('refreshes desired state and shows sync failure after a partially saved toggl
   vi.mocked(listMcpServers).mockResolvedValue({ servers: [{ ...server, enabled: false }] });
   vi.mocked(toggleMcpServer).mockRejectedValue(new ApiError('Record saved, but sync failed. Retry Sync.', true));
   await userEvent.click(screen.getByRole('switch', { name: 'Disable Test' }));
-  expect(await screen.findByText('Record saved, but sync failed. Retry Sync.')).toBeTruthy();
+  expect(await screen.findByText(/Record saved, but sync failed. Retry Sync./)).toBeTruthy();
   expect(screen.getByRole('switch', { name: 'Enable Test' })).toBeTruthy();
   expect(listMcpServers).toHaveBeenCalledTimes(2);
 });
@@ -39,7 +39,7 @@ it('keeps a saved draft open on sync failure and prevents accidental cancellatio
   expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Updated');
   vi.mocked(saveMcpServer).mockRejectedValue(new ApiError('Record saved, but sync failed. Retry Sync.', true));
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await screen.findByText('Record saved, but sync failed. Retry Sync.');
+  await screen.findByText(/Record saved, but sync failed. Retry Sync./);
   expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Updated');
   await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
   expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(false);
@@ -72,7 +72,8 @@ it('refreshes observed records after a lost import response and allows retry', a
   await performImport();
   await screen.findByText('Connection lost');
   await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
-  await performImport();
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
   await screen.findByText('Import completed: 0 imported, 0 updated, 2 skipped, 0 failed.');
   expect(screen.queryByText('Connection lost')).toBeNull();
 });
@@ -120,3 +121,24 @@ async function performImport() {
   await userEvent.click(await screen.findByRole('checkbox', { name: /Candidate/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
 }
+it('retries an unavailable managed list instead of displaying an empty list', async () => {
+  vi.mocked(listMcpServers).mockRejectedValueOnce(new Error('MCP unavailable'));
+  render(<McpPage />);
+  await screen.findByText('MCP servers could not be loaded.');
+  expect(screen.queryByText('No MCP servers configured')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Retry MCP servers' }));
+  await screen.findByRole('switch', { name: 'Disable Test' });
+});
+it('searches safe endpoint metadata without searching credentials', async () => {
+  vi.mocked(listMcpServers).mockResolvedValue({ servers: [{ ...server, serverSpec: { type: 'http', url: 'https://user:password@example.com/mcp?token=secret-query', env: { TOKEN: 'secret-env' }, headers: { Authorization: 'secret-header' } } }] });
+  render(<McpPage />);
+  await screen.findByRole('switch', { name: 'Disable Test' });
+  expect(screen.getByText('http · https://example.com')).toBeTruthy();
+  const search = screen.getByRole('textbox', { name: 'Search MCP servers' });
+  await userEvent.type(search, 'secret');
+  await screen.findByText('No matching MCP servers.');
+  expect(screen.queryByRole('switch', { name: 'Disable Test' })).toBeNull();
+  await userEvent.clear(search);
+  await userEvent.type(search, 'example.com');
+  await screen.findByRole('switch', { name: 'Disable Test' });
+});

@@ -68,3 +68,21 @@ it('changes the full group while searching and refreshes after a lost response',
   await screen.findByText('Connection lost');
   await waitFor(() => expect(listSkills).toHaveBeenCalledTimes(2));
 });
+it('offers retry after an initial list failure instead of an empty list', async () => {
+  vi.mocked(listSkills).mockRejectedValueOnce(new Error('Skills unavailable'));
+  render(<SkillsPage />);
+  await screen.findByText('Skills could not be loaded.');
+  expect(screen.queryByText('No skills installed')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Retry Skills' }));
+  await screen.findByText('No skills installed');
+});
+it('keeps a failed selected import open for retry', async () => {
+  vi.mocked(importSkills).mockRejectedValueOnce(new Error('Import response lost')).mockResolvedValue({ ...partial, success: true, imported: 1, updated: 0, failed: 0, items: [] });
+  render(<SkillsPage />);
+  await performImport();
+  await screen.findByText('Import response lost');
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(importSkills).toHaveBeenCalledTimes(2);
+});
