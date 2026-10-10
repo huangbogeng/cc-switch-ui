@@ -1,3 +1,5 @@
+import { ProviderLogo } from './ProviderLogo';
+import { resolveProviderLogo } from '@/lib/providerLogo';
 import { ExternalLink, PencilLine, Trash2 } from 'lucide-react';
 import type { Provider } from '@/api';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +11,6 @@ import {
   providerAuthMode,
   providerBaseUrl,
   providerHost,
-  providerInitial,
 } from '@/lib/provider';
 
 interface ProviderCardProps {
@@ -19,6 +20,7 @@ interface ProviderCardProps {
   onEdit: (provider: Provider) => void;
   onDelete: (id: string) => void;
   busy?: boolean;
+  embedded?: boolean;
 }
 
 export function ProviderCard({
@@ -28,106 +30,44 @@ export function ProviderCard({
   onEdit,
   onDelete,
   busy = false,
+  embedded = false,
 }: ProviderCardProps) {
   const authMode = providerAuthMode(provider);
   const apiFormat = providerApiFormat(provider);
   const baseUrl = providerBaseUrl(provider);
 
   return (
-    <Card className={`group relative overflow-hidden transition-[background-color,border-color] duration-200 ${
-      active
-        ? 'border-primary/35 bg-card ring-1 ring-primary/10'
-        : 'border-white/[0.07] bg-card hover:border-white/15'
-    }`}>
-      <CardContent className="p-6 relative">
-        <div className="flex flex-col sm:flex-row gap-5 sm:items-start justify-between">
-          <div className="flex gap-4 min-w-0 flex-1">
-            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors duration-150 ${
-              active ? 'bg-primary/20 border border-primary/20 text-primary' : 'bg-white/5 border border-white/5 text-foreground/80 group-hover:bg-white/10'
-            }`}>
-              <span className="text-xl font-medium tracking-tight">{providerInitial(provider)}</span>
-            </div>
+    <Card className={`min-w-0 transition-colors duration-150 ${embedded ? `rounded-none border-0 shadow-none ${active ? 'bg-primary/[0.06]' : 'hover:bg-white/[0.02]'}` : active ? 'border-primary/30 bg-primary/[0.04]' : 'hover:border-white/15'}`}>
+      <CardContent className="p-5 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <ProviderLogo icon={resolveProviderLogo(provider)} />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5">
-                <h2 className="truncate text-lg font-semibold tracking-[-0.02em] text-foreground">{provider.name}</h2>
-                {active && (
-                  <Badge variant="success" className="gap-1.5 py-0.5 px-2.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-20"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                    </span>
-                    Selected
-                  </Badge>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2 mb-3">
-                <Badge variant={authMode === 'oauth_proxy' ? 'success' : 'outline'} className={`text-xs font-medium ${
-                  authMode === 'oauth_proxy'
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                    : 'bg-white/5 text-muted-foreground border-white/10'
-                }`}>
+              <h2 title={provider.name} className="truncate text-[15px] font-semibold leading-6">{provider.name}</h2>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                {baseUrl && <span title={baseUrl} className="max-w-full truncate">{providerHost(baseUrl)}</span>}
+                <span aria-hidden="true" className="text-white/20">·</span>
+                <span>{formatApiFormatLabel(apiFormat)}</span>
+                <Badge variant="outline" className={`px-1.5 py-0 text-[11px] ${authMode === 'oauth_proxy' ? 'border-emerald-500/20 text-emerald-400' : 'text-muted-foreground'}`}>
                   {providerAuthLabel(provider)}
                 </Badge>
-                <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">
-                  {formatApiFormatLabel(apiFormat)}
-                </Badge>
+                {provider.websiteUrl && <a href={provider.websiteUrl} target="_blank" rel="noopener noreferrer" aria-label={`Website for ${provider.name}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-primary">
+                  Website <ExternalLink className="h-3 w-3" />
+                </a>}
               </div>
-
-              <div className="space-y-1.5">
-                {baseUrl && (
-                  <div className="truncate font-mono text-xs text-muted-foreground bg-white/[0.03] w-fit px-2 py-1 rounded-md border border-white/10">
-                    {providerHost(baseUrl)}
-                  </div>
-                )}
-                {provider.websiteUrl && (
-                  <a
-                    href={provider.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary/80 hover:text-primary transition-colors hover:underline"
-                  >
-                    <span className="truncate max-w-[200px]">{provider.websiteUrl}</span>
-                    <ExternalLink className="h-3 w-3 shrink-0" />
-                  </a>
-                )}
-              </div>
-
-              {provider.notes && (
-                <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-                  {provider.notes}
-                </p>
-              )}
+              {provider.notes && <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{provider.notes}</p>}
             </div>
           </div>
-
-          <div className="flex sm:flex-col items-center sm:items-end justify-end gap-2 pt-2 sm:pt-0 border-t border-white/5 sm:border-0">
-            <Button
-              size="sm"
-              variant={active ? 'secondary' : 'default'}
-              className={`w-full sm:w-auto shadow-sm transition-colors ${
-                !active ? 'bg-primary hover:bg-primary/90 text-primary-foreground' : ''
-              }`}
-              onClick={() => onSwitch(provider.id)}
-              disabled={active || busy}
-            >
+          <div className="flex shrink-0 items-center justify-end gap-1 border-t border-white/5 pt-2 sm:border-0 sm:pt-0">
+            <Button size="sm" variant={active ? 'secondary' : 'outline'} className="mr-1 min-w-[78px]" onClick={() => onSwitch(provider.id)} disabled={active || busy}>
               {active ? 'Selected' : 'Select'}
             </Button>
-            <div className="flex items-center gap-1">
-              <Button aria-label={`Edit ${provider.name}`} size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors" onClick={() => onEdit(provider)} disabled={busy}>
-                <PencilLine className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 rounded-lg text-destructive/80 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                onClick={() => onDelete(provider.id)}
-                aria-label={`Delete ${provider.name}`}
-                disabled={busy}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+            <Button aria-label={`Edit ${provider.name}`} size="icon" variant="ghost" className="h-9 w-9 rounded-lg" onClick={() => onEdit(provider)} disabled={busy}>
+              <PencilLine className="h-4 w-4" />
+            </Button>
+            <Button aria-label={`Delete ${provider.name}`} size="icon" variant="ghost" className="h-9 w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(provider.id)} disabled={busy}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </CardContent>

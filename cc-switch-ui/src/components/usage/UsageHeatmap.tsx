@@ -106,11 +106,11 @@ function buildCells(trend: ProxyUsageTrend[], rangeStart?: number, rangeEnd?: nu
 export default function UsageHeatmap({ trend, loading, title = 'Activity', rangeStart, rangeEnd }: Props) {
   if (loading) {
     return (
-      <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
-        <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-          <CardTitle className="text-sm font-semibold text-muted-foreground">{title}</CardTitle>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-[15px] font-semibold text-foreground">{title}</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-6">
           <div className="h-[120px] animate-pulse rounded-2xl bg-white/5" />
         </CardContent>
       </Card>
@@ -121,14 +121,14 @@ export default function UsageHeatmap({ trend, loading, title = 'Activity', range
 
   if (cells.length === 0) {
     return (
-      <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
-        <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
             <Flame className="h-4 w-4" />
             {title}
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-6">
           <div className="flex h-[120px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] text-sm text-muted-foreground">
             No activity yet. Sync session logs to build the heatmap.
           </div>
@@ -163,23 +163,23 @@ export default function UsageHeatmap({ trend, loading, title = 'Activity', range
   });
 
   return (
-    <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
-      <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-        <CardTitle className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
             <Flame className="h-4 w-4" />
             <span>{title}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
             <span className="font-mono tabular-nums">{totalRequests.toLocaleString()}</span>
-            <span className="uppercase tracking-[0.18em] text-muted-foreground/45">requests</span>
+            <span className="text-xs font-normal text-muted-foreground">requests</span>
             <span className="text-muted-foreground/25">·</span>
             <span className="font-mono tabular-nums">{activeDays}</span>
-            <span className="uppercase tracking-[0.18em] text-muted-foreground/45">active days</span>
+            <span className="text-xs font-normal text-muted-foreground">active days</span>
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-6">
+      <CardContent className="p-5 sm:p-6">
         <div className="overflow-x-auto">
           <div className="inline-flex min-w-full flex-col gap-2">
             <div className="flex gap-[3px] pl-[26px]">

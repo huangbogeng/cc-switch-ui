@@ -198,6 +198,8 @@ export function buildProvider(
     id,
     name,
     settingsConfig: { env },
+    icon: selectedPreset?.icon ?? existingProvider?.icon,
+    iconColor: selectedPreset?.iconColor ?? existingProvider?.iconColor,
     websiteUrl: selectedPreset?.websiteUrl || websiteUrl || undefined,
     notes: notes || undefined,
     meta,

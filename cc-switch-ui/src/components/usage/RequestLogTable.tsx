@@ -73,10 +73,10 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
 
       {isFetching && <div role="status" className="text-xs text-muted-foreground">{isPlaceholderData ? 'Loading next page; showing previous results…' : 'Refreshing logs…'}</div>}
       {/* table */}
-      <div className="overflow-x-auto rounded-xl border border-white/5">
+      <div className="data-surface overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-white/5 bg-black/20 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <tr className="border-b border-white/[0.07] bg-white/[0.025] text-left text-xs font-medium text-muted-foreground">
               <th className="px-3 py-2">Time</th>
               <th className="px-3 py-2">Provider</th>
               <th className="px-3 py-2">Path</th>

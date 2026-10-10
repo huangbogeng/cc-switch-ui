@@ -21,19 +21,19 @@ export default function ModelStatsTable({ data, loading }: Props) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="data-surface divide-y divide-white/[0.07]">
       {data.map((m) => (
         <div
           key={m.model}
-          className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.04]"
+          className="data-row"
         >
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-foreground truncate">{m.model || 'unknown'}</div>
+            <div className="text-[15px] font-semibold text-foreground truncate">{m.model || 'unknown'}</div>
             <div className="text-xs text-muted-foreground mt-0.5">
               {m.request_count.toLocaleString()} requests
             </div>
           </div>
-          <div className="text-right flex-shrink-0 ml-4">
+          <div className="shrink-0 sm:ml-4 sm:text-right">
             <div className="text-sm font-mono text-muted-foreground">
               {fmt(m.total_input_tokens)} / {fmt(m.total_output_tokens)}
             </div>

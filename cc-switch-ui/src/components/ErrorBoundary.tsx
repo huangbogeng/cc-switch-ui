@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <main className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
-        <div role="alert" className="w-full max-w-lg rounded-2xl border border-destructive/30 bg-card p-6 shadow-xl">
+        <div role="alert" className="w-full max-w-lg rounded-2xl border border-destructive/30 bg-card p-6 shadow-sm">
           <h1 className="text-lg font-semibold">The interface encountered an unexpected error</h1>
           <p className="mt-2 break-words text-sm text-muted-foreground">{this.state.error.message}</p>
           <Button className="mt-5" onClick={() => window.location.reload()}>Reload interface</Button>

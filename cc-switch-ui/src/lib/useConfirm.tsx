@@ -27,13 +27,13 @@ export function useConfirm() {
   }, []);
 
   const confirmation = request && createPortal(
-    <div className="dialog-overlay fixed inset-0 z-[80] flex items-center justify-center bg-black/65 px-4 py-6"
+    <div className="dialog-overlay fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4 py-6"
       onClick={(event) => { if (event.target === event.currentTarget) finish(false); }}>
       <div ref={dialogRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}
-        className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-popover p-6 shadow-2xl">
-        <h2 id={titleId} className="text-lg font-semibold">{request.title ?? 'Review action'}</h2>
+        className="dialog-panel w-full max-w-lg p-5 sm:p-6">
+        <h2 id={titleId} className="text-xl font-semibold leading-7">{request.title ?? 'Review action'}</h2>
         <p id={descriptionId} className="mt-3 whitespace-pre-line text-sm leading-6 text-muted-foreground">{request.description}</p>
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="dialog-actions mt-6">
           <Button variant="outline" onClick={() => finish(false)}>Cancel</Button>
           <Button variant={request.destructive ? 'destructive' : 'default'} onClick={() => finish(true)}>{request.confirmLabel ?? 'Continue'}</Button>
         </div>

@@ -8,8 +8,8 @@ export function BackupCenter() {
   const [recovering, setRecovering] = useState(false);
   return (
     <section id="backup-center" aria-labelledby="backup-center-title" className="space-y-4">
-      <h2 id="backup-center-title" className="text-lg font-semibold">Backup Center</h2>
-      <p className="text-sm text-muted-foreground">Each backup has a different scope. Database restoration requires a restart; file snapshots retain original configuration; Skills recovery restores source files and syncs enabled skills.</p>
+      <h2 id="backup-center-title" className="text-sm font-semibold">Backup Center</h2>
+      <p className="text-xs leading-5 text-muted-foreground">Each backup has a different scope. Database restoration requires a restart; file snapshots retain original configuration; Skills recovery restores source files and syncs enabled skills.</p>
       <DatabaseBackupsPanel />
       <FileBackupsPanel />
       <SkillBackupsPanel disabled={false} onBusyChange={setRecovering} onRestored={() => { cacheDelete('skills'); }} />

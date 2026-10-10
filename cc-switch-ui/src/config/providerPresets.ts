@@ -1,7 +1,7 @@
 /**
  * Provider Presets for Claude Code
  *
- * 迁移自 src.bak/config/claudeProviderPresets.ts
+ * Migrated from src.bak/config/claudeProviderPresets.ts
  */
 
 export interface ProviderPreset {
@@ -44,7 +44,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'anthropic',
     iconColor: '#D4915D',
-    description: 'Anthropic 官方订阅登录（清空第三方接管配置）',
+    description: 'Official Anthropic subscription (clears third-party provider settings)',
     noAuth: true,
   },
   {
@@ -67,7 +67,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'minimax',
     iconColor: '#FF6B6B',
-    description: 'MiniMax M2.7 模型',
+    description: 'MiniMax M2.7 model',
     apiFormat: 'openai_chat',
   },
   {
@@ -88,7 +88,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'siliconflow',
     iconColor: '#6E29F6',
-    description: 'SiliconFlow 聚合平台',
+    description: 'SiliconFlow multi-model API platform',
   },
   {
     id: 'deepseek',
@@ -110,7 +110,7 @@ export const providerPresets: ProviderPreset[] = [
     modelsUrl: 'https://api.deepseek.com/models',
     icon: 'deepseek',
     iconColor: '#1E88E5',
-    description: 'DeepSeek V4 模型',
+    description: 'DeepSeek V4 models',
   },
   {
     id: 'codex',
@@ -214,7 +214,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'kimi',
     iconColor: '#6366F1',
-    description: 'Moonshot Kimi K2.7 (按量付费)',
+    description: 'Moonshot Kimi K2.7 (pay as you go)',
   },
   {
     id: 'kimi-for-coding',
@@ -236,7 +236,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'kimi',
     iconColor: '#6366F1',
-    description: 'Kimi 编程套餐（256K 上下文）',
+    description: 'Kimi Coding Plan (256K context)',
   },
   {
     id: 'kimi-for-coding-global',
@@ -258,7 +258,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'kimi',
     iconColor: '#6366F1',
-    description: 'Kimi 编程套餐海外站（api.kimi.ai）',
+    description: 'Kimi Coding Plan Global (api.kimi.ai)',
   },
   {
     id: 'zhipu-glm',
@@ -278,7 +278,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'zhipu',
     iconColor: '#0F62FE',
-    description: '智谱 GLM-5.3（国内站）',
+    description: 'Zhipu GLM-5.3 (China)',
   },
   {
     id: 'zhipu-glm-global',
@@ -302,7 +302,7 @@ export const providerPresets: ProviderPreset[] = [
   },
   {
     id: 'volcengine-coding-plan',
-    name: '火山 Coding Plan',
+    name: 'Volcengine Coding Plan',
     websiteUrl: 'https://www.volcengine.com/activity/codingplan',
     apiKeyUrl: 'https://www.volcengine.com/activity/codingplan',
     settingsConfig: {
@@ -318,11 +318,11 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'huoshan',
     iconColor: '#3370FF',
-    description: '火山引擎 Ark 编程套餐',
+    description: 'Volcengine Ark Coding Plan',
   },
   {
     id: 'qianwen-coding-plan',
-    name: '千问AI平台 Coding Plan',
+    name: 'Qwen Coding Plan',
     websiteUrl: 'https://bailian.console.aliyun.com',
     settingsConfig: {
       env: {
@@ -333,7 +333,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'qianwenai',
     iconColor: '#624AFF',
-    description: '阿里云百炼千问编程套餐',
+    description: 'Alibaba Cloud Model Studio Qwen Coding Plan',
   },
   {
     id: 'aihubmix',
@@ -349,7 +349,7 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'aihubmix',
     iconColor: '#006FFB',
-    description: 'AiHubMix 聚合平台（使用 ANTHROPIC_API_KEY）',
+    description: 'AiHubMix multi-model API platform (uses ANTHROPIC_API_KEY)',
     apiKeyField: 'ANTHROPIC_API_KEY',
   },
   {
@@ -371,6 +371,6 @@ export const providerPresets: ProviderPreset[] = [
     },
     icon: 'ppio',
     iconColor: '#2874FF',
-    description: 'PPIO 派欧云聚合平台',
+    description: 'PPIO multi-model API platform',
   },
 ];

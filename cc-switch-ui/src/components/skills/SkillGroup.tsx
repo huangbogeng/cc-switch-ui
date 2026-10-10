@@ -26,10 +26,10 @@ const SkillItem = memo(function SkillItem({
   busy: boolean;
 }) {
   return (
-    <div className="group flex items-start justify-between px-4 py-2.5 hover:bg-accent/30">
+    <div className="group flex items-start justify-between px-5 py-3 sm:px-6 hover:bg-accent/30">
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{skill.name || skill.id}</span>
+          <span className="text-[15px] font-medium">{skill.name || skill.id}</span>
           <button aria-label={`${skill.enabled ? 'Disable' : 'Enable'} ${skill.name || skill.id}`} disabled={busy} onClick={() => onToggle(skill)} className="cursor-pointer disabled:cursor-wait disabled:opacity-60">
             <Badge
               variant={skill.enabled ? 'default' : 'outline'}
@@ -43,7 +43,7 @@ const SkillItem = memo(function SkillItem({
           <p className="text-xs text-muted-foreground line-clamp-1">{skill.description}</p>
         )}
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60">
-          <span className="font-mono">{skill.directory}</span>
+          <span className="min-w-0 truncate font-mono" title={skill.directory}>{skill.directory}</span>
           {skill.repoOwner && skill.repoName && (
             <span>
               {skill.repoOwner}/{skill.repoName}
@@ -58,7 +58,7 @@ const SkillItem = memo(function SkillItem({
         size="icon"
         onClick={() => onEdit(skill)}
         disabled={busy}
-        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+        className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
       >
         <Pencil className="h-3.5 w-3.5" />
       </Button>
@@ -68,7 +68,7 @@ const SkillItem = memo(function SkillItem({
         size="icon"
         onClick={() => onDelete(skill.id)}
         disabled={busy}
-        className="h-7 w-7 text-muted-foreground hover:text-red-400"
+        className="h-9 w-9 rounded-lg text-muted-foreground hover:text-red-400"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
@@ -106,15 +106,15 @@ export const SkillGroup = memo(function SkillGroup({
   const hiddenCount = skills.length - visible.length;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-card/50">
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-card">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-controls={isOpen ? listId : undefined}
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-accent/50"
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 sm:px-6 text-left hover:bg-accent/50"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <ChevronRight
             className={cn(
               'h-4 w-4 text-muted-foreground transition-transform',
@@ -143,7 +143,7 @@ export const SkillGroup = memo(function SkillGroup({
             <button
               type="button"
               onClick={() => setVisibleCount((count) => count + MAX_VISIBLE)}
-              className="flex w-full items-center justify-center px-4 py-2.5 text-xs text-muted-foreground hover:bg-accent/30 hover:text-foreground transition-colors"
+              className="flex w-full items-center justify-center px-5 py-3 sm:px-6 text-xs text-muted-foreground hover:bg-accent/30 hover:text-foreground transition-colors"
             >
               Show next {Math.min(MAX_VISIBLE, hiddenCount)} of {hiddenCount} more {hiddenCount === 1 ? 'skill' : 'skills'}
             </button>

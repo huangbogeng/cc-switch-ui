@@ -30,7 +30,7 @@ describe('LocalRoutePanel', () => {
     );
 
     expect(screen.getByText('Direct Config').parentElement?.textContent).toContain('Direct');
-    expect(screen.getByText('Local Route Takeover').parentElement?.textContent).toContain('Route');
+    expect((screen.getByLabelText('Route Target') as HTMLSelectElement).value).toBe('route');
     fireEvent.change(screen.getByLabelText('Route Target'), { target: { value: 'direct' } });
     expect(onTargetChange).toHaveBeenCalledWith('direct');
   });
@@ -63,4 +63,17 @@ it('offers restoration after an interrupted route instead of starting another ta
   expect(screen.queryByRole('button', { name: 'Start Route' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Restore Direct Config' }));
   expect(onStopProxy).toHaveBeenCalledOnce();
+});
+
+it('disables route mutations when the current route status is unavailable', () => {
+  const onStartProxy = vi.fn();
+  render(<LocalRoutePanel providers={[provider('route', 'Route')]} currentProviderId={null}
+    proxyRunning={false} proxyTargetId="route" statusUnavailable busy={false}
+    onTargetChange={vi.fn()} onStartProxy={onStartProxy} onStopProxy={vi.fn()} />);
+  expect(screen.queryByText('Stopped')).toBeNull();
+  expect((screen.getByLabelText('Route Target') as HTMLSelectElement).disabled).toBe(true);
+  const start = screen.getByRole('button', { name: 'Start Route' });
+  expect((start as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(start);
+  expect(onStartProxy).not.toHaveBeenCalled();
 });

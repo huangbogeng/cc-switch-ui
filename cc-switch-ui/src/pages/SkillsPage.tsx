@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { DeletionRecoveryPanel } from '@/components/DeletionRecoveryPanel';
 import { OperationResults } from '@/components/OperationResults';
@@ -20,7 +21,6 @@ import { Input } from '@/components/ui/input';
 import { SkillGroup } from '@/components/skills/SkillGroup';
 import { SkillFormDialog } from '@/components/skills/SkillFormDialog';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
-import { ErrorAlert } from '@/components/ErrorAlert';
 import { SkillBackupsPanel } from '@/components/skills/SkillBackupsPanel';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
@@ -180,26 +180,24 @@ export default function SkillsPage() {
       {confirmation}
       <PageHeader
         title="Skills"
-        description="Save and enable/disable apply managed skills to Claude Code. Retry Sync after an application error."
+        description="Manage skills available to Claude Code."
         action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={busy || showForm}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={handleImport} className="gap-1.5" disabled={busy || showForm}>
               <Download className={importing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {importing ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5" disabled={busy || showForm}>
+            <Button variant="outline" onClick={handleSync} className="gap-1.5" disabled={busy || showForm}>
               <RefreshCw className={syncing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {syncing ? 'Syncing...' : 'Sync'}
             </Button>
-            <Button size="sm" onClick={() => { setEditingSkill(null); setShowForm(true); }} disabled={busy || showForm} className="gap-1.5">
+            <Button onClick={() => { setEditingSkill(null); setShowForm(true); }} disabled={busy || showForm} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </div>
         }
       />
 
-      {error && (
-        <ErrorAlert message={error} />
-      )}
-      {notice && <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">{notice}</div>}
+      {error && <ToastNotice tone="error" message={error} onDismiss={() => setError('')} />}
+      {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
       {operation && <OperationResults report={operation.report} action={operation.action} />}
       <DeletionRecoveryPanel refreshKey={deletionRefresh} onPendingChange={setHasPendingDeletion} disabled={operationBusy || showForm} onBusyChange={setRecovering} onResolved={async () => { setOperation(null); await loadSkills(); }} />
 

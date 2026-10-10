@@ -20,6 +20,7 @@ interface CodexStatus {
 
 interface ProxyStatus {
   running: boolean;
+  recovery_required?: boolean;
   listen_addr: string | null;
   upstream_url: string;
   http_proxy_url: string | null;
@@ -28,91 +29,48 @@ interface ProxyStatus {
 }
 
 export function DashboardHeroCard({
-  currentProvider,
-  routeTarget,
-  status,
+  currentProvider, routeTarget, status, loading = false, providerUnavailable = false,
 }: {
   currentProvider: Provider | null;
   routeTarget: Provider | null;
   status: ProxyStatus | null;
+  loading?: boolean;
+  providerUnavailable?: boolean;
 }) {
-  const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/messages` : 'Unavailable';
-
+  const routeLabel = loading ? 'Loading...' : !status ? 'Unavailable' : status.recovery_required ? 'Recovery needed' : status.running ? 'Running' : 'Stopped';
+  const providerLabel = loading ? 'Loading...' : providerUnavailable ? 'Unavailable' : currentProvider?.name ?? 'None selected';
   return (
-    <Card className="relative overflow-hidden">
-      <CardContent className="relative p-6 sm:p-8">
-        <div className="grid gap-8 xl:grid-cols-[minmax(0,1.25fr)_360px]">
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant="outline"
-                className={
-                  status?.running
-                    ? 'border-emerald-500/25 bg-emerald-500/12 text-emerald-300'
-                    : 'border-white/10 bg-white/5 text-slate-300/75'
-                }
-              >
-                {status?.running ? 'Local Route Running' : 'Local Route Stopped'}
-              </Badge>
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Your workspace, at a glance.
-              </h2>
-              <p className="max-w-2xl text-sm leading-6 text-slate-300/75">
-                Review your active provider and local connection. Manage configuration in Providers.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <HeroStat
-                label="Direct Config"
-                value={currentProvider?.name || 'None'}
-                meta={currentProvider ? `${currentProvider.id} · ${formatApiFormatLabel(providerApiFormat(currentProvider))}` : 'No provider selected'}
-                tone="neutral"
-              />
-              <HeroStat
-                label="Route Takeover"
-                value={routeTarget?.name || 'None'}
-                meta={
-                  routeTarget
-                    ? `${routeTarget.id} · ${formatApiFormatLabel(providerApiFormat(routeTarget))}`
-                    : 'No route target selected'
-                }
-                tone={status?.running ? 'warning-active' : 'warning'}
-              />
-              <HeroStat
-                label="Listen Address"
-                value={status?.listen_addr || 'Unavailable'}
-                meta={status?.running ? 'Traffic is currently routed through the local proxy' : 'Proxy endpoint will appear here after startup'}
-                tone="neutral"
-                mono
-              />
-            </div>
+    <Card>
+      <CardContent className="p-0 sm:px-0">
+        <div className="grid divide-y divide-white/[0.07] md:grid-cols-3 md:divide-x md:divide-y-0">
+          <div className="min-w-0 space-y-2 p-5 sm:p-6">
+            <div className="flex h-6 items-center text-xs text-muted-foreground">Direct Config</div>
+            <h2 title={providerLabel} className="truncate text-xl font-semibold tracking-tight">{providerLabel}</h2>
+            <p className="text-xs leading-5 text-muted-foreground">{currentProvider ? formatApiFormatLabel(providerApiFormat(currentProvider)) : 'Select a provider in Providers.'}</p>
           </div>
-
-          <div className="space-y-3 rounded-2xl border border-white/[0.06] bg-background/40 p-5">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-muted-foreground">Runtime Signals</div>
-              <div className={`h-2.5 w-2.5 rounded-full ${status?.running ? 'bg-emerald-400' : 'bg-slate-500/70'}`} />
+          <div className="min-w-0 space-y-2 p-5 sm:p-6">
+            <div className="flex h-6 items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Local Route</span>
+              <Badge variant="outline" className={status?.recovery_required ? 'border-amber-500/20 text-amber-300' : status?.running ? 'border-emerald-500/20 text-emerald-400' : 'text-muted-foreground'}>{routeLabel}</Badge>
             </div>
-            <HeroSignal
-              label="Route Status"
-              value={status?.running ? 'Takeover active' : 'Direct config active'}
-            />
-            <HeroSignal
-              label="Proxy Entry"
-              value={proxyUrl}
-              mono
-            />
-            <HeroSignal
-              label="Upstream Proxy"
-              value={status?.http_proxy_url || 'None'}
-              mono
-            />
+            <div className="truncate text-xl font-semibold tracking-tight" title={routeTarget?.name ?? status?.active_target_provider_name ?? undefined}>
+              {loading ? 'Loading...' : !status ? 'Unavailable' : routeTarget?.name ?? status.active_target_provider_name ?? 'No target'}
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{status?.recovery_required ? 'Restore Direct Config in Providers.' : !status ? 'Route status is not available.' : status.running ? 'Forwarding through the local route.' : 'Start the route in Providers when needed.'}</p>
+          </div>
+          <div className="min-w-0 space-y-2 p-5 sm:p-6">
+            <div className="flex h-6 items-center text-xs text-muted-foreground">Listen Address</div>
+            <div className="break-all font-mono text-base font-medium leading-7">{loading ? 'Loading...' : status?.listen_addr ?? 'Unavailable'}</div>
+            <p className="text-xs leading-5 text-muted-foreground">Local endpoint for connected clients.</p>
           </div>
         </div>
+        {status?.running && <details className="border-t border-white/[0.07] px-5 py-3 sm:px-6">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Connection details</summary>
+          <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+            <div><dt className="text-muted-foreground">Proxy Entry</dt><dd className="mt-1 break-all font-mono">{status.listen_addr ? `${status.listen_addr}/v1/messages` : 'Unavailable'}</dd></div>
+            <div><dt className="text-muted-foreground">Upstream Proxy</dt><dd className="mt-1 break-all font-mono">{status.http_proxy_url || 'None'}</dd></div>
+          </dl>
+        </details>}
       </CardContent>
     </Card>
   );
@@ -245,11 +203,11 @@ export function CodexOAuthStatusCard({
 
 export function UsageCard({ usage }: { usage: CopilotUsageResponse }) {
   return (
-    <Card className="border-white/10 shadow-lg bg-card/80 backdrop-blur-sm">
-      <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
-        <CardTitle className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 text-sm font-semibold text-muted-foreground tracking-tight">
-            <div className="rounded-md bg-white/5 p-1.5 shadow-inner">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+            <div className="text-muted-foreground">
               <Zap className="h-4 w-4 text-amber-500" />
             </div>
             <span>Copilot Usage</span>
@@ -292,54 +250,6 @@ function UsageMeter({
   );
 }
 
-function HeroStat({
-  label,
-  value,
-  meta,
-  tone,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  meta: string;
-  tone: 'neutral' | 'warning' | 'warning-active';
-  mono?: boolean;
-}) {
-  const toneClass =
-    tone === 'warning-active'
-      ? 'border-amber-400/20 bg-amber-500/5'
-      : tone === 'warning'
-        ? 'border-amber-500/20 bg-amber-500/8'
-        : 'border-white/10 bg-white/[0.04]';
-  const textClass = tone === 'neutral' ? 'text-white' : 'text-amber-50';
-  const metaClass = tone === 'neutral' ? 'text-slate-300/70' : 'text-amber-100/75';
-
-  return (
-    <div className={`rounded-2xl border px-4 py-4 ${toneClass}`}>
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className={`mt-2 truncate text-lg font-semibold ${mono ? 'font-mono text-base' : ''} ${textClass}`}>{value}</div>
-      <div className={`mt-1 truncate text-xs ${metaClass}`}>{meta}</div>
-    </div>
-  );
-}
-
-function HeroSignal({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className={`mt-1 truncate text-sm text-slate-100 ${mono ? 'font-mono text-[13px]' : 'font-medium'}`}>{value}</div>
-    </div>
-  );
-}
-
 function formatApiFormatLabel(apiFormat: string) {
   switch (apiFormat) {
     case 'openai_chat':
@@ -369,8 +279,8 @@ export function DeviceOAuthModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-card/95 p-6 shadow-2xl shadow-black/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+      <div className="dialog-panel w-full max-w-md p-5 sm:p-6">
         <h2 className="mb-2 text-xl font-semibold">{title}</h2>
         <p className="mb-6 text-sm text-muted-foreground">Visit the URL and enter the code to authorize</p>
         <a
@@ -383,7 +293,7 @@ export function DeviceOAuthModal({
           <span className="truncate">{verificationUri}</span>
         </a>
         <div className="mb-6 text-center">
-          <div className="rounded-2xl bg-secondary/50 py-6 font-mono text-5xl font-bold tracking-widest text-primary">
+          <div className="rounded-2xl bg-secondary/50 py-6 font-mono text-4xl font-semibold sm:text-5xl tracking-widest text-primary">
             {userCode}
           </div>
         </div>

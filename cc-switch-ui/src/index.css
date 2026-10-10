@@ -148,6 +148,8 @@
 }
 [role="alert"], [role="status"] { animation: cc-overlay-enter 150ms ease-out; }
 
+.notification-enter { --enter-x: 12px; animation: cc-enter 180ms ease-out; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -155,4 +157,13 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Shared surfaces keep full pages, forms and details on the same visual grid. */
+@layer components {
+  .dialog-panel { @apply max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-card shadow-lg outline-none; }
+  .dialog-body { @apply max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain p-5 sm:p-6; }
+  .dialog-actions { @apply flex flex-wrap justify-end gap-2 border-t border-white/[0.07] pt-5; }
+  .data-surface { @apply min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-card; }
+  .data-row { @apply flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between sm:px-6; }
 }

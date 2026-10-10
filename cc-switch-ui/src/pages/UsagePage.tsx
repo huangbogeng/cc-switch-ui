@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useMemo, useState } from 'react';
 import { RefreshCw, ListFilter, Activity, BarChart3, DollarSign } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
@@ -69,12 +70,12 @@ export default function UsagePage() {
   const rangeLabel = formatRangeLabel(range, resolved);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Usage"
         description="Monitor local route usage across all providers."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <UsageDateRangePicker selection={range} onChange={setRange} />
             <Button
               variant="outline"
@@ -104,7 +105,7 @@ export default function UsagePage() {
         <ErrorAlert message={errorMessage(queryError, 'Failed to load usage data')} />
       )}
       {syncMutation.error && (
-        <ErrorAlert message={errorMessage(syncMutation.error, 'Failed to sync session logs')} />
+        <ToastNotice tone="error" message={errorMessage(syncMutation.error, 'Failed to sync session logs')} onDismiss={() => syncMutation.reset()} />
       )}
 
       <UsageSummaryCards data={summaryQuery.data} loading={summaryQuery.isLoading} />

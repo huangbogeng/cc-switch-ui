@@ -1,3 +1,4 @@
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import { getDatabaseBackups, createDatabaseBackup, deleteDatabaseBackup, scheduleDatabaseRestore, cancelDatabaseRestore, type DatabaseBackupStatus, type DatabaseBackup } from '@/api';
@@ -49,7 +50,7 @@ export function DatabaseBackupsPanel() {
     </CardHeader>
     <CardContent className="space-y-4">
       {error && <ErrorAlert message={error} />}
-      {notice && <p role="status" className="text-sm">{notice}</p>}
+      {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
       <div className="flex flex-wrap gap-2">
         <Button disabled={disabled || !status || status.entries.filter((e) => e.kind === 'manual').length >= status.manualLimit} onClick={() => void run(createDatabaseBackup, 'Database backup created.')}>Create backup</Button>
         <Button variant="outline" disabled={busy} onClick={() => void run(load, 'Backup status reloaded.')}>Reload backups</Button>
@@ -66,7 +67,7 @@ export function DatabaseBackupsPanel() {
           <p>{entry.kind === 'safety' ? 'Safety backup' : 'Manual backup'} · {new Date(entry.createdAt).toLocaleString()}</p>
           <p className="text-muted-foreground">{(entry.sizeBytes / 1024).toFixed(1)} KB{entry.protected ? ' · Protected' : ''}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" disabled={disabled || !!status.pending} onClick={() => restore(entry)}>Restore on restart</Button>
           <Button variant="outline" disabled={disabled || entry.protected} onClick={() => remove(entry)}>Delete backup</Button>
         </div>

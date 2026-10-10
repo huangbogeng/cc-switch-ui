@@ -1,8 +1,10 @@
+import { useDialog } from '@/lib/useDialog';
+import { ToastNotice } from '@/components/ToastNotice';
 import { useConfirm } from '@/lib/useConfirm';
 import { DeletionRecoveryPanel } from '@/components/DeletionRecoveryPanel';
 import { OperationResults } from '@/components/OperationResults';
 import type { OperationReport } from '@/api';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { Plus, RefreshCw, Trash2, Server, Download, Pencil } from 'lucide-react';
 import {
   ApiError,
@@ -16,13 +18,12 @@ import {
 } from '../api';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
-import { ErrorAlert } from '@/components/ErrorAlert';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 function emptyForm(): McpServer {
@@ -55,6 +56,10 @@ export default function McpPage() {
   const [baseline, setBaseline] = useState('');
   const draft = JSON.stringify([form, specText]);
   const canDiscard = useUnsavedChanges(showForm && draft !== baseline, saving || pendingAction !== null);
+
+  const formTitleId = useId();
+  const closeForm = () => { if (canDiscard()) setShowForm(false); };
+  const formDialogRef = useDialog(showForm, closeForm, !saving && pendingAction === null);
 
   const loadServers = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -226,26 +231,24 @@ export default function McpPage() {
       {confirmation}
       <PageHeader
         title="MCP Servers"
-        description="Save and enable/disable apply managed servers to Claude Code. Retry Sync after an application error."
+        description="Manage servers available to Claude Code."
         action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleImport} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={handleImport} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
               <Download className="h-3.5 w-3.5" /> {pendingAction === 'import' ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
+            <Button variant="outline" onClick={handleSync} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" /> {pendingAction === 'sync' ? 'Syncing...' : 'Sync'}
             </Button>
-            <Button size="sm" onClick={openCreate} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
+            <Button onClick={openCreate} disabled={pendingAction !== null || saving || hasPendingDeletion} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </div>
         }
       />
 
-      {error && (
-        <ErrorAlert message={error} />
-      )}
-      {notice && <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">{notice}</div>}
+      {error && <ToastNotice tone="error" message={error} onDismiss={() => setError('')} />}
+      {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
       {operation && <OperationResults report={operation.report} action={operation.action} />}
       <DeletionRecoveryPanel refreshKey={deletionRefresh} onPendingChange={setHasPendingDeletion} disabled={saving || pendingAction !== null || showForm} onBusyChange={(value) => setPendingAction(value ? 'recover' : null)} onResolved={async () => { setOperation(null); await loadServers(); }} />
 
@@ -258,12 +261,17 @@ export default function McpPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Your servers <span className="ml-1 font-normal text-muted-foreground">{servers.length}</span></CardTitle>
+            <CardDescription>Enabled servers are applied to Claude Code.</CardDescription>
+          </CardHeader>
+          <div className="divide-y divide-white/[0.07]">
           {servers.map((srv) => (
-            <Card key={srv.id} className="group transition-all hover:border-primary/20">
-              <CardContent className="flex items-start justify-between p-4">
+            <Card key={srv.id} className="rounded-none border-0 shadow-none transition-colors hover:bg-white/[0.025]">
+              <CardContent className="flex items-start justify-between gap-3 p-5 sm:px-6">
                 <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-sm">{srv.name || srv.id}</span>
                     <button aria-label={`${srv.enabled ? 'Disable' : 'Enable'} ${srv.name || srv.id}`} disabled={pendingAction !== null || saving || hasPendingDeletion} onClick={() => handleToggle(srv)} className="cursor-pointer">
                       <Badge variant={srv.enabled ? 'default' : 'outline'} className="text-[10px] px-1.5 py-0 hover:opacity-80">
@@ -280,7 +288,7 @@ export default function McpPage() {
                     size="icon"
                     onClick={() => openEdit(srv)}
                     disabled={pendingAction !== null || saving || hasPendingDeletion}
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -290,7 +298,7 @@ export default function McpPage() {
                     size="icon"
                     onClick={() => handleDelete(srv.id)}
                     disabled={pendingAction !== null || saving || hasPendingDeletion}
-                    className="h-8 w-8 text-muted-foreground hover:text-red-400"
+                    className="h-9 w-9 rounded-lg text-muted-foreground hover:text-red-400"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -299,11 +307,17 @@ export default function McpPage() {
             </Card>
           ))}
         </div>
+        </Card>
       )}
 
       {showForm && (
-        <Card className="border-primary/30">
-          <CardContent className="space-y-4 p-4">
+        <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+        <Card ref={formDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={formTitleId} className="dialog-panel w-full max-w-lg">
+          <CardHeader>
+            <CardTitle id={formTitleId} className="text-xl leading-7">{editingId ? 'Edit MCP Server' : 'Add MCP Server'}</CardTitle>
+            <CardDescription>Save applies enabled servers to Claude Code.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="mcp-id">ID</Label>
               <Input
@@ -338,14 +352,15 @@ export default function McpPage() {
             {formError && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</div>
             )}
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => { if (canDiscard()) setShowForm(false); }} disabled={saving}>Cancel</Button>
-              <Button size="sm" onClick={handleSave} disabled={saving || pendingAction !== null || hasPendingDeletion}>
+            <div className="dialog-actions">
+              <Button variant="outline" onClick={() => { if (canDiscard()) setShowForm(false); }} disabled={saving}>Cancel</Button>
+              <Button onClick={handleSave} disabled={saving || pendingAction !== null || hasPendingDeletion}>
                 {saving ? 'Saving...' : 'Save'}
               </Button>
             </div>
           </CardContent>
         </Card>
+        </div>
       )}
     </div>
   );

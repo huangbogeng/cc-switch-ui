@@ -22,11 +22,11 @@ interface Props {
 export default function UsageTrendChart({ trend, loading, title = '30-Day Token Trend' }: Props) {
   if (loading) {
     return (
-      <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
-        <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-          <CardTitle className="text-sm font-semibold text-muted-foreground">{title}</CardTitle>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-[15px] font-semibold text-foreground">{title}</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-6">
           <div className="h-[320px] animate-pulse rounded-2xl bg-white/5" />
         </CardContent>
       </Card>
@@ -35,14 +35,14 @@ export default function UsageTrendChart({ trend, loading, title = '30-Day Token 
 
   if (trend.length === 0) {
     return (
-      <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
-        <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
             <TrendingUp className="h-4 w-4" />
             {title}
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-6">
           <div className="flex h-[320px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] text-sm text-muted-foreground">
             No data yet. Sync session logs to see usage trends.
           </div>
@@ -91,10 +91,10 @@ export default function UsageTrendChart({ trend, loading, title = '30-Day Token 
   const totalOutput = points.reduce((sum, point) => sum + point.total_output_tokens, 0);
 
   return (
-    <Card className="overflow-hidden border-white/10 bg-card/60 shadow-xl backdrop-blur-sm">
-      <CardHeader className="border-b border-white/5 bg-black/20 pb-4">
-        <CardTitle className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
             <TrendingUp className="h-4 w-4" />
             <span>{title}</span>
           </div>
@@ -104,8 +104,8 @@ export default function UsageTrendChart({ trend, loading, title = '30-Day Token 
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-5 p-6">
-        <div className="rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-4">
+      <CardContent className="space-y-5 p-5 sm:p-6">
+        <div className="min-w-0">
           <div className="grid gap-4 lg:grid-cols-[56px_minmax(0,1fr)]">
             <div className="hidden lg:block">
               <div className="relative h-[220px]">
@@ -227,9 +227,9 @@ function LegendChip({
   const textClass = tone === 'primary' ? 'text-primary/85' : 'text-amber-300';
 
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">
+    <div className="inline-flex items-center gap-2 px-1 py-1">
       <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-      <span className="uppercase tracking-[0.18em] text-muted-foreground/55">{label}</span>
+      <span className="text-xs font-normal text-muted-foreground">{label}</span>
       <span className={`font-mono font-semibold ${textClass}`}>{value}</span>
     </div>
   );
@@ -248,8 +248,8 @@ function TrendStat({
     tone === 'primary' ? 'text-primary' : tone === 'warning' ? 'text-amber-400' : 'text-foreground';
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/55">{label}</div>
+    <div className="border-t border-white/[0.07] pt-4">
+      <div className="text-xs font-normal text-muted-foreground">{label}</div>
       <div className={`mt-2 font-mono text-lg font-semibold tabular-nums ${valueClass}`}>{value}</div>
     </div>
   );

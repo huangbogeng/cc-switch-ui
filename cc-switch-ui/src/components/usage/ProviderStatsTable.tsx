@@ -22,30 +22,30 @@ export default function ProviderStatsTable({ data, loading }: Props) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="data-surface divide-y divide-white/[0.07]">
       {data.map((p) => {
         const total = p.request_count;
         const successRate = total > 0 ? Math.round((p.success_count / total) * 100) : 0;
         return (
           <div
             key={p.provider_id}
-            className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.04]"
+            className="data-row"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-foreground truncate">{p.provider_id}</span>
+                <span className="text-[15px] font-semibold text-foreground truncate">{p.provider_id}</span>
                 {successRate >= 99 ? (
                   <BadgeCheck className="h-4 w-4 text-emerald-500 flex-shrink-0" />
                 ) : successRate < 90 ? (
                   <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
                 ) : null}
               </div>
-              <div className="flex gap-4 mt-0.5 text-xs text-muted-foreground">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
                 <span>{total.toLocaleString()} requests</span>
                 <span>{successRate}% success</span>
               </div>
             </div>
-            <div className="text-right flex-shrink-0 ml-4">
+            <div className="shrink-0 sm:ml-4 sm:text-right">
               <div className="text-sm font-mono text-muted-foreground">
                 {fmt(p.total_input_tokens)} / {fmt(p.total_output_tokens)}
               </div>

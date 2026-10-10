@@ -16,7 +16,7 @@ export default function DataSourceBar({ sources }: { sources?: DataSourceSummary
   if (!sources?.length) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-4 py-2 text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-3 px-1 py-1 text-sm text-muted-foreground">
       <span className="text-xs font-medium">Data Sources:</span>
       {sources.map((source) => (
         <Badge
