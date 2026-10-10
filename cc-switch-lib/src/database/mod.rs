@@ -51,13 +51,29 @@ impl Database {
     /// Initialize database connection and create tables
     pub fn init() -> Result<Self, AppError> {
         let db_path = get_app_config_dir().join("cc-switch.db");
+        Self::init_at(&db_path)
+    }
+
+    fn init_at(db_path: &std::path::Path) -> Result<Self, AppError> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
         }
 
-        let conn = Connection::open(&db_path)?;
+        let conn = Connection::open(db_path)?;
         conn.execute("PRAGMA foreign_keys = ON;", [])?;
-        conn.execute("PRAGMA auto_vacuum = INCREMENTAL;", [])?;
+        let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        migrations::ensure_supported_version(&conn)?;
+        let has_tables: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table')",
+            [],
+            |r| r.get(0),
+        )?;
+        if has_tables && version < migrations::SCHEMA_VERSION {
+            backups::before_upgrade(&conn, db_path, version)?;
+        }
+        if !has_tables {
+            conn.execute("PRAGMA auto_vacuum = INCREMENTAL;", [])?;
+        }
 
         let db = Self {
             conn: Mutex::new(conn),
@@ -73,7 +89,9 @@ impl Database {
             .lock()
             .map_err(|e| AppError::Database(format!("lock failed: {}", e)))?;
 
-        conn.execute_batch(
+        migrations::ensure_supported_version(&conn)?;
+        let transaction = conn.unchecked_transaction()?;
+        transaction.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS providers (
                 id TEXT NOT NULL,
@@ -219,23 +237,24 @@ impl Database {
             "
         )?;
 
-        let has_takeover = conn
+        let has_takeover = transaction
             .prepare("PRAGMA table_info(proxy_live_backup)")?
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<Result<Vec<_>, _>>()?
             .iter()
             .any(|name| name == "takeover_env");
         if !has_takeover {
-            conn.execute(
+            transaction.execute(
                 "ALTER TABLE proxy_live_backup ADD COLUMN takeover_env TEXT",
                 [],
             )?;
         }
-        migrations::migrate_proxy_config(&conn)?;
-        migrations::migrate_proxy_request_logs(&conn)?;
-        migrations::migrate_session_log_schema(&conn)?;
-        migrations::run_schema_migrations(&conn)?;
+        migrations::migrate_proxy_config(&transaction)?;
+        migrations::migrate_proxy_request_logs(&transaction)?;
+        migrations::migrate_session_log_schema(&transaction)?;
+        migrations::run_schema_migrations(&transaction)?;
 
+        transaction.commit()?;
         Ok(())
     }
 
@@ -251,6 +270,186 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn legacy_database(directory: &std::path::Path) -> std::path::PathBuf {
+        let path = directory.join("cc-switch.db");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(include_str!("../../tests/fixtures/v0.2.0.sql"))
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn release_upgrade_preserves_records_and_creates_one_private_original_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = legacy_database(directory.path());
+        let db = Database::init_at(&path).unwrap();
+        assert_eq!(
+            db.conn()
+                .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+                .unwrap(),
+            4
+        );
+        for table in ["providers", "skills", "mcp_servers"] {
+            assert_eq!(
+                db.conn()
+                    .query_row(
+                        &format!("SELECT COUNT(*) FROM {table} WHERE id='legacy'"),
+                        [],
+                        |r| r.get::<_, u32>(0)
+                    )
+                    .unwrap(),
+                1
+            );
+        }
+        assert!(db
+            .conn()
+            .query_row(
+                "SELECT is_current FROM providers WHERE id='legacy'",
+                [],
+                |r| r.get::<_, bool>(0)
+            )
+            .unwrap());
+        assert!(!db
+            .conn()
+            .query_row("SELECT enabled FROM skills WHERE id='legacy'", [], |r| r
+                .get::<_, bool>(
+                0
+            ))
+            .unwrap());
+        drop(db);
+        drop(Database::init_at(&path).unwrap());
+        let snapshots: Vec<_> = std::fs::read_dir(directory.path().join("backups/upgrades"))
+            .unwrap()
+            .map(|r| r.unwrap().path())
+            .collect();
+        assert_eq!(snapshots.len(), 1);
+        let snapshot = Connection::open(&snapshots[0]).unwrap();
+        assert_eq!(
+            snapshot
+                .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+                .unwrap(),
+            3
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&snapshots[0])
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        // An old release can resume using the unchanged pre-upgrade snapshot.
+        drop(snapshot);
+        std::fs::copy(&snapshots[0], &path).unwrap();
+        let restored = Connection::open(&path).unwrap();
+        assert_eq!(
+            restored
+                .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+                .unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn unversioned_wal_database_is_snapshotted_with_committed_wal_records() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = legacy_database(directory.path());
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; PRAGMA user_version=0; UPDATE providers SET name='Committed WAL name' WHERE id='legacy';").unwrap();
+        let db = Database::init_at(&path).unwrap();
+        assert_eq!(
+            db.conn()
+                .query_row("SELECT name FROM providers WHERE id='legacy'", [], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap(),
+            "Committed WAL name"
+        );
+        let snapshot = std::fs::read_dir(directory.path().join("backups/upgrades"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let backup = Connection::open(snapshot).unwrap();
+        assert_eq!(
+            backup
+                .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            backup
+                .query_row("SELECT name FROM providers WHERE id='legacy'", [], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap(),
+            "Committed WAL name"
+        );
+    }
+
+    #[test]
+    fn backup_failure_and_future_schema_leave_database_untouched() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = legacy_database(directory.path());
+        std::fs::write(directory.path().join("backups"), "block backup directory").unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(Database::init_at(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        Connection::open(&path)
+            .unwrap()
+            .pragma_update(None, "user_version", 99)
+            .unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(Database::init_at(&path)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("newer"));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn failed_ddl_rolls_back_all_schema_changes_and_retains_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = legacy_database(directory.path());
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch("DROP INDEX idx_usage_provider; PRAGMA user_version=2; CREATE TRIGGER fail_upgrade BEFORE UPDATE ON proxy_request_logs BEGIN SELECT RAISE(ABORT, 'migration failure'); END; INSERT INTO proxy_request_logs (provider_id, app_type, model, request_path) VALUES ('_session', 'claude_code', 'test-model', '/test');").unwrap();
+        let schema: String = connection
+            .query_row("SELECT group_concat(sql) FROM sqlite_master", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        drop(connection);
+        assert!(Database::init_at(&path).is_err());
+        let connection = Connection::open(&path).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT group_concat(sql) FROM sqlite_master", [], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap(),
+            schema
+        );
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            std::fs::read_dir(directory.path().join("backups/upgrades"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
 
     #[test]
     fn version_three_database_gains_durable_deletion_intent_without_replacing_it() {

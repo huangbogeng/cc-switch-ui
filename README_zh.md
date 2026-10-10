@@ -239,3 +239,9 @@ CC Switch UI 基于开源项目 [cc-switch](https://github.com/farion1231/cc-swi
 同步保留尚未导入或添加到 CC Switch 的 MCP 条目和 Skill 目录。禁用、删除托管 Skill 或替换已有安装时，旧目录会移入 `~/.claude/skills/.cc-switch-backups/`，备份需要手动清理。恢复时先禁用对应的托管记录，再把备份复制回原 Skill 目录。删除记录会保留 `~/.cc-switch/skills/` 中的源文件。Skill 目录只能使用单个目录名；托管目录或源内容包含符号链接时会拒绝操作，不会跟随链接。
 
 Skills 页面支持加载和恢复备份，包括已经删除的 Skill。已有记录保持原来的启停状态；已删除的记录会重建并启用。恢复会保留所选备份，并备份当前源文件。内容相同的同步不会重复生成备份，检测到外部修改时会停止替换。首写快照和冲突检测的边界参见[配置保护与恢复说明](docs/configuration-recovery.md)。
+
+### 数据库升级保护
+
+新版首次打开旧数据库（包括没有 schema 版本号的旧库）时，会先使用 SQLite Backup API 创建包含已提交 WAL 数据的快照，保存到 `~/.cc-switch/backups/upgrades/schema-<旧版本>-to-<新版本>-<UUID>.db`。Unix 上快照权限为 `0600`。备份失败则停止启动，原数据库不进行迁移；所有建表、兼容迁移与版本号更新在同一个事务中提交，失败会回滚。再次正常启动不会重复生成升级快照。新程序拒绝打开高于其支持版本的数据库。
+
+这些快照保留旧 schema，独立于 Settings 的手动数据库备份，不会自动删除。需要降级时先停止所有 CC Switch 服务，备份当前数据，再恢复与旧程序匹配的数据库快照；不要在运行中的数据库上复制文件。OAuth、Skills 源文件与 CLI 设置不包含在数据库快照中，应一并备份整个 `~/.cc-switch`。升级保护针对 CC Switch UI 的旧发布版，并不意味着可以直接共享上游桌面 CC Switch 的数据库。
