@@ -9,7 +9,9 @@
 //! user never edited them; everything else is a user key and is preserved
 //! untouched forever.
 
-use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
+#[cfg(test)]
+use crate::config::write_json_file;
+use crate::config::{get_claude_settings_path, read_json_file, update_json_file};
 use crate::error::AppError;
 use serde_json::{Map, Value};
 use std::path::PathBuf;
@@ -210,6 +212,7 @@ pub fn settings_for_live(
 }
 
 /// Write Claude settings to disk (atomic write)
+#[cfg(test)]
 fn write_live_settings_raw(settings: &Value) -> Result<(), AppError> {
     let path = get_claude_settings_path();
     write_json_file(&path, settings)
@@ -255,38 +258,39 @@ pub fn apply_provider_to_live(
         .filter(|(key, _)| floor::claude_owned_env(key))
         .collect();
 
-    let mut current = read_live_settings_raw()?;
-    let current_obj = current.as_object_mut().ok_or_else(|| {
-        AppError::Config(format!(
-            "live settings at {:?} is not a JSON object; refusing to merge",
-            get_claude_settings_path()
-        ))
-    })?;
+    update_json_file(&get_claude_settings_path(), |current| {
+        let current_obj = current.as_object_mut().ok_or_else(|| {
+            AppError::Config(format!(
+                "live settings at {:?} is not a JSON object; refusing to merge",
+                get_claude_settings_path()
+            ))
+        })?;
 
-    let mut merged = Map::new();
-    if let Some(live_env) = current_obj.get("env").and_then(Value::as_object) {
-        for (key, value) in live_env {
-            if let Some(new_value) = desired_owned.get(key) {
-                merged.insert(key.clone(), new_value.clone());
-                continue;
+        let mut merged = Map::new();
+        if let Some(live_env) = current_obj.get("env").and_then(Value::as_object) {
+            for (key, value) in live_env {
+                if let Some(new_value) = desired_owned.get(key) {
+                    merged.insert(key.clone(), new_value.clone());
+                    continue;
+                }
+                if floor::claude_floor_env(key) {
+                    continue;
+                }
+                if floor::claude_exclusive_env(key)
+                    && previous_env.is_some_and(|prev| prev.get(key) == Some(value))
+                {
+                    continue;
+                }
+                merged.insert(key.clone(), value.clone());
             }
-            if floor::claude_floor_env(key) {
-                continue;
-            }
-            if floor::claude_exclusive_env(key)
-                && previous_env.is_some_and(|prev| prev.get(key) == Some(value))
-            {
-                continue;
-            }
-            merged.insert(key.clone(), value.clone());
         }
-    }
-    for (key, value) in desired_owned {
-        merged.entry(key).or_insert(value);
-    }
+        for (key, value) in &desired_owned {
+            merged.entry(key.clone()).or_insert_with(|| value.clone());
+        }
 
-    current_obj.insert("env".into(), Value::Object(merged));
-    write_live_settings_raw(&current)?;
+        current_obj.insert("env".into(), Value::Object(merged));
+        Ok(())
+    })?;
     log::info!(
         "Applied provider settings to live Claude config at {:?}",
         get_live_settings_path()
