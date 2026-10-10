@@ -26,6 +26,11 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     if let Err(error) = cc_switch_lib::provider_operations::recover(&state.db) {
         return Json(serde_json::json!({"success": false, "error": error.to_string(), "recovery_required": true})).into_response();
     }
+    match cc_switch_lib::database::backups::restore_pending() {
+        Ok(false) => {},
+        Ok(true) => return Json(serde_json::json!({"success":false,"error":"Cancel the planned database restore before starting the local route"})).into_response(),
+        Err(error) => return Json(serde_json::json!({"success":false,"error":error.to_string()})).into_response(),
+    }
     log::info!("[ProxyAPI] proxy_start requested");
     if state.proxy_server.read().await.is_some() {
         return Json(serde_json::json!({"success": false, "error": "Proxy already running"}))

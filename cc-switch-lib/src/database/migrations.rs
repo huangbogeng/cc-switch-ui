@@ -155,7 +155,7 @@ pub fn migrate_session_log_schema(conn: &Connection) -> Result<(), AppError> {
 }
 
 /// Current schema version for PRAGMA user_version-based migration tracking.
-const SCHEMA_VERSION: u32 = 3;
+pub(crate) const SCHEMA_VERSION: u32 = 3;
 
 pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;

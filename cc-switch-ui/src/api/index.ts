@@ -677,3 +677,22 @@ export function restoreClaudeUserSettings(revision: string) {
     method: 'POST', body: JSON.stringify({ revision }),
   });
 }
+
+export interface DatabaseBackup {
+  id: string;
+  kind: 'manual' | 'safety';
+  sizeBytes: number;
+  createdAt: string;
+  protected: boolean;
+}
+export interface DatabaseBackupStatus {
+  entries: DatabaseBackup[];
+  pending: { sourceId: string; applying: boolean } | null;
+  directory: string;
+  manualLimit: number;
+}
+export function getDatabaseBackups(options?: RequestInit) { return api<DatabaseBackupStatus>('/database-backups', options); }
+export function createDatabaseBackup() { return api<{ success: boolean; id: string }>('/database-backups', { method: 'POST' }); }
+export function deleteDatabaseBackup(id: string) { return api<{ success: boolean }>('/database-backups/delete', { method: 'POST', body: JSON.stringify({ id }) }); }
+export function scheduleDatabaseRestore(id: string) { return api<{ success: boolean; restartRequired: boolean }>('/database-backups/restore', { method: 'POST', body: JSON.stringify({ id }) }); }
+export function cancelDatabaseRestore() { return api<{ success: boolean }>('/database-backups/cancel', { method: 'POST' }); }

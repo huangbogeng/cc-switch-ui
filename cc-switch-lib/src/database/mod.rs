@@ -15,6 +15,7 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use std::sync::Mutex;
 
+pub mod backups;
 pub mod health;
 pub mod mcp;
 pub mod migrations;

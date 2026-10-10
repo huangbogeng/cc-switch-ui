@@ -53,11 +53,13 @@ enum Commands {
     },
     /// Print version information
     Version,
+    /// Cancel a staged database restore before it begins (also works when server startup fails)
+    CancelRestore,
     /// Diagnose installation, path, and database permissions
     Doctor,
     /// Stop server using pid file
     Stop,
-    /// Remove all persisted provider credentials and database
+    /// Remove the primary database/settings and pending operations; retain backups
     Clean {
         /// Also clean the live Claude Code config (removes proxy base URL)
         #[arg(long)]
@@ -304,6 +306,11 @@ fn run_clean(clean_live: bool) -> i32 {
         return 1;
     }
 
+    if let Err(error) = cc_switch_lib::database::backups::discard_for_clean() {
+        eprintln!("clean: cannot discard pending database restore: {error}");
+        return 1;
+    }
+
     remove(&db_path, "database");
     remove(&settings_path, "device settings");
     remove(&cli_config_path, "CLI config");
@@ -529,6 +536,16 @@ async fn main() {
         }
         Some(Commands::Doctor) => run_doctor(),
         Some(Commands::Stop) => run_stop(),
+        Some(Commands::CancelRestore) => match cc_switch_lib::database::backups::cancel() {
+            Ok(()) => {
+                println!("Planned database restore cancelled");
+                0
+            }
+            Err(error) => {
+                eprintln!("Cannot cancel database restore: {error}");
+                1
+            }
+        },
         Some(Commands::Clean { live }) => run_clean(live),
         Some(Commands::Config { command }) => run_config(command),
         None => start_and_run(compose_server_options(None, None, None, None, None)).await,
