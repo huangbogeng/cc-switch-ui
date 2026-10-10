@@ -14,11 +14,14 @@ const partial = { success: false, imported: 0, updated: 1, applied: 0, skipped: 
     { id: 'good', outcome: 'updated' as const, error: null }, { id: 'existing', outcome: 'skipped' as const, error: null }] };
 it('separates collection updates from imports and refreshes partial results', async () => {
   vi.mocked(importSkills).mockResolvedValue(partial);
-  render(<SkillsPage />);
+  const { container } = render(<SkillsPage />);
   await performImport();
   await screen.findByText('Import partially completed: 0 imported, 1 updated, 1 skipped, 1 failed.');
   await waitFor(() => expect(listSkills).toHaveBeenCalledTimes(2));
   expect(screen.getByText(/Collection save failed/)).toBeTruthy();
+  expect(container.contains(screen.getByText('Import partially completed: 0 imported, 1 updated, 1 skipped, 1 failed.'))).toBe(false);
+  await userEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }));
+  expect(screen.queryByText(/Collection save failed/)).toBeNull();
 });
 it('shows partial sync and replaces the report on a successful retry', async () => {
   vi.mocked(syncSkills).mockResolvedValueOnce({ ...partial, updated: 0, applied: 1 }).mockResolvedValue({ ...partial, success: true, updated: 0, applied: 1, skipped: 2, failed: 0, items: [] });
