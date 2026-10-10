@@ -180,67 +180,88 @@ pub fn write_text_file(path: &Path, data: &str) -> Result<(), AppError> {
     atomic_write(path, data.as_bytes())
 }
 
-/// 原子写入：写入临时文件后 rename 替换，避免半写状态
+/// Write and sync a private temporary file, then atomically replace the target.
+/// Failed replacement leaves the existing destination intact and cleans up staging.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
-    }
-
     let parent = path
         .parent()
-        .ok_or_else(|| AppError::Config("无效的路径".to_string()))?;
-    let mut tmp = parent.to_path_buf();
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| AppError::Config("无效的文件名".to_string()))?
-        .to_string_lossy()
-        .to_string();
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    tmp.push(format!("{file_name}.tmp.{ts}"));
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+    let mut staged =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| AppError::io(parent, e))?;
+    staged
+        .write_all(data)
+        .map_err(|e| AppError::io(staged.path(), e))?;
+    staged.flush().map_err(|e| AppError::io(staged.path(), e))?;
 
-    {
-        let mut f = fs::File::create(&tmp).map_err(|e| AppError::io(&tmp, e))?;
-        f.write_all(data).map_err(|e| AppError::io(&tmp, e))?;
-        f.flush().map_err(|e| AppError::io(&tmp, e))?;
-    }
-
+    // New files retain tempfile's private permissions. Existing Unix permissions
+    // remain compatible with user-configured access to the destination.
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(path) {
-            let perm = meta.permissions().mode();
-            let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(perm));
-        }
+    match fs::metadata(path) {
+        Ok(metadata) => staged
+            .as_file()
+            .set_permissions(metadata.permissions())
+            .map_err(|e| AppError::io(staged.path(), e))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(AppError::io(path, e)),
     }
 
-    #[cfg(windows)]
-    {
-        // Windows 上 rename 目标存在会失败，先移除再重命名（尽量接近原子性）
-        if path.exists() {
-            let _ = fs::remove_file(path);
-        }
-        fs::rename(&tmp, path).map_err(|e| AppError::IoContext {
-            context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
-            source: e,
-        })?;
-    }
-
-    #[cfg(not(windows))]
-    {
-        fs::rename(&tmp, path).map_err(|e| AppError::IoContext {
-            context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
-            source: e,
-        })?;
-    }
+    staged
+        .as_file()
+        .sync_all()
+        .map_err(|e| AppError::io(staged.path(), e))?;
+    // tempfile uses rename on Unix and MoveFileExW(REPLACE_EXISTING) on Windows.
+    // Never remove the destination before attempting to publish the staged file.
+    staged
+        .persist(path)
+        .map_err(|e| AppError::io(path, e.error))?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn atomic_write_replaces_complete_contents_and_cleans_staging() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("config.json");
+        fs::write(&path, "old longer contents").unwrap();
+        atomic_write(&path, b"new").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_replacement_preserves_destination_and_cleans_staging() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("destination");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("keep"), "original").unwrap();
+        assert!(atomic_write(&path, b"replacement").is_err());
+        assert_eq!(fs::read_to_string(path.join("keep")).unwrap(), "original");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_files_are_private_and_replacements_preserve_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("secret.json");
+        atomic_write(&path, b"secret").unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        atomic_write(&path, b"updated").unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+    }
 
     #[test]
     fn derive_mcp_path_from_override_preserves_folder_name() {
