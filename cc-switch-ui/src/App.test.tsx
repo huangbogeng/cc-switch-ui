@@ -1,6 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import App from './App';
+import { queryClient } from '@/lib/queryClient';
+import { cacheSet, cacheGet } from '@/lib/fetchCache';
+
+vi.mock('@/components/ServerStatus', () => ({ ServerStatus: () => <span>Local Server</span> }));
 
 vi.mock('./pages/ProvidersPage', async () => {
   const { useUnsavedChanges } = await import('./lib/useUnsavedChanges');
@@ -11,11 +15,14 @@ vi.mock('./pages/DashboardPage', () => ({ default: () => <div>Dashboard content<
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear(); window.history.replaceState(null, '', '/'); });
 
-it('guards sidebar, hash navigation and logout while preserving the editor', () => {
+it('guards sidebar, hash navigation and logout while preserving the editor', async () => {
   localStorage.setItem('ccswitch_token', 'test');
+  queryClient.setQueryData(['session-test'], 'cached');
+  cacheSet('session-test', 'cached');
   window.history.replaceState(null, '', '#providers');
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   render(<App />);
+  await screen.findByText('Dirty provider editor');
   fireEvent.click(screen.getByRole('button', { name: /Dashboard/ }));
   expect(screen.getByText('Dirty provider editor')).toBeTruthy();
   expect(window.location.hash).toBe('#providers');
@@ -26,5 +33,8 @@ it('guards sidebar, hash navigation and logout while preserving the editor', () 
   expect(localStorage.getItem('ccswitch_token')).toBe('test');
   confirm.mockReturnValue(true);
   fireEvent.click(screen.getByRole('button', { name: /Dashboard/ }));
-  expect(screen.getByText('Dashboard content')).toBeTruthy();
+  expect(await screen.findByText('Dashboard content')).toBeTruthy();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Logout' })[0]);
+  expect(queryClient.getQueryData(['session-test'])).toBeUndefined();
+  expect(cacheGet('session-test')).toBeUndefined();
 });

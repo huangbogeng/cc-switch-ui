@@ -8,6 +8,7 @@ import type { UsageRangeSelection } from '@/lib/usageRange';
 import { useUsageSummary, useProviderStats, useModelStats, useSyncSession, useDataSourceBreakdown } from '@/lib/useUsage';
 import UsageSummaryCards from '@/components/usage/UsageSummaryCards';
 import UsageTrendChart from '@/components/usage/UsageTrendChart';
+import UsageHeatmap from '@/components/usage/UsageHeatmap';
 import UsageDateRangePicker from '@/components/usage/UsageDateRangePicker';
 import ProviderStatsTable from '@/components/usage/ProviderStatsTable';
 import ModelStatsTable from '@/components/usage/ModelStatsTable';
@@ -24,6 +25,7 @@ import { formatRangeLabel } from '@/lib/usageRange';
 export default function UsagePage() {
   const queryClient = useQueryClient();
   const [range, setRange] = useState<UsageRangeSelection>({ preset: '30d' });
+  const [activeTab, setActiveTab] = useState('logs');
   const [refreshMs, setRefreshMs] = useState(30_000);
 
   const resolved = useMemo(() => resolveUsageRange(range), [range]);
@@ -40,11 +42,13 @@ export default function UsagePage() {
     resolved.startDate,
     resolved.endDate,
     refreshMs,
+    activeTab === 'providers',
   );
   const modelQuery = useModelStats(
     resolved.startDate,
     resolved.endDate,
     refreshMs,
+    activeTab === 'models',
   );
   const sourcesQuery = useDataSourceBreakdown(resolved.startDate, resolved.endDate, refreshMs);
 
@@ -65,7 +69,7 @@ export default function UsagePage() {
   const rangeLabel = formatRangeLabel(range, resolved);
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8">
       <PageHeader
         title="Usage"
         description="Monitor local route usage across all providers."
@@ -110,9 +114,17 @@ export default function UsagePage() {
         title={`${rangeLabel} Token Trend`}
       />
 
+      <UsageHeatmap
+        trend={summaryQuery.data?.trend ?? []}
+        loading={summaryQuery.isLoading}
+        title={`${rangeLabel} Activity`}
+        rangeStart={resolved.startDate}
+        rangeEnd={resolved.endDate}
+      />
+
       <DataSourceBar sources={sourcesQuery.data} />
 
-      <Tabs defaultValue="logs" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-muted/50">
           <TabsTrigger value="logs" className="gap-2">
             <ListFilter className="h-4 w-4" />

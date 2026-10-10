@@ -36,7 +36,8 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - name: Rust unit and real-service workflow regressions
+        run: cargo test --workspace
 
   upgrade:
     name: Upgrade from ${{ matrix.old_version }}

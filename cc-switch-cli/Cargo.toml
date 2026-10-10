@@ -24,3 +24,7 @@ env_logger.workspace = true
 log.workspace = true
 dirs.workspace = true
 tempfile.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
+axum.workspace = true

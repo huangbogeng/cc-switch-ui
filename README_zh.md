@@ -199,6 +199,8 @@ npm run lint
 npm run build
 ```
 
+上述 workspace 测试也会在临时用户目录中运行真实 CLI/HTTP 流程回归，覆盖 provider 编辑、路由接管与重启恢复、MCP/Skills 同步与删除恢复、数据库备份恢复。测试只使用 loopback 端口和本地模拟上游，无需账号或 API key，不读取实际用户配置。单独执行：`cargo test -p cc-switch-cli --test workflows`。这些回归核对前端使用的 API、SQLite 与 live 文件；浏览器交互仍由前端测试单独验证。
+
 ### 仓库结构
 
 ```text

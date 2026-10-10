@@ -199,6 +199,8 @@ npm run lint
 npm run build
 ```
 
+The workspace test command also runs real CLI/HTTP workflow regressions in temporary homes, covering provider edits, route takeover and restart recovery, MCP/Skills synchronization and deletion recovery, and staged database restores. They use loopback ports and a local mock upstream, require no account or API key, and do not read your user configuration. Run them alone with `cargo test -p cc-switch-cli --test workflows`. These verify the APIs used by the UI, SQLite, and live files; browser interactions remain covered separately by frontend tests.
+
 ### Repository layout
 
 ```text

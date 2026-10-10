@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import { finishManagedDeletion, getManagedDeletion, type PendingDeletion } from '@/api';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ export function DeletionRecoveryPanel({ refreshKey, disabled, onBusyChange, onRe
   refreshKey: number; disabled: boolean; onBusyChange: (busy: boolean) => void;
   onResolved: () => void | Promise<void>; onPendingChange: (pending: boolean) => void;
 }) {
+  const { confirmAction, confirmation } = useConfirm();
   const [pending, setPending] = useState<PendingDeletion | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -30,7 +32,7 @@ export function DeletionRecoveryPanel({ refreshKey, disabled, onBusyChange, onRe
   };
   const finish = async (keepFiles: boolean) => {
     if (!pending) return;
-    if (keepFiles && !window.confirm(`Keep the current live files for ${pending.name} and finish deletion of the managed record? The files remain unmanaged and can still be active in Claude Code. This does not restore the deleted record.`)) return;
+    if (keepFiles && !await confirmAction(`Keep the current live files for ${pending.name} and finish deletion of the managed record? The files remain unmanaged and can still be active in Claude Code. This does not restore the deleted record.`, { title: 'Keep current files?', confirmLabel: 'Keep files' })) return;
     setBusy(true); onBusyChange(true); setError(''); setNotice('');
     try {
       await finishManagedDeletion(pending.operationId, keepFiles);
@@ -45,6 +47,7 @@ export function DeletionRecoveryPanel({ refreshKey, disabled, onBusyChange, onRe
   };
   return (
     <div className="space-y-3 rounded-lg border p-4 text-sm">
+      {confirmation}
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-semibold">Deletion recovery</h2>
         <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => void refresh()}>Refresh deletion status</Button>

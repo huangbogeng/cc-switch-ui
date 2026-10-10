@@ -34,7 +34,7 @@ export function ProviderCard({
   const baseUrl = providerBaseUrl(provider);
 
   return (
-    <Card className={`group relative overflow-hidden transition-all duration-300 ${
+    <Card className={`group relative overflow-hidden transition-[background-color,border-color] duration-200 ${
       active
         ? 'ring-2 ring-primary/50 bg-gradient-to-br from-primary/5 to-transparent shadow-[0_0_20px_rgba(var(--primary),0.1)]'
         : 'border-white/5 bg-card/40 hover:bg-card/80 hover:border-white/10 hover:shadow-lg'
@@ -56,7 +56,7 @@ export function ProviderCard({
                 {active && (
                   <Badge variant="success" className="gap-1.5 py-0.5 px-2.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
                     <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-20"></span>
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                     </span>
                     Selected
@@ -108,7 +108,7 @@ export function ProviderCard({
             <Button
               size="sm"
               variant={active ? 'secondary' : 'default'}
-              className={`w-full sm:w-auto shadow-sm transition-all ${
+              className={`w-full sm:w-auto shadow-sm transition-colors ${
                 !active ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.2)] hover:shadow-[0_0_20px_rgba(var(--primary),0.3)]' : ''
               }`}
               onClick={() => onSwitch(provider.id)}

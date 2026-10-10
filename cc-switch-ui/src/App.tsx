@@ -1,17 +1,34 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
+import { ServerStatus } from '@/components/ServerStatus';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import ProvidersPage from './pages/ProvidersPage';
-import SettingsPage from './pages/SettingsPage';
-import OAuthPage from './pages/OAuthPage';
-import UsagePage from './pages/UsagePage';
-import McpPage from './pages/McpPage';
-import SkillsPage from './pages/SkillsPage';
+import { queryClient } from '@/lib/queryClient';
+import { cacheClear } from '@/lib/fetchCache';
 import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { confirmDiscardChanges } from '@/lib/useUnsavedChanges';
+
+const pageLoaders = {
+  dashboard: () => import('./pages/DashboardPage'),
+  providers: () => import('./pages/ProvidersPage'),
+  settings: () => import('./pages/SettingsPage'),
+  oauth: () => import('./pages/OAuthPage'),
+  usage: () => import('./pages/UsagePage'),
+  mcp: () => import('./pages/McpPage'),
+  skills: () => import('./pages/SkillsPage'),
+};
+const DashboardPage = lazy(pageLoaders.dashboard);
+const ProvidersPage = lazy(pageLoaders.providers);
+const SettingsPage = lazy(pageLoaders.settings);
+const OAuthPage = lazy(pageLoaders.oauth);
+const UsagePage = lazy(pageLoaders.usage);
+const McpPage = lazy(pageLoaders.mcp);
+const SkillsPage = lazy(pageLoaders.skills);
+
+function preloadPage(page: Page) {
+  void pageLoaders[page]().catch(() => { /* Navigation retries through React.lazy. */ });
+}
 
 type Page = 'dashboard' | 'providers' | 'mcp' | 'skills' | 'oauth' | 'usage' | 'settings';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
@@ -48,9 +65,15 @@ export default function App() {
     setCurrentPage(page);
   };
 
-  const handleLogin = () => setAuthenticated(true);
+  const clearSessionCache = () => {
+    void queryClient.cancelQueries();
+    queryClient.clear();
+    cacheClear();
+  };
+  const handleLogin = () => { clearSessionCache(); setAuthenticated(true); };
   const handleLogout = () => {
     if (!confirmDiscardChanges()) return;
+    clearSessionCache();
     clearAuthToken();
     setAuthenticated(false);
   };
@@ -73,7 +96,7 @@ export default function App() {
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground relative">
       <div className="fixed inset-0 z-[-1] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-background to-background pointer-events-none" />
       <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col lg:grid lg:grid-cols-[272px_minmax(0,1fr)]">
-        <aside className="border-b border-white/5 bg-card/40 px-4 py-4 shadow-2xl shadow-black/20 backdrop-blur-3xl lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:px-5 lg:py-6 flex flex-col">
+        <aside className="border-b border-white/5 bg-card/80 px-4 py-4 shadow-lg shadow-black/10 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:px-5 lg:py-6 flex flex-col">
           <div className="flex items-center justify-between gap-3 lg:block">
             <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/0 shadow-inner shadow-white/5">
@@ -98,9 +121,11 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => navigate(item.id)}
+                onMouseEnter={() => preloadPage(item.id)}
+                onFocus={() => preloadPage(item.id)}
                 aria-current={currentPage === item.id ? 'page' : undefined}
                 className={cn(
-                  "group relative grid min-w-max grid-cols-[16px_minmax(0,1fr)] items-center gap-3.5 rounded-xl px-3 py-2.5 text-left transition-all duration-200 lg:min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                  "group relative grid min-w-max grid-cols-[16px_minmax(0,1fr)] items-center gap-3.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 lg:min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                   currentPage === item.id
                     ? "bg-primary/15 text-foreground shadow-sm ring-1 ring-primary/25"
                     : "text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
@@ -111,7 +136,7 @@ export default function App() {
                 )}
                 <item.icon className={cn("h-4 w-4 transition-colors", currentPage === item.id ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
                 <span className="min-w-0">
-                  <span className={cn("block truncate text-sm leading-5 transition-all", currentPage === item.id ? "font-semibold" : "font-medium")}>{item.label}</span>
+                  <span className={cn("block truncate text-sm leading-5 transition-colors", currentPage === item.id ? "font-semibold" : "font-medium")}>{item.label}</span>
                   <span className="hidden truncate text-[11px] leading-4 text-muted-foreground/80 lg:block">{item.description}</span>
                 </span>
               </button>
@@ -119,13 +144,10 @@ export default function App() {
           </nav>
 
           <div className="mt-auto hidden lg:block">
-            <div className="rounded-2xl border border-white/5 bg-black/20 p-4 backdrop-blur-md relative overflow-hidden group">
+            <div className="rounded-2xl border border-white/5 bg-black/20 p-4 relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Workspace</div>
-              <div className="mt-1.5 flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                <span className="truncate text-sm font-medium text-foreground">Local Server</span>
-              </div>
+              <ServerStatus />
             </div>
           </div>
 
@@ -136,14 +158,16 @@ export default function App() {
         </aside>
 
         <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 relative">
-          <div className="mx-auto w-full max-w-[1200px] animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {currentPage === 'dashboard' && <DashboardPage />}
-            {currentPage === 'providers' && <ProvidersPage />}
-            {currentPage === 'mcp' && <McpPage />}
-            {currentPage === 'skills' && <SkillsPage />}
-            {currentPage === 'oauth' && <OAuthPage />}
-            {currentPage === 'usage' && <UsagePage />}
-            {currentPage === 'settings' && <SettingsPage />}
+          <div key={currentPage} className="mx-auto w-full max-w-[1200px] page-enter">
+            <Suspense fallback={<div role="status" className="min-h-64 rounded-2xl border border-white/10 bg-card/40 p-6 text-sm text-muted-foreground">Loading page…</div>}>
+              {currentPage === 'dashboard' && <DashboardPage />}
+              {currentPage === 'providers' && <ProvidersPage />}
+              {currentPage === 'mcp' && <McpPage />}
+              {currentPage === 'skills' && <SkillsPage />}
+              {currentPage === 'oauth' && <OAuthPage />}
+              {currentPage === 'usage' && <UsagePage />}
+              {currentPage === 'settings' && <SettingsPage />}
+            </Suspense>
           </div>
         </main>
       </div>

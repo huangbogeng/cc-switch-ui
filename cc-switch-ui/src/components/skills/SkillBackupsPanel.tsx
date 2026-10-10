@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useState } from 'react';
 import { ApiError, listSkillBackups, restoreSkillBackup, type SkillBackup } from '@/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,6 +13,7 @@ export function SkillBackupsPanel({ disabled, onRestored, onBusyChange }: {
   onRestored: () => void | Promise<void>;
   onBusyChange: (busy: boolean) => void;
 }) {
+  const { confirmAction, confirmation } = useConfirm();
   const [backups, setBackups] = useState<SkillBackup[]>([]);
   const [selected, setSelected] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -38,7 +40,7 @@ export function SkillBackupsPanel({ disabled, onRestored, onBusyChange }: {
 
   const restore = async () => {
     const backup = backups.find((item) => item.id === selected);
-    if (!backup || !window.confirm(`Restore source files for ${backup.directory}? Current files will be backed up. Enabled skills will be synced; disabled skills stay disabled. A deleted skill will be recreated and enabled.`)) return;
+    if (!backup || !await confirmAction(`Restore source files for ${backup.directory}? Current files will be backed up. Enabled skills will be synced; disabled skills stay disabled. A deleted skill will be recreated and enabled.`, { title: 'Restore configuration?', confirmLabel: 'Restore' })) return;
     start();
     try {
       const result = await restoreSkillBackup(backup.id);
@@ -54,6 +56,7 @@ export function SkillBackupsPanel({ disabled, onRestored, onBusyChange }: {
 
   return (
     <Card>
+      {confirmation}
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>

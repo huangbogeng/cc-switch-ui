@@ -46,7 +46,7 @@ export default function RequestLogDetailPanel({ logId, onClose }: Props) {
   const dialogRef = useDialog(true, onClose);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="dialog-overlay fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className="relative w-full max-w-lg bg-background border-l border-border shadow-xl animate-in slide-in-from-right">
         <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">

@@ -1,3 +1,4 @@
+import { useConfirm } from '@/lib/useConfirm';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getCodexOAuthStatus, startCodexOAuth, pollCodexOAuth,
@@ -33,6 +34,7 @@ export default function OAuthPage() {
   const cachedCopilot = cacheGet<CopilotStatus>('oauth-copilot');
 
   // Codex OAuth state
+  const { confirmAction, confirmation } = useConfirm();
   const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(cachedCodex ?? null);
   const [codexPending, setCodexPending] = useState(false);
   const [codexDeviceCode, setCodexDeviceCode] = useState('');
@@ -138,7 +140,7 @@ export default function OAuthPage() {
   };
 
   const handleRemoveCodexAccount = async (accountId: string) => {
-    if (!confirm('Remove this ChatGPT account?')) return;
+    if (!await confirmAction('Remove this ChatGPT account?', { title: 'Remove account?', confirmLabel: 'Remove', destructive: true })) return;
     try {
       setPendingAction(`codex-remove:${accountId}`);
       setError('');
@@ -203,7 +205,7 @@ export default function OAuthPage() {
   };
 
   const handleRemoveCopilotAccount = async (accountId: string) => {
-    if (!confirm('Remove this GitHub Copilot account?')) return;
+    if (!await confirmAction('Remove this GitHub Copilot account?', { title: 'Remove account?', confirmLabel: 'Remove', destructive: true })) return;
     try {
       setPendingAction(`copilot-remove:${accountId}`);
       setError('');
@@ -218,6 +220,7 @@ export default function OAuthPage() {
 
   return (
     <div>
+      {confirmation}
       <PageHeader
         title="OAuth"
         description="Manage account connections used by OAuth-backed routes."
@@ -457,7 +460,7 @@ function DeviceOAuthModal({
   }, [checkAuthorization]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
+    <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="oauth-dialog-title" className="w-full max-w-md rounded-3xl border border-white/10 bg-card/95 p-6 shadow-2xl shadow-black/30">
         <div className="mb-4 flex items-center justify-between">
           <h2 id="oauth-dialog-title" className="text-xl font-semibold">{title}</h2>

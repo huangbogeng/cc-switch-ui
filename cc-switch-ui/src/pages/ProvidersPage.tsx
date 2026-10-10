@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useConfirm } from '@/lib/useConfirm';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
-  listProviders,
   saveProvider,
   recoverProviderOperation,
   deleteProvider,
   switchProvider,
-  getCurrentProviderId,
   getCodexOAuthStatus,
   setProxyTarget,
-  getProxyStatus,
   startProxy,
   stopProxy,
   type Provider,
@@ -30,21 +28,22 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { sortProviders } from '@/lib/provider';
-import { cacheGet, cacheSet } from '@/lib/fetchCache';
+import { useQueryClient } from '@tanstack/react-query';
+import { providerKeys, useProviders, useCurrentProvider, useRouteStatus, useRefreshProviders } from '@/lib/useProviders';
+import { errorMessage } from '@/lib/errors';
 
 export default function ProvidersPage() {
-  const cached = cacheGet<{
-    providers: Record<string, Provider>;
-    currentProviderId: string | null;
-  }>('providers');
-  const [providers, setProviders] = useState<Record<string, Provider>>(
-    cached?.providers ?? {},
-  );
-  const [currentProviderId, setCurrentProviderId] = useState<string | null>(
-    cached?.currentProviderId ?? null,
-  );
-  const [loading, setLoading] = useState(!cached);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const providersQuery = useProviders();
+  const currentQuery = useCurrentProvider();
+  const routeQuery = useRouteStatus();
+  const refreshProviders = useRefreshProviders();
+  const providers = providersQuery.data?.providers;
+  const currentProviderId = currentQuery.data?.current_provider_id ?? null;
+  const loading = providersQuery.isLoading || currentQuery.isLoading;
+  const { confirmAction, confirmation } = useConfirm();
+  const [operationError, setError] = useState('');
+  const error = operationError || errorMessage(providersQuery.error ?? currentQuery.error, '');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
@@ -53,83 +52,30 @@ export default function ProvidersPage() {
   const [formError, setFormError] = useState('');
   const [editingBase, setEditingBase] = useState<Provider>();
   const [operationNotice, setOperationNotice] = useState('');
-  const [saveRecoveryRequired, setSaveRecoveryRequired] = useState(false);
+  const saveRecoveryRequired = currentQuery.data?.recovery_required ?? false;
   const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
-  const [proxyStatus, setProxyStatus] = useState<{
-    running: boolean;
-    recovery_required?: boolean;
-    listen_addr: string | null;
-    active_target_provider_id: string | null;
-  } | null>(null);
-  const [proxyError, setProxyError] = useState('');
+  const proxyStatus = routeQuery.error ? null : routeQuery.data ?? null;
+  const [operationProxyError, setProxyError] = useState('');
+  const proxyError = operationProxyError || errorMessage(routeQuery.error, '');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const providerList = useMemo(() => sortProviders(providers ?? {}), [providers]);
 
-  const providerList = sortProviders(providers);
-
-  const applyProviders = async (signal?: AbortSignal) => {
+  const applyProviders = async () => {
     try {
-      const [providerData, currentData] = await Promise.all([
-        listProviders({ signal }),
-        getCurrentProviderId({ signal }),
-      ]);
+      await refreshProviders();
       setError('');
-      setProviders(providerData.providers);
-      setCurrentProviderId(currentData.current_provider_id);
-      setSaveRecoveryRequired(currentData.recovery_required ?? false);
-      cacheSet('providers', {
-        providers: providerData.providers,
-        currentProviderId: currentData.current_provider_id,
-      });
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      setError(e instanceof Error ? e.message : 'Failed to load');
-    } finally {
-      if (!signal?.aborted) setLoading(false);
+      setError(errorMessage(e, 'Failed to refresh providers'));
     }
   };
-
-  const loadProxyStatus = useCallback(async (signal?: AbortSignal) => {
+  const loadProxyStatus = async () => {
     try {
-      const status = await getProxyStatus({ signal });
+      await queryClient.invalidateQueries({ queryKey: providerKeys.route }, { throwOnError: true });
       setProxyError('');
-      setProxyStatus(status);
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      setProxyStatus(null);
-      setProxyError(e instanceof Error ? e.message : 'Failed to load local route status');
+      setProxyError(errorMessage(e, 'Failed to refresh local route status'));
     }
-  }, []);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-
-    Promise.all([
-      listProviders({ signal: ctrl.signal }),
-      getCurrentProviderId({ signal: ctrl.signal }),
-    ])
-      .then(([providerData, currentData]) => {
-        if (ctrl.signal.aborted) return;
-        setError('');
-        setProviders(providerData.providers);
-        setCurrentProviderId(currentData.current_provider_id);
-        setSaveRecoveryRequired(currentData.recovery_required ?? false);
-        cacheSet('providers', {
-          providers: providerData.providers,
-          currentProviderId: currentData.current_provider_id,
-        });
-      })
-      .catch((e) => {
-        if (e instanceof DOMException && e.name === 'AbortError') return;
-        if (ctrl.signal.aborted) return;
-        setError(e instanceof Error ? e.message : 'Failed to load');
-      })
-      .finally(() => {
-        if (ctrl.signal.aborted) return;
-        setLoading(false);
-      });
-
-    return () => ctrl.abort();
-  }, []);
+  };
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -142,12 +88,6 @@ export default function ProvidersPage() {
       });
     return () => ctrl.abort();
   }, []);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    Promise.resolve().then(() => loadProxyStatus(ctrl.signal));
-    return () => ctrl.abort();
-  }, [loadProxyStatus]);
 
   const handleStartProxy = async (providerId: string) => {
     try {
@@ -198,7 +138,6 @@ export default function ProvidersPage() {
       setOperationNotice('');
       const result = await switchProvider(id);
       setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' ') || 'Direct provider selected.');
-      setCurrentProviderId(id);
       await applyProviders();
       await loadProxyStatus();
     } catch (e) {
@@ -246,7 +185,7 @@ export default function ProvidersPage() {
       setError('Choose another route target before deleting this Provider.');
       return;
     }
-    if (!confirm('Delete this provider?')) return;
+    if (!await confirmAction('Delete this provider?', { title: 'Delete managed item?', confirmLabel: 'Delete', destructive: true })) return;
     try {
       setPendingAction(`delete:${id}`);
       await deleteProvider(id);
@@ -297,8 +236,9 @@ export default function ProvidersPage() {
       }
       if (formData.authMode !== 'oauth_proxy' && !formData.noAuth && !formData.apiKey.trim()) {
         const providerName = selectedPreset?.name || name;
-        const shouldContinue = confirm(
-          `${providerName} is missing an API key.\n\nSave anyway? Switching or routing through this provider may fail until you add credentials.`
+        const shouldContinue = await confirmAction(
+          `${providerName} is missing an API key.\n\nSave anyway? Switching or routing through this provider may fail until you add credentials.`,
+          { title: 'Save without credentials?', confirmLabel: 'Save anyway' },
         );
         if (!shouldContinue) {
           setSaving(false);
@@ -319,6 +259,7 @@ export default function ProvidersPage() {
 
   return (
     <div>
+      {confirmation}
       <PageHeader
         title="Providers"
         description="Manage provider configs. Local route control is separated below."
