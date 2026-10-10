@@ -11,6 +11,7 @@ interface LocalRoutePanelProps {
   providers: Provider[];
   currentProviderId: string | null;
   proxyRunning: boolean;
+  recoveryRequired?: boolean;
   proxyTargetId: string | null;
   busy: boolean;
   onTargetChange: (providerId: string) => void;
@@ -22,6 +23,7 @@ export function LocalRoutePanel({
   providers,
   currentProviderId,
   proxyRunning,
+  recoveryRequired = false,
   proxyTargetId,
   busy,
   onTargetChange,
@@ -44,7 +46,7 @@ export function LocalRoutePanel({
                 Local Route
               </Badge>
               <Badge variant="outline" className={proxyRunning ? 'border-emerald-500/20 bg-emerald-500/15 text-emerald-300' : 'border-white/10 bg-white/5 text-muted-foreground'}>
-                {proxyRunning ? 'Running' : 'Stopped'}
+                {recoveryRequired ? 'Recovery needed' : proxyRunning ? 'Running' : 'Stopped'}
               </Badge>
             </div>
 
@@ -78,7 +80,7 @@ export function LocalRoutePanel({
             </div>
 
             <div className="rounded-xl border border-amber-500/15 bg-amber-500/8 px-3 py-2 text-xs text-amber-100/85">
-              Selecting a provider sets direct config. Starting the route takes over live config and forwards traffic to the selected provider.
+              {recoveryRequired ? 'The previous route was interrupted. Restore Direct Config before starting again.' : 'Selecting a provider sets Direct Config. Starting the route forwards traffic to the Route Target. Stopping restores Direct Config.'}
             </div>
           </div>
 
@@ -128,9 +130,9 @@ export function LocalRoutePanel({
               </div>
 
               <div className="mt-4">
-                {proxyRunning ? (
+                {proxyRunning || recoveryRequired ? (
                   <Button variant="destructive" className="w-full" onClick={onStopProxy} disabled={busy}>
-                    {busy ? 'Updating...' : 'Stop Route'}
+                    {busy ? 'Updating...' : recoveryRequired ? 'Restore Direct Config' : 'Stop Route'}
                   </Button>
                 ) : (
                   <Button
@@ -151,7 +153,7 @@ export function LocalRoutePanel({
                     Route is still forwarding to <span className="text-amber-300">{targetProvider.name}</span>.
                   </div>
                   <div className="mt-1 text-xs text-slate-300/70">
-                    Select a provider and confirm if you also want to switch the active route target.
+                    Select a Direct Config for use after stopping. Use Route Target above to change the running route.
                   </div>
                 </div>
               )}

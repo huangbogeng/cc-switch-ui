@@ -178,6 +178,7 @@ export async function getCopilotUsage(signal?: AbortSignal) {
 export async function getProxyStatus(options?: RequestInit) {
   return api<{
     running: boolean;
+    recovery_required?: boolean;
     listen_addr: string | null;
     upstream_url: string;
     http_proxy_url: string | null;

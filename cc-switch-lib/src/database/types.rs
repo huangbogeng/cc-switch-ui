@@ -148,6 +148,7 @@ pub struct ProxyRequestLogRecord {
 /// Live backup record for proxy takeover detection/restore
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveBackup {
+    pub takeover_env: Option<serde_json::Map<String, serde_json::Value>>,
     pub app_type: String,
     pub provider_id: String,
     pub original_config: String,
