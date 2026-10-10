@@ -18,12 +18,12 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 
 it('refreshes desired state and shows sync failure after a partially saved toggle', async () => {
   render(<McpPage />);
-  await screen.findByRole('button', { name: 'Disable Test' });
+  await screen.findByRole('switch', { name: 'Disable Test' });
   vi.mocked(listMcpServers).mockResolvedValue({ servers: [{ ...server, enabled: false }] });
   vi.mocked(toggleMcpServer).mockRejectedValue(new ApiError('Record saved, but sync failed. Retry Sync.', true));
-  await userEvent.click(screen.getByRole('button', { name: 'Disable Test' }));
+  await userEvent.click(screen.getByRole('switch', { name: 'Disable Test' }));
   expect(await screen.findByText('Record saved, but sync failed. Retry Sync.')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Enable Test' })).toBeTruthy();
+  expect(screen.getByRole('switch', { name: 'Enable Test' })).toBeTruthy();
   expect(listMcpServers).toHaveBeenCalledTimes(2);
 });
 
