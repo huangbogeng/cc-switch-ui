@@ -8,6 +8,7 @@ import type { UsageRangeSelection } from '@/lib/usageRange';
 import { useUsageSummary, useProviderStats, useModelStats, useSyncSession, useDataSourceBreakdown } from '@/lib/useUsage';
 import UsageSummaryCards from '@/components/usage/UsageSummaryCards';
 import UsageTrendChart from '@/components/usage/UsageTrendChart';
+import UsageHeatmap from '@/components/usage/UsageHeatmap';
 import UsageDateRangePicker from '@/components/usage/UsageDateRangePicker';
 import ProviderStatsTable from '@/components/usage/ProviderStatsTable';
 import ModelStatsTable from '@/components/usage/ModelStatsTable';
@@ -108,6 +109,14 @@ export default function UsagePage() {
         trend={summaryQuery.data?.trend ?? []}
         loading={summaryQuery.isLoading}
         title={`${rangeLabel} Token Trend`}
+      />
+
+      <UsageHeatmap
+        trend={summaryQuery.data?.trend ?? []}
+        loading={summaryQuery.isLoading}
+        title={`${rangeLabel} Activity`}
+        rangeStart={resolved.startDate}
+        rangeEnd={resolved.endDate}
       />
 
       <DataSourceBar sources={sourcesQuery.data} />
