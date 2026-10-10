@@ -12,6 +12,7 @@
 use crate::config;
 use crate::database::{Database, SkillRecord};
 use crate::error::AppError;
+use crate::operation_report::OperationReport;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,23 @@ pub fn sync_enabled_to_claude(db: &Database, app_type: &str) -> Result<(), AppEr
 }
 
 fn sync_skills(skills: &[SkillRecord], ssot_dir: &Path, target_dir: &Path) -> Result<(), AppError> {
+    sync_skills_report(skills, ssot_dir, target_dir)?.ensure_success()
+}
+
+pub fn sync_report(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
+    sync_skills_report(
+        &db.get_all_skills(app_type)?,
+        &get_ssot_dir(),
+        &get_claude_skills_dir(),
+    )
+}
+
+fn sync_skills_report(
+    skills: &[SkillRecord],
+    ssot_dir: &Path,
+    target_dir: &Path,
+) -> Result<OperationReport, AppError> {
+    // Ambiguous target ownership is rejected before any writes.
     let mut directories = std::collections::HashSet::new();
     for skill in skills {
         validate_directory(&skill.directory)?;
@@ -49,46 +67,49 @@ fn sync_skills(skills: &[SkillRecord], ssot_dir: &Path, target_dir: &Path) -> Re
     reject_symlink(ssot_dir)?;
     reject_symlink(target_dir)?;
     fs::create_dir_all(target_dir).map_err(|e| AppError::io(target_dir, e))?;
+    let mut report = OperationReport::new();
     for skill in skills {
-        let source = ssot_dir.join(&skill.directory);
-        let dest = target_dir.join(&skill.directory);
-        reject_symlink(&dest)?;
-        if !skill.enabled {
-            backup_target(&dest, target_dir)?;
-            continue;
+        match sync_one(skill, ssot_dir, target_dir) {
+            Ok(true) => report.record(&skill.directory, "applied", None),
+            Ok(false) => report.record(&skill.directory, "skipped", None),
+            Err(error) => report.record(&skill.directory, "failed", Some(error.to_string())),
         }
-        reject_symlink(&source)?;
-        if !source.join("SKILL.md").is_file() {
-            return Err(AppError::Config(format!(
-                "Skill '{}' has no SKILL.md; target preserved",
-                skill.directory
-            )));
-        }
-        let source_version = directory_version(&source)?;
-        let target_version = directory_version(&dest)?;
-        if source_version == target_version {
-            continue;
-        }
-        // Finish copying before touching the previous installation.
-        let stage = tempfile::tempdir_in(target_dir).map_err(|e| AppError::io(target_dir, e))?;
-        let staged = stage.path().join("skill");
-        copy_dir_recursive(&source, &staged)?;
-        if directory_version(&source)? != source_version
-            || directory_version(&staged)? != source_version
-        {
-            return Err(AppError::Conflict {
-                path: source.display().to_string(),
-            });
-        }
-        publish_directory(&staged, &dest, target_dir, target_version)?;
     }
+    Ok(report)
+}
 
-    log::info!(
-        "Synced {} enabled skills to {}",
-        skills.iter().filter(|skill| skill.enabled).count(),
-        target_dir.display()
-    );
-    Ok(())
+fn sync_one(skill: &SkillRecord, ssot_dir: &Path, target_dir: &Path) -> Result<bool, AppError> {
+    let source = ssot_dir.join(&skill.directory);
+    let dest = target_dir.join(&skill.directory);
+    reject_symlink(&dest)?;
+    if !skill.enabled {
+        return Ok(backup_target(&dest, target_dir)?.is_some());
+    }
+    reject_symlink(&source)?;
+    if !source.join("SKILL.md").is_file() {
+        return Err(AppError::Config(format!(
+            "Skill '{}' has no SKILL.md; target preserved",
+            skill.directory
+        )));
+    }
+    let source_version = directory_version(&source)?;
+    let target_version = directory_version(&dest)?;
+    if source_version == target_version {
+        return Ok(false);
+    }
+    // Finish copying before touching the previous installation.
+    let stage = tempfile::tempdir_in(target_dir).map_err(|e| AppError::io(target_dir, e))?;
+    let staged = stage.path().join("skill");
+    copy_dir_recursive(&source, &staged)?;
+    if directory_version(&source)? != source_version
+        || directory_version(&staged)? != source_version
+    {
+        return Err(AppError::Conflict {
+            path: source.display().to_string(),
+        });
+    }
+    publish_directory(&staged, &dest, target_dir, target_version)?;
+    Ok(true)
 }
 
 /// Content digest without following links. Absence and an empty directory differ.
@@ -305,17 +326,6 @@ pub fn ensure_skill_ssot(skill: &SkillRecord) -> Result<(), AppError> {
 
 /// Recursively find SKILL.md files under `~/.claude/plugins/` (excluding cache/)
 /// that match the pattern `<any>/skills/<skill-name>/SKILL.md`.
-fn find_plugin_skills() -> Result<Vec<(PathBuf, String)>, AppError> {
-    let plugins_dir = config::get_claude_config_dir().join("plugins");
-    if !plugins_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut result = Vec::new();
-    scan_for_skills(&plugins_dir, &mut result, 0)?;
-    Ok(result)
-}
-
 fn scan_for_skills(
     current: &Path,
     result: &mut Vec<(PathBuf, String)>,
@@ -421,6 +431,7 @@ fn import_skill_from_dir(
     reject_symlink(source_dir)?;
     let skill_md = source_dir.join("SKILL.md");
     reject_symlink(&skill_md)?;
+    fs::read(&skill_md).map_err(|e| AppError::io(&skill_md, e))?;
     let (name, description) = parse_skill_md(&skill_md);
     let display_name = if name.is_empty() {
         dir_name.to_string()
@@ -433,12 +444,22 @@ fn import_skill_from_dir(
     let ssot_dest = ssot_dir.join(dir_name);
     reject_symlink(&ssot_dir)?;
     reject_symlink(&ssot_dest)?;
-    if !ssot_dest.exists() {
+    let original = directory_version(source_dir)?;
+    let expected = directory_version(&ssot_dest)?;
+    if expected.is_some() && expected != original {
+        return Err(AppError::Config(format!("Source store for '{dir_name}' differs from import source; review existing files before retrying")));
+    }
+    if expected.is_none() {
         fs::create_dir_all(&ssot_dir).map_err(|e| AppError::io(&ssot_dir, e))?;
         let stage = tempfile::tempdir_in(&ssot_dir).map_err(|e| AppError::io(&ssot_dir, e))?;
         let staged = stage.path().join("skill");
         copy_dir_recursive(source_dir, &staged)?;
-        fs::rename(&staged, &ssot_dest).map_err(|e| AppError::io(&ssot_dest, e))?;
+        if directory_version(source_dir)? != original || directory_version(&staged)? != original {
+            return Err(AppError::Conflict {
+                path: source_dir.display().to_string(),
+            });
+        }
+        publish_directory(&staged, &ssot_dest, &ssot_dir, expected)?;
     }
 
     let collection = derive_collection(source_dir);
@@ -481,93 +502,84 @@ fn import_skill_from_dir(
 /// Each found skill is copied to the SSOT (`~/.cc-switch/skills/<dir>/`)
 /// and a database record is created. Skills already in the DB are skipped.
 /// Existing skills with a missing collection field get backfilled.
-/// Returns the count of newly imported + backfilled skills.
-pub fn import_from_claude(db: &Database, app_type: &str) -> Result<usize, AppError> {
+/// Every candidate has an outcome. A failed scan is included without hiding completed imports.
+pub fn import_from_claude(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
+    let existing = db.get_all_skills(app_type)?;
     reject_symlink(&get_ssot_dir())?;
-    reject_symlink(&get_claude_skills_dir())?;
-    let all_existing = db.get_all_skills(app_type)?;
-    let mut existing_dirs: std::collections::HashSet<String> =
-        all_existing.iter().map(|s| s.directory.clone()).collect();
-
-    // Track skills that already exist but need collection backfill
-    let needs_backfill: std::collections::HashSet<String> = all_existing
-        .iter()
-        .filter(|s| s.collection.is_none())
-        .map(|s| s.directory.clone())
-        .collect();
-
-    let mut imported = 0;
-
-    // Phase 1: Scan ~/.claude/skills/
-    let claude_skills_dir = get_claude_skills_dir();
-    if claude_skills_dir.exists() {
-        for entry in
-            fs::read_dir(&claude_skills_dir).map_err(|e| AppError::io(&claude_skills_dir, e))?
-        {
-            let entry = entry.map_err(|e| AppError::io(&claude_skills_dir, e))?;
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
+    let mut report = OperationReport::new();
+    let live = get_claude_skills_dir();
+    let mut candidates = Vec::new();
+    let direct = (|| -> Result<(), AppError> {
+        reject_symlink(&live)?;
+        if !live.exists() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(&live).map_err(|e| AppError::io(&live, e))? {
+            let entry = entry.map_err(|e| AppError::io(&live, e))?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with('.')
+                && entry.path().is_dir()
+                && entry.path().join("SKILL.md").exists()
+            {
+                candidates.push((entry.path(), name));
             }
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if dir_name.starts_with('.') || existing_dirs.contains(&dir_name) {
-                // Still backfill collection if missing
-                if needs_backfill.contains(&dir_name) {
-                    let coll = derive_collection(&path);
-                    if !coll.is_empty() {
-                        if let Some(mut skill) = db
-                            .get_all_skills(app_type)
-                            .ok()
-                            .and_then(|skills| skills.into_iter().find(|s| s.directory == dir_name))
-                        {
-                            skill.collection = Some(coll);
-                            let _ = db.save_skill(&skill);
-                            imported += 1;
-                        }
-                    }
-                }
-                continue;
-            }
-            if !path.join("SKILL.md").exists() {
-                continue;
-            }
-
-            imported += import_skill_from_dir(db, app_type, &path, &dir_name)?;
-            existing_dirs.insert(dir_name);
+        }
+        Ok(())
+    })();
+    if let Err(error) = direct {
+        report.record("Claude skills scan", "failed", Some(error.to_string()));
+    }
+    candidates.sort_by(|a, b| a.0.cmp(&b.0));
+    // Preserve candidates discovered before a later plugin traversal failure.
+    let plugins = config::get_claude_config_dir().join("plugins");
+    let mut plugin_candidates = Vec::new();
+    if plugins.exists() {
+        if let Err(error) = scan_for_skills(&plugins, &mut plugin_candidates, 0) {
+            report.record("Claude plugins scan", "failed", Some(error.to_string()));
         }
     }
-
-    // Phase 2: Scan ~/.claude/plugins/ for plugin-bundled skills
-    let plugin_skills = find_plugin_skills()?;
-    for (skill_dir, dir_name) in &plugin_skills {
-        if existing_dirs.contains(dir_name) {
-            // Still backfill collection if missing
-            if needs_backfill.contains(dir_name) {
-                let coll = derive_collection(skill_dir);
-                if !coll.is_empty() {
-                    if let Some(mut skill) = db
-                        .get_all_skills(app_type)
-                        .ok()
-                        .and_then(|skills| skills.into_iter().find(|s| s.directory == *dir_name))
-                    {
-                        skill.collection = Some(coll);
-                        let _ = db.save_skill(&skill);
-                        imported += 1;
-                    }
-                }
-            }
+    plugin_candidates.sort_by(|a, b| a.0.cmp(&b.0));
+    candidates.extend(plugin_candidates);
+    import_candidates(db, app_type, &existing, candidates, &mut report);
+    Ok(report)
+}
+fn import_candidates(
+    db: &Database,
+    app_type: &str,
+    existing: &[SkillRecord],
+    candidates: Vec<(PathBuf, String)>,
+    report: &mut OperationReport,
+) {
+    let mut handled = std::collections::HashSet::new();
+    for (path, name) in candidates {
+        if handled.contains(&name) {
+            report.record(name, "skipped", None);
             continue;
         }
-        imported += import_skill_from_dir(db, app_type, skill_dir, dir_name)?;
-        existing_dirs.insert(dir_name.clone());
+        let result = (|| -> Result<&'static str, AppError> {
+            validate_directory(&name)?;
+            reject_symlink(&path)?;
+            reject_symlink(&path.join("SKILL.md"))?;
+            if let Some(record) = existing.iter().find(|s| s.directory == name) {
+                if record.collection.is_some() {
+                    return Ok("skipped");
+                }
+                let mut record = record.clone();
+                record.collection = Some(derive_collection(&path));
+                db.save_skill(&record)?;
+                return Ok("updated");
+            }
+            import_skill_from_dir(db, app_type, &path, &name)?;
+            Ok("imported")
+        })();
+        match result {
+            Ok(outcome) => {
+                handled.insert(name.clone());
+                report.record(name, outcome, None);
+            }
+            Err(error) => report.record(name, "failed", Some(error.to_string())),
+        }
     }
-
-    log::info!(
-        "Skills import complete: {} new or backfilled skills for app_type={}",
-        imported,
-        app_type
-    );
-    Ok(imported)
 }
 
 #[cfg(test)]
@@ -583,6 +595,96 @@ mod tests {
     fn install(root: &Path, name: &str, content: &str) {
         fs::create_dir_all(root.join(name)).unwrap();
         fs::write(root.join(name).join("SKILL.md"), content).unwrap();
+    }
+
+    #[test]
+    fn sync_reports_partial_progress_and_retry_skips_completed_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("ssot");
+        let target = temp.path().join("live");
+        install(&source, "good", "new");
+        install(&target, "missing", "keep");
+        let records = [skill("missing", true), skill("good", true)];
+        let report = sync_skills_report(&records, &source, &target).unwrap();
+        assert_eq!((report.applied, report.failed), (1, 1));
+        assert!(!report.success);
+        assert_eq!(
+            fs::read_to_string(target.join("missing/SKILL.md")).unwrap(),
+            "keep"
+        );
+        assert_eq!(
+            fs::read_to_string(target.join("good/SKILL.md")).unwrap(),
+            "new"
+        );
+        install(&source, "missing", "fixed");
+        let report = sync_skills_report(&records, &source, &target).unwrap();
+        assert!(report.success);
+        assert_eq!((report.applied, report.skipped), (1, 1));
+        assert_eq!(
+            fs::read_dir(target.join(".cc-switch-backups"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn collection_backfill_counts_only_committed_records_and_handles_duplicates_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("test-plugin/skills");
+        install(&source, "blocked", "test");
+        install(&source, "good", "test");
+        let db = Database::test_memory();
+        let blocked = skill("blocked", false);
+        let good = skill("good", true);
+        db.save_skill(&blocked).unwrap();
+        db.save_skill(&good).unwrap();
+        db.conn().execute_batch("CREATE TRIGGER reject_backfill BEFORE INSERT ON skills WHEN NEW.directory = 'blocked' BEGIN SELECT RAISE(ABORT, 'Test backfill failure'); END;").unwrap();
+        let candidates = vec![
+            (source.join("blocked"), "blocked".into()),
+            (source.join("good"), "good".into()),
+            (source.join("good"), "good".into()),
+        ];
+        let mut report = OperationReport::new();
+        import_candidates(
+            &db,
+            "claude_code",
+            &[blocked, good],
+            candidates,
+            &mut report,
+        );
+        assert_eq!(
+            (
+                report.imported,
+                report.updated,
+                report.skipped,
+                report.failed
+            ),
+            (0, 1, 1, 1)
+        );
+        let records = db.get_all_skills("claude_code").unwrap();
+        assert!(records
+            .iter()
+            .find(|s| s.directory == "blocked")
+            .unwrap()
+            .collection
+            .is_none());
+        assert!(
+            !records
+                .iter()
+                .find(|s| s.directory == "blocked")
+                .unwrap()
+                .enabled
+        );
+        assert_eq!(
+            records
+                .iter()
+                .find(|s| s.directory == "good")
+                .unwrap()
+                .collection
+                .as_deref(),
+            Some("Test Plugin")
+        );
     }
 
     #[test]

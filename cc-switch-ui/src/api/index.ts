@@ -575,11 +575,11 @@ export async function deleteMcpServer(id: string) {
 }
 
 export async function syncMcpServers() {
-  return api<{ success: boolean }>('/mcp/servers/sync', { method: 'POST' });
+  return api<OperationReport>('/mcp/servers/sync', { method: 'POST' });
 }
 
 export async function importMcpServers() {
-  return api<{ success: boolean; imported: number }>('/mcp/servers/import', { method: 'POST' });
+  return api<OperationReport>('/mcp/servers/import', { method: 'POST' });
 }
 
 export async function toggleMcpServer(id: string) {
@@ -620,11 +620,11 @@ export async function deleteSkill(id: string) {
 }
 
 export async function syncSkills() {
-  return api<{ success: boolean }>('/skills/sync', { method: 'POST' });
+  return api<OperationReport>('/skills/sync', { method: 'POST' });
 }
 
 export async function importSkills() {
-  return api<{ success: boolean; imported: number }>('/skills/import', { method: 'POST' });
+  return api<OperationReport>('/skills/import', { method: 'POST' });
 }
 
 export async function toggleSkill(id: string) {
@@ -711,4 +711,14 @@ export interface FileBackup {
 }
 export async function listFileBackups(options?: RequestInit) {
   return api<{ backups: FileBackup[] }>('/file-backups', options);
+}
+
+export interface OperationReport {
+  success: boolean;
+  imported: number;
+  updated: number;
+  applied: number;
+  skipped: number;
+  failed: number;
+  items: { id: string; outcome: 'imported' | 'updated' | 'applied' | 'skipped' | 'failed'; error: string | null }[];
 }

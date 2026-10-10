@@ -1,3 +1,5 @@
+import { OperationResults } from '@/components/OperationResults';
+import type { OperationReport } from '@/api';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, RefreshCw, Trash2, Server, Download, Pencil } from 'lucide-react';
 import {
@@ -44,6 +46,7 @@ export default function McpPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' } | null>(null);
   const [baseline, setBaseline] = useState('');
   const draft = JSON.stringify([form, specText]);
   const canDiscard = useUnsavedChanges(showForm && draft !== baseline, saving || pendingAction !== null);
@@ -53,9 +56,11 @@ export default function McpPage() {
       const data = await listMcpServers({ signal });
       setServers(data.servers);
       cacheSet('mcp-servers', data.servers);
+      return true;
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
+      if (e instanceof DOMException && e.name === 'AbortError') return false;
       setError(e instanceof Error ? e.message : 'Failed to load');
+      return false;
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -118,7 +123,7 @@ export default function McpPage() {
     try {
       setPendingAction(`delete:${id}`);
       setError('');
-      setNotice('');
+      setNotice(''); setOperation(null);
       await deleteMcpServer(id);
       await loadServers();
     } catch (e) {
@@ -129,41 +134,35 @@ export default function McpPage() {
   };
 
   const handleSync = async () => {
+    setPendingAction('sync');
+    setNotice(''); setOperation(null); setError('');
     try {
-      setPendingAction('sync');
-      setNotice('');
-      await syncMcpServers();
-      setError('');
-      setNotice('MCP configuration synced to Claude Code.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync failed');
-    } finally {
-      setPendingAction(null);
-    }
+      const report = await syncMcpServers();
+      setOperation({ report, action: 'Sync' });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Sync failed'); }
+    finally { setPendingAction(null); }
   };
 
   const handleImport = async () => {
+    setPendingAction('import');
+    setNotice(''); setOperation(null); setError('');
     try {
-      setPendingAction('import');
-      setNotice('');
-      const res = await importMcpServers();
-      setError('');
-      setNotice(`Imported ${res.imported} MCP server${res.imported === 1 ? '' : 's'}.`);
-      if (res.imported > 0) {
-        await loadServers();
-      }
+      const report = await importMcpServers();
+      setOperation({ report, action: 'Import' });
+      if (!await loadServers()) setError((previous) => `Import results are retained, but refreshing records failed: ${previous}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Import failed');
-    } finally {
-      setPendingAction(null);
-    }
+      // A lost response can still follow committed imports; refresh observed records.
+      const message = e instanceof Error ? e.message : 'Import failed';
+      const refreshed = await loadServers();
+      setError((previous) => refreshed ? message : `${message}. Refresh failed: ${previous}`);
+    } finally { setPendingAction(null); }
   };
 
   const handleToggle = async (srv: McpServer) => {
     try {
       setPendingAction(`toggle:${srv.id}`);
       setError('');
-      setNotice('');
+      setNotice(''); setOperation(null);
       const res = await toggleMcpServer(srv.id);
       setNotice('MCP server state saved and synced to Claude Code.');
       setServers((prev) => {
@@ -237,6 +236,7 @@ export default function McpPage() {
         <ErrorAlert message={error} />
       )}
       {notice && <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">{notice}</div>}
+      {operation && <OperationResults report={operation.report} action={operation.action} />}
 
       {servers.length === 0 ? (
         <Card>

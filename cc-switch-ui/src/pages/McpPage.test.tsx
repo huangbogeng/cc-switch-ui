@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApiError, listMcpServers, saveMcpServer, toggleMcpServer } from '@/api';
+import { ApiError, listMcpServers, saveMcpServer, toggleMcpServer, importMcpServers, syncMcpServers } from '@/api';
 import McpPage from './McpPage';
 
 vi.mock('@/api', async (original) => ({
   ...await original<typeof import('@/api')>(),
-  listMcpServers: vi.fn(), saveMcpServer: vi.fn(), toggleMcpServer: vi.fn(),
+  listMcpServers: vi.fn(), saveMcpServer: vi.fn(), toggleMcpServer: vi.fn(), importMcpServers: vi.fn(), syncMcpServers: vi.fn(),
 }));
 vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => undefined, cacheSet: vi.fn() }));
 const server = { id: 'test', name: 'Test', appType: 'claude_code', enabled: true, serverSpec: { command: 'npx' } };
@@ -43,4 +43,44 @@ it('keeps a saved draft open on sync failure and prevents accidental cancellatio
   expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Updated');
   await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
   expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(false);
+});
+
+const partial = { success: false, imported: 1, updated: 0, applied: 0, skipped: 0, failed: 1,
+  items: [{ id: 'good', outcome: 'imported' as const, error: null }, { id: 'bad', outcome: 'failed' as const, error: 'Database write failed' }] };
+
+it('shows committed imports and failed items together and refreshes records', async () => {
+  vi.mocked(importMcpServers).mockResolvedValue(partial);
+  render(<McpPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Import' }));
+  await screen.findByText('Import partially completed: 1 imported, 0 updated, 0 skipped, 1 failed.');
+  expect(screen.getByText(/Database write failed/)).toBeTruthy();
+  await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
+});
+
+it('keeps import outcomes when the follow-up read fails', async () => {
+  vi.mocked(importMcpServers).mockResolvedValue(partial);
+  vi.mocked(listMcpServers).mockResolvedValueOnce({ servers: [server] }).mockRejectedValue(new Error('Read failed'));
+  render(<McpPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Import' }));
+  await screen.findByText('Import results are retained, but refreshing records failed: Read failed');
+  expect(screen.getByText('Import partially completed: 1 imported, 0 updated, 0 skipped, 1 failed.')).toBeTruthy();
+});
+
+it('refreshes observed records after a lost import response and allows retry', async () => {
+  vi.mocked(importMcpServers).mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue({ ...partial, success: true, imported: 0, skipped: 2, failed: 0, items: [] });
+  render(<McpPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Import' }));
+  await screen.findByText('Connection lost');
+  await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
+  await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+  await screen.findByText('Import completed: 0 imported, 0 updated, 2 skipped, 0 failed.');
+  expect(screen.queryByText('Connection lost')).toBeNull();
+});
+
+it('does not claim a successful MCP sync after a failed atomic write', async () => {
+  vi.mocked(syncMcpServers).mockResolvedValue({ ...partial, imported: 0, items: [partial.items[1]] });
+  render(<McpPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Sync' }));
+  await screen.findByText('Sync failed: 0 applied, 0 skipped, 1 failed.');
+  expect(screen.queryByText('MCP configuration synced to Claude Code.')).toBeNull();
 });
