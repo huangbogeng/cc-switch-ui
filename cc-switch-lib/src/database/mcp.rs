@@ -55,6 +55,7 @@ impl super::Database {
     }
 
     pub fn save_mcp_server(&self, server: &McpServerRecord) -> Result<(), AppError> {
+        crate::mcp::validate_server(server)?;
         let conn = self.conn();
         let spec_str = serde_json::to_string(&server.server_spec)
             .map_err(|e| AppError::JsonSerialize { source: e })?;
