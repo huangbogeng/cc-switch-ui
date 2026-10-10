@@ -71,6 +71,23 @@ fn generate_token() -> String {
     })
 }
 
+/// Constant-time string comparison for the admin token.
+///
+/// A naive `==` short-circuits on the first differing byte, leaking the token
+/// prefix through response timing. Length is not secret (the generated token is
+/// a fixed-width hex string), so only the byte loop needs to be data-independent.
+pub(crate) fn constant_time_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn migrate_legacy_oauth_file(config_dir: &Path, legacy_dir: &Path, file_name: &str) {
     if config_dir == legacy_dir {
         return;
@@ -242,7 +259,7 @@ async fn auth_middleware(
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|token| token == state.token)
+        .map(|token| constant_time_eq(token, &state.token))
         .unwrap_or(false);
     let response = if valid {
         next.run(request).await
@@ -295,6 +312,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         copilot_oauth: Arc::new(copilot_oauth),
         token: config.token.clone(),
         proxy_server: Arc::new(RwLock::new(None)),
+        proxy_host: config.host.clone(),
         proxy_listen_port: config.proxy_port,
         db: Arc::new(db),
     });
@@ -424,5 +442,15 @@ mod tests {
     #[test]
     fn server_binds_to_loopback_by_default() {
         assert_eq!(ServerLaunchOptions::default().host, "127.0.0.1");
+    }
+
+    #[test]
+    fn constant_time_eq_matches_equality() {
+        use super::constant_time_eq;
+        assert!(constant_time_eq("abc123", "abc123"));
+        assert!(!constant_time_eq("abc123", "abc124"));
+        assert!(!constant_time_eq("abc123", "short"));
+        assert!(!constant_time_eq("", "x"));
+        assert!(constant_time_eq("", ""));
     }
 }

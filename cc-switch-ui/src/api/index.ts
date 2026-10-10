@@ -269,7 +269,7 @@ export async function detectProviderEndpointType(payload: {
 }
 
 export async function getProvider(id: string) {
-  return api<{ provider: Provider }>(`/providers/${id}`);
+  return api<{ provider: Provider }>(`/providers/${encodeURIComponent(id)}`);
 }
 
 export async function getCurrentProviderId(options?: RequestInit) {
@@ -284,20 +284,20 @@ export async function saveProvider(provider: Provider) {
 }
 
 export async function updateProvider(provider: Provider) {
-  return api<{ success: boolean }>(`/providers/${provider.id}`, {
+  return api<{ success: boolean }>(`/providers/${encodeURIComponent(provider.id)}`, {
     method: 'PUT',
     body: JSON.stringify(provider),
   });
 }
 
 export async function deleteProvider(id: string) {
-  return api<{ success: boolean }>(`/providers/${id}`, {
+  return api<{ success: boolean }>(`/providers/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
 }
 
 export async function switchProvider(id: string) {
-  return api<{ success: boolean }>(`/providers/${id}/switch`, {
+  return api<{ success: boolean }>(`/providers/${encodeURIComponent(id)}/switch`, {
     method: 'POST',
   });
 }

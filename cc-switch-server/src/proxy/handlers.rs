@@ -64,7 +64,19 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         .into_response();
     }
 
-    let proxy_addr = SocketAddr::from(([0, 0, 0, 0], state.proxy_listen_port));
+    let proxy_addr = format!("{}:{}", state.proxy_host, state.proxy_listen_port)
+        .parse::<SocketAddr>()
+        .map_err(|e| format!("invalid proxy host/port: {e}"))
+        .unwrap_or_else(|e| {
+            log::error!("[ProxyAPI] {}", e);
+            SocketAddr::from(([127, 0, 0, 1], state.proxy_listen_port))
+        });
+    if !proxy_addr.ip().is_loopback() {
+        log::warn!(
+            "[ProxyAPI] proxy binding to non-loopback address {} — the proxy has no auth and will be reachable from the network",
+            proxy_addr
+        );
+    }
     let config = ProxyConfig {
         listen_addr: proxy_addr,
         upstream_url: CODEX_RESPONSES_UPSTREAM.to_string(),
@@ -130,7 +142,7 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
                 listen_port,
                 target_provider.id
             );
-            Json(serde_json::json!({"success": true, "listen_addr": format!("http://0.0.0.0:{}", listen_port), "message": "Proxy started"})).into_response()
+            Json(serde_json::json!({"success": true, "listen_addr": format!("http://{}:{}", state.proxy_host, listen_port), "message": "Proxy started"})).into_response()
         }
         Err(e) => {
             log::error!("[ProxyAPI] proxy_start failed: {}", e);
@@ -203,7 +215,7 @@ pub async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoRespon
     );
     Json(serde_json::json!({
         "running": running,
-        "listen_addr": if running { Some(format!("http://0.0.0.0:{}", state.proxy_listen_port)) } else { None },
+        "listen_addr": if running { Some(format!("http://{}:{}", state.proxy_host, state.proxy_listen_port)) } else { None },
         "upstream_url": CODEX_RESPONSES_UPSTREAM,
         "http_proxy_url": global_http_proxy_url(&state),
         "active_target_provider_id": active_target.as_ref().map(|provider| provider.id.clone()),
