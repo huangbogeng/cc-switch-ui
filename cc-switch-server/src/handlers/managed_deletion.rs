@@ -102,6 +102,136 @@ mod tests {
         }
     }
     #[tokio::test]
+    async fn selected_import_applies_only_new_mcp_and_preserves_existing_disabled_state() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        let mut existing = server("existing");
+        existing.enabled = false;
+        state.db.save_mcp_server(&existing).unwrap();
+        let path = cc_switch_lib::config::get_claude_mcp_path();
+        std::fs::write(&path, r#"{"other":42,"mcpServers":{"existing":{"command":"keep"},"new":{"command":"new"},"external":{"command":"outside"}}}"#).unwrap();
+        let (code, report) = body(
+            super::super::managed_items::import(
+                State(state.clone()),
+                axum::extract::Path("mcp".into()),
+                Json(super::super::managed_items::Selection {
+                    ids: vec!["new".into(), "existing".into()],
+                    apply: true,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(report["imported"], 1);
+        assert_eq!(report["applied"], 1);
+        assert_eq!(report["skipped"], 1);
+        let live: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(live["mcpServers"]["existing"]["command"], "keep");
+        assert_eq!(live["mcpServers"]["external"]["command"], "outside");
+        assert_eq!(live["other"], 42);
+        assert!(
+            !state
+                .db
+                .get_all_mcp_servers(cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()
+                .iter()
+                .find(|s| s.id == "existing")
+                .unwrap()
+                .enabled
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn skill_import_application_failure_retains_record_and_reports_retry() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        let source = home.path.join(".claude/plugins/demo/skills/sample");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "# Sample").unwrap();
+        // Discovery succeeds, but a symlink target must not be followed or replaced.
+        let target = home.path.join(".claude/skills/sample");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        let outside = home.path.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("sentinel"), "preserve").unwrap();
+        std::os::unix::fs::symlink(&outside, &target).unwrap();
+        let (_, report) = body(
+            super::super::managed_items::import(
+                State(state.clone()),
+                axum::extract::Path("skill".into()),
+                Json(super::super::managed_items::Selection {
+                    ids: vec!["sample".into()],
+                    apply: true,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(report["imported"], 1);
+        assert_eq!(report["failed"], 1);
+        assert_eq!(report["success"], false);
+        assert_eq!(
+            state
+                .db
+                .get_all_skills(cc_switch_lib::DEFAULT_APP_TYPE)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(report.to_string().contains("Use Sync to retry"));
+        assert_eq!(
+            std::fs::read_to_string(outside.join("sentinel")).unwrap(),
+            "preserve"
+        );
+        std::fs::remove_file(&target).unwrap();
+        cc_switch_lib::skills::sync_selected_report(
+            &state.db,
+            cc_switch_lib::DEFAULT_APP_TYPE,
+            &["sample".into()],
+        )
+        .unwrap()
+        .ensure_success()
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
+            "# Sample"
+        );
+    }
+
+    #[tokio::test]
+    async fn import_only_leaves_live_bytes_unchanged_and_empty_apply_does_not_write() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let state = state(&home);
+        let path = cc_switch_lib::config::get_claude_mcp_path();
+        let original = "{ \"mcpServers\": {\"new\": {\"command\": \"npx\"}} }";
+        std::fs::write(&path, original).unwrap();
+        for apply in [false, true] {
+            let (_, report) = body(
+                super::super::managed_items::import(
+                    State(state.clone()),
+                    axum::extract::Path("mcp".into()),
+                    Json(super::super::managed_items::Selection {
+                        ids: vec!["new".into()],
+                        apply,
+                    }),
+                )
+                .await,
+            )
+            .await;
+            assert_eq!(report["applied"], 0);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        }
+        let legacy: super::super::managed_items::Selection =
+            serde_json::from_value(json!({"ids": ["new"]})).unwrap();
+        assert!(!legacy.apply);
+    }
+
+    #[tokio::test]
     async fn database_delete_failure_leaves_live_untouched_and_cleanup_failure_survives_restart() {
         let _env = TEST_ENV_LOCK.lock().await;
         let home = TestHome::new();

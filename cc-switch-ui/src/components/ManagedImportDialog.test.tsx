@@ -18,7 +18,7 @@ it('scans without importing and submits only explicitly selected candidates', as
   expect((screen.getByRole('button', { name: 'Import selected' }) as HTMLButtonElement).disabled).toBe(true);
   await userEvent.click(screen.getByRole('checkbox', { name: /One/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
-  expect(apply).toHaveBeenCalledExactlyOnceWith(['one']); expect(close).toHaveBeenCalledOnce();
+  expect(apply).toHaveBeenCalledExactlyOnceWith(['one'], true); expect(close).toHaveBeenCalledOnce();
 });
 it('cancels discovery without changing records', async () => {
   const apply = vi.fn(); const close = vi.fn();
@@ -34,7 +34,7 @@ it('restores only selected removed items and explains disabled restoration', asy
   expect(screen.getByText(/Restore selected records as disabled/)).toBeTruthy();
   await userEvent.click(screen.getByRole('checkbox', { name: /Two/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
-  expect(apply).toHaveBeenCalledExactlyOnceWith(['two']); expect(listImportCandidates).not.toHaveBeenCalled();
+  expect(apply).toHaveBeenCalledExactlyOnceWith(['two'], undefined); expect(listImportCandidates).not.toHaveBeenCalled();
 });
 it('rescans after discovery fails instead of claiming that no candidates exist', async () => {
   vi.mocked(listImportCandidates).mockRejectedValueOnce(new Error('Scan unavailable'));
@@ -51,11 +51,23 @@ it('bounds rendered candidates while selection applies to matching items', async
   const apply = vi.fn().mockResolvedValue(undefined);
   render(<ManagedImportDialog kind="mcp" mode="Import" onApply={apply} onClose={vi.fn()} />);
   await screen.findByRole('checkbox', { name: /Candidate 0/ });
-  expect(screen.getAllByRole('checkbox')).toHaveLength(80);
+  expect(screen.getAllByRole('checkbox')).toHaveLength(81);
   await userEvent.click(screen.getByRole('button', { name: 'Select matching' }));
   expect(screen.getByText('100 selected · 100 available')).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: 'Show next 20 items' }));
-  expect(screen.getAllByRole('checkbox')).toHaveLength(100);
+  expect(screen.getAllByRole('checkbox')).toHaveLength(101);
   await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
-  expect(apply).toHaveBeenCalledWith(many.map(item => item.id));
+  expect(apply).toHaveBeenCalledWith(many.map(item => item.id), true);
+});
+
+it('allows record-only import without applying and preserves selection on failure', async () => {
+  const apply = vi.fn().mockRejectedValueOnce(new Error('Response lost')).mockResolvedValue(undefined);
+  render(<ManagedImportDialog kind="skill" mode="Import" onApply={apply} onClose={vi.fn()} />);
+  await screen.findByRole('checkbox', { name: /One/ });
+  await userEvent.click(screen.getByRole('checkbox', { name: /Import and enable/ }));
+  await userEvent.click(screen.getByRole('checkbox', { name: /One/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
+  await screen.findByText('Response lost');
+  await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
+  expect(apply).toHaveBeenNthCalledWith(2, ['one'], false);
 });

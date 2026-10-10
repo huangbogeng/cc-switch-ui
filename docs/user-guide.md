@@ -50,11 +50,11 @@ The **Claude Official** preset clears third-party connection settings and relies
 
 ## MCP and Skills / 管理与同步
 
-**Import** opens a read-only discovery dialog. Select the items to add, then click **Import selected**; cancelling changes no records or files. Existing enabled states are preserved. Import does not sync automatically. Review the list, then use **Sync**. Saving or toggling managed records applies the desired state to Claude Code. Unmanaged MCP entries and Skills directories are preserved.
+**Import** opens a read-only discovery dialog. Select the items to add, then click **Import selected**; cancelling changes no records or files. Existing enabled states are preserved. **Import and enable** is checked by default and applies only newly imported items. Uncheck it to save records only, then use **Sync** when ready. Applying failures retain saved records and report how to retry. Saving or toggling managed records applies the desired state to Claude Code. Unmanaged MCP entries and Skills directories are preserved.
 
 导入和同步会报告每一项的结果。部分失败不代表全部回滚：已完成的项目会保留，修复失败原因后重试 **Sync**。Skills 内容不变时跳过替换和重复备份。
 
-The row switch enables or disables a managed item. **Remove** deletes its managed record, cleans the captured live entry/directory, and remembers that decision so ordinary Import will skip it, including after restart. **Restore removed** lists retained removal records and restores chosen items as disabled; enable them explicitly when ready. Skill source files and plugin originals remain available. Plugin controls affect the managed copy, not the original plugin installation.
+The row switch enables or disables a managed item. **Remove** deletes its managed record, cleans the captured live entry/directory, and remembers that decision so ordinary Import will skip it, including after restart. **Recovery → Restore removed** lists retained removal records and restores chosen items as disabled; enable them explicitly when ready. Skill source files and plugin originals remain available. Plugin controls affect the managed copy, not the original plugin installation.
 
 Removing a record may leave pending live cleanup. **Deletion recovery → Retry live cleanup** completes it. **Keep current files** clears the intent after confirmation and leaves the files unmanaged, potentially still active. See [deletion recovery](troubleshooting.md#deletion-recovery-keeps-appearing).
 

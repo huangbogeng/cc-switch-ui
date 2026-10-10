@@ -131,7 +131,7 @@ export const SkillGroup = memo(function SkillGroup({
           </Badge>
         </div>
       </button>
-      <span id={stateId} className="shrink-0 text-xs text-muted-foreground">{mixed ? 'Partially enabled' : allEnabled ? 'All enabled' : 'All disabled'} · {enabledCount}/{groupSkills.length}</span>
+      <span id={stateId} className="shrink-0 text-xs text-muted-foreground">{isSearching && <span className="mr-2">Entire group · </span>}{mixed ? 'Partially enabled' : allEnabled ? 'All enabled' : 'All disabled'} · {enabledCount}/{groupSkills.length}</span>
       <Switch checked={allEnabled} mixed={mixed} disabled={busy || !!busySkillId}
         aria-label={`${allEnabled ? 'Disable' : 'Enable'} all skills in ${collection}`}
         aria-describedby={stateId}

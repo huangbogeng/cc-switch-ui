@@ -578,8 +578,8 @@ export async function syncMcpServers() {
   return api<OperationReport>('/mcp/servers/sync', { method: 'POST' });
 }
 
-export async function importMcpServers(ids?: string[]) {
-  if (ids) return api<OperationReport>('/managed-items/mcp/import', { method: 'POST', body: JSON.stringify({ ids }) });
+export async function importMcpServers(ids?: string[], apply = false) {
+  if (ids) return api<OperationReport>('/managed-items/mcp/import', { method: 'POST', body: JSON.stringify({ ids, apply }) });
   return api<OperationReport>('/mcp/servers/import', { method: 'POST' });
 }
 
@@ -624,8 +624,8 @@ export async function syncSkills() {
   return api<OperationReport>('/skills/sync', { method: 'POST' });
 }
 
-export async function importSkills(ids?: string[]) {
-  if (ids) return api<OperationReport>('/managed-items/skill/import', { method: 'POST', body: JSON.stringify({ ids }) });
+export async function importSkills(ids?: string[], apply = false) {
+  if (ids) return api<OperationReport>('/managed-items/skill/import', { method: 'POST', body: JSON.stringify({ ids, apply }) });
   return api<OperationReport>('/skills/import', { method: 'POST' });
 }
 

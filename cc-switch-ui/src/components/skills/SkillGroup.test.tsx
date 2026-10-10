@@ -37,3 +37,12 @@ it('shows mixed state and toggles the full collection without expanding it', asy
   rerender(<SkillGroup {...props} busy />);
   expect(screen.getByRole('switch', { name: 'Enable all skills in Mixed' }).hasAttribute('disabled')).toBe(true);
 });
+
+it('states that search does not narrow the group switch scope', async () => {
+  const skill = { id: 'one', name: 'One', directory: 'one', appType: 'claude_code', enabled: false, installedAt: 0 };
+  const toggle = vi.fn();
+  render(<SkillGroup collection="Group" skills={[skill]} groupSkills={[skill, { ...skill, id: 'two', directory: 'two' }]} isSearching onToggle={vi.fn()} onDelete={vi.fn()} onEdit={vi.fn()} onToggleGroup={toggle} />);
+  expect(screen.getByText(/Entire group/)).toBeTruthy();
+  await userEvent.click(screen.getByRole('switch', { name: 'Enable all skills in Group' }));
+  expect(toggle).toHaveBeenCalledWith('Group', true);
+});

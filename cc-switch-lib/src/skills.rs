@@ -48,6 +48,23 @@ pub fn sync_report(db: &Database, app_type: &str) -> Result<OperationReport, App
     )
 }
 
+/// Apply only the newly imported directories; unrelated managed states are untouched.
+pub fn sync_selected_report(
+    db: &Database,
+    app_type: &str,
+    ids: &[String],
+) -> Result<OperationReport, AppError> {
+    let records: Vec<_> = db
+        .get_all_skills(app_type)?
+        .into_iter()
+        .filter(|s| ids.contains(&s.directory))
+        .collect();
+    if records.is_empty() {
+        return Ok(OperationReport::new());
+    }
+    sync_skills_report(&records, &get_ssot_dir(), &get_claude_skills_dir())
+}
+
 fn sync_skills_report(
     skills: &[SkillRecord],
     ssot_dir: &Path,

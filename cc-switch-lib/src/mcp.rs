@@ -168,6 +168,27 @@ fn import_servers(
 /// MCP is published as a single JSON patch, so every entry shares the write outcome.
 pub fn sync_report(db: &Database, app_type: &str) -> Result<OperationReport, AppError> {
     let servers = db.get_all_mcp_servers(app_type)?;
+    sync_servers_report(servers)
+}
+
+/// Publish only newly imported servers, preserving other managed and external entries.
+pub fn sync_selected_report(
+    db: &Database,
+    app_type: &str,
+    ids: &[String],
+) -> Result<OperationReport, AppError> {
+    let servers: Vec<_> = db
+        .get_all_mcp_servers(app_type)?
+        .into_iter()
+        .filter(|s| ids.contains(&s.id))
+        .collect();
+    if servers.is_empty() {
+        return Ok(OperationReport::new());
+    }
+    sync_servers_report(servers)
+}
+
+fn sync_servers_report(servers: Vec<McpServerRecord>) -> Result<OperationReport, AppError> {
     let result = config::update_json_file(&config::get_claude_mcp_path(), |root| {
         merge_managed(root, &servers)
     });
