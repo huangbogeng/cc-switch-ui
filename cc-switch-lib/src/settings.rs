@@ -132,13 +132,16 @@ pub fn set_current_provider(app_type: &AppType, id: Option<&str>) -> Result<(), 
         .write()
         .map_err(|e| AppError::Config(format!("Settings store poisoned: {e}")))?;
 
+    let mut next = store.clone();
     match app_type {
-        AppType::ClaudeCode => store.current_provider_claude_code = id_owned,
-        AppType::Codex => store.current_provider_codex = id_owned,
-        AppType::OpenCode => store.current_provider_opencode = id_owned,
+        AppType::ClaudeCode => next.current_provider_claude_code = id_owned,
+        AppType::Codex => next.current_provider_codex = id_owned,
+        AppType::OpenCode => next.current_provider_opencode = id_owned,
     }
 
-    store.save()
+    next.save()?;
+    *store = next;
+    Ok(())
 }
 
 /// Get the effective current provider ID — verifies existence in DB with fallback.

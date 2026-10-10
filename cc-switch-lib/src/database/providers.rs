@@ -159,7 +159,14 @@ impl super::Database {
     }
 
     pub fn save_provider(&self, app_type: &str, provider: &Provider) -> Result<(), AppError> {
-        let conn = self.conn();
+        Self::save_provider_on(&self.conn(), app_type, provider)
+    }
+
+    fn save_provider_on(
+        conn: &rusqlite::Connection,
+        app_type: &str,
+        provider: &Provider,
+    ) -> Result<(), AppError> {
         let settings_config_str = serde_json::to_string(&provider.settings_config)
             .map_err(|e| AppError::JsonSerialize { source: e })?;
         let meta_str = serde_json::to_string(&provider.meta).unwrap_or_else(|_| "{}".to_string());
@@ -227,8 +234,41 @@ impl super::Database {
     pub fn set_current_provider(&self, id: &str, app_type: &str) -> Result<(), AppError> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        Self::set_current_provider_on(&tx, id, app_type)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Commit the record, previous live snapshot and selected ID together.
+    pub(crate) fn commit_provider_operation(
+        &self,
+        app_type: &str,
+        provider: Option<&Provider>,
+        backfill: Option<&Provider>,
+        selection: Option<&str>,
+    ) -> Result<(), AppError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        if let Some(provider) = provider {
+            Self::save_provider_on(&tx, app_type, provider)?;
+        }
+        if let Some(provider) = backfill {
+            Self::save_provider_on(&tx, app_type, provider)?;
+        }
+        if let Some(id) = selection {
+            Self::set_current_provider_on(&tx, id, app_type)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn set_current_provider_on(
+        conn: &rusqlite::Connection,
+        id: &str,
+        app_type: &str,
+    ) -> Result<(), AppError> {
         if !id.is_empty() {
-            let exists: bool = tx.query_row(
+            let exists: bool = conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM providers WHERE id = ?1 AND app_type = ?2)",
                 params![id, app_type],
                 |row| row.get(0),
@@ -237,15 +277,14 @@ impl super::Database {
                 return Err(AppError::InvalidInput("Provider not found".into()));
             }
         }
-        tx.execute(
+        conn.execute(
             "UPDATE providers SET is_current = 0 WHERE app_type = ?1",
             params![app_type],
         )?;
-        tx.execute(
+        conn.execute(
             "UPDATE providers SET is_current = 1 WHERE id = ?1 AND app_type = ?2",
             params![id, app_type],
         )?;
-        tx.commit()?;
         Ok(())
     }
 

@@ -59,7 +59,23 @@ it('offers recovery for an interrupted save and refreshes the resulting state', 
     .mockResolvedValue({ current_provider_id: 'test', recovery_required: false });
   vi.mocked(api.recoverProviderOperation).mockResolvedValue({ success: true, message: 'Unfinished save recovered.', warnings: ['External config preserved.'] });
   render(<ProvidersPage />);
-  fireEvent.click(await screen.findByText('Recover save'));
+  fireEvent.click(await screen.findByText('Recover operation'));
   expect(await screen.findByRole('status')).toHaveProperty('textContent', 'Unfinished save recovered. External config preserved.');
-  await waitFor(() => expect(screen.queryByText('Recover save')).toBeNull());
+  await waitFor(() => expect(screen.queryByText('Recover operation')).toBeNull());
+});
+
+it('refreshes pending recovery after a failed switch without claiming success', async () => {
+  vi.mocked(api.getCurrentProviderId).mockResolvedValueOnce({ current_provider_id: 'test' }).mockResolvedValue({ current_provider_id: 'test', recovery_required: true });
+  vi.mocked(api.switchProvider).mockRejectedValue(new Error('Device selection could not be saved; recovery required'));
+  render(<ProvidersPage />);
+  fireEvent.click(await screen.findByText('Select Test'));
+  expect(await screen.findByText('Recover operation')).toBeTruthy();
+  expect(await screen.findByText('Device selection could not be saved; recovery required')).toBeTruthy();
+  expect(screen.queryByRole('status')).toBeNull();
+});
+it('explains that takeover-time selection applies after stopping', async () => {
+  vi.mocked(api.switchProvider).mockResolvedValue({ success: true, applied: false, message: 'Direct provider selected. It will be applied when the local route stops.' });
+  render(<ProvidersPage />);
+  fireEvent.click(await screen.findByText('Select Test'));
+  expect(await screen.findByRole('status')).toHaveProperty('textContent', 'Direct provider selected. It will be applied when the local route stops.');
 });
