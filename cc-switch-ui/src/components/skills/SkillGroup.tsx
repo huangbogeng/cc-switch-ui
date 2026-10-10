@@ -85,6 +85,7 @@ export function SkillGroup({
   onDelete,
   onEdit,
   busySkillId,
+  busy = false,
 }: {
   collection: string;
   skills: Skill[];
@@ -93,6 +94,7 @@ export function SkillGroup({
   onDelete: (id: string) => void;
   onEdit: (skill: Skill) => void;
   busySkillId?: string | null;
+  busy?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -131,7 +133,7 @@ export function SkillGroup({
               onToggle={onToggle}
               onDelete={onDelete}
               onEdit={onEdit}
-              busy={busySkillId === skill.id}
+              busy={busy || busySkillId === skill.id}
             />
           ))}
           {limitReached && (

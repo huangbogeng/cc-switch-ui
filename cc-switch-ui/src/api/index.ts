@@ -617,3 +617,21 @@ export async function importSkills() {
 export async function toggleSkill(id: string) {
   return api<{ success: boolean; enabled: boolean }>(`/skills/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
 }
+
+export interface SkillBackup {
+  id: string;
+  directory: string;
+  origin: 'live' | 'source';
+  modifiedAt: number;
+}
+
+export async function listSkillBackups(options?: RequestInit) {
+  return api<{ backups: SkillBackup[] }>('/skills/backups', options);
+}
+
+export async function restoreSkillBackup(backupId: string) {
+  return api<{ success: boolean; directory: string; enabled: boolean }>('/skills/backups/restore', {
+    method: 'POST',
+    body: JSON.stringify({ backupId }),
+  });
+}
