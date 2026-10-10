@@ -141,6 +141,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -148,11 +151,27 @@ jobs:
           path: release_assets
           merge-multiple: true
 
+      - name: Resolve release notes
+        id: notes
+        shell: bash
+        env:
+          RELEASE_REF: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          NOTES_PATH="docs/releases/$RELEASE_REF.md"
+          if [[ -f "$NOTES_PATH" ]]; then
+            echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
           files: release_assets/*
-          generate_release_notes: true
+          name: CC Switch UI ${{ github.event.inputs.version || github.ref_name }}
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.generate }}
           draft: false
           prerelease: false
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
