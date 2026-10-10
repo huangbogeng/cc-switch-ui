@@ -16,7 +16,7 @@ import {
   type ProxyConfig,
 } from '@/api';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
-import { ErrorAlert } from '@/components/ErrorAlert';
+import { ToastNotice } from '@/components/ToastNotice';
 import { errorMessage } from '@/lib/errors';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { BackupCenter } from '@/components/settings/BackupCenter';
@@ -29,6 +29,8 @@ export default function SettingsPage() {
   // Proxy port state
   const [proxyPort, setProxyPortState] = useState(cachedPort ?? 15721);
   const [portLoading, setPortLoading] = useState(!cachedPort);
+  const [portReady, setPortReady] = useState(cachedPort != null);
+  const [outboundReady, setOutboundReady] = useState(cachedProxy != null);
   const [portSaved, setPortSaved] = useState(false);
   const [portError, setPortError] = useState<string | null>(null);
   const [outboundProxy, setOutboundProxy] = useState<ProxyConfig>(
@@ -54,8 +56,11 @@ export default function SettingsPage() {
   );
 
   const loadProxyPort = useCallback(async (signal?: AbortSignal) => {
+    setPortLoading(true); setPortError(null);
     try {
       const data = await getProxyPort({ signal });
+      if (signal?.aborted) return;
+      setPortReady(true);
       setProxyPortState(data.port);
       setSavedPort(data.port);
       cacheSet('settings-proxy-port', data.port);
@@ -68,8 +73,11 @@ export default function SettingsPage() {
   }, []);
 
   const loadOutboundProxy = useCallback(async (signal?: AbortSignal) => {
+    setOutboundLoading(true); setOutboundError(null);
     try {
       const config = await getProxyConfig({ signal });
+      if (signal?.aborted) return;
+      setOutboundReady(true);
       setOutboundProxy(config);
       setSavedOutbound(JSON.stringify(config));
       cacheSet('settings-outbound-proxy', config);
@@ -90,6 +98,8 @@ export default function SettingsPage() {
   }, [loadProxyPort, loadOutboundProxy]);
 
   const handlePortSave = async () => {
+    if (!portReady || portLoading || savingPort) return;
+    setPortSaved(false);
     setPortError(null);
     if (!Number.isInteger(proxyPort) || proxyPort < 1024 || proxyPort > 65535) {
       setPortError('Route port must be an integer between 1024 and 65535.');
@@ -101,7 +111,7 @@ export default function SettingsPage() {
       setSavedPort(proxyPort);
       cacheSet('settings-proxy-port', proxyPort);
       setPortSaved(true);
-      setTimeout(() => setPortSaved(false), 2000);
+
     } catch (e) {
       setPortError(e instanceof Error ? e.message : 'Failed to save proxy port');
     } finally {
@@ -110,6 +120,8 @@ export default function SettingsPage() {
   };
 
   const handleOutboundSave = async () => {
+    if (!outboundReady || outboundLoading || savingOutbound) return;
+    setOutboundSaved(false);
     setOutboundError(null);
     if (outboundProxy.enabled && !outboundProxy.host.trim()) {
       setOutboundError('Proxy host is required when the outbound proxy is enabled.');
@@ -125,7 +137,7 @@ export default function SettingsPage() {
       setSavedOutbound(JSON.stringify(outboundProxy));
       cacheSet('settings-outbound-proxy', outboundProxy);
       setOutboundSaved(true);
-      setTimeout(() => setOutboundSaved(false), 2000);
+
     } catch (e) {
       setOutboundError(e instanceof Error ? e.message : 'Failed to save outbound proxy');
     } finally {
@@ -134,6 +146,8 @@ export default function SettingsPage() {
   };
 
   const handleOutboundReset = async () => {
+    if (!outboundReady || outboundLoading || savingOutbound) return;
+    setOutboundSaved(false);
     setOutboundError(null);
     setSavingOutbound(true);
     try {
@@ -148,7 +162,7 @@ export default function SettingsPage() {
       setSavedOutbound(JSON.stringify(resetConfig));
       cacheSet('settings-outbound-proxy', resetConfig);
       setOutboundSaved(true);
-      setTimeout(() => setOutboundSaved(false), 2000);
+
     } catch (e) {
       setOutboundError(e instanceof Error ? e.message : 'Failed to reset outbound proxy');
     } finally {
@@ -158,6 +172,8 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {portError && <ToastNotice tone="error" message={portError} onDismiss={() => setPortError(null)} />}
+      {outboundError && <ToastNotice tone="error" message={outboundError} onDismiss={() => setOutboundError(null)} />}
       <PageHeader
         title="Settings"
         description="Manage user settings, backups, and local connections."
@@ -173,14 +189,16 @@ export default function SettingsPage() {
               <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the local Claude Code endpoint port. Restart the CC Switch server after saving to apply a new port.</p>
             </CardHeader>
             <CardContent className="space-y-5">
-              {portError && (
-                <ErrorAlert message={portError} />
-              )}
 
               {portLoading ? (
                 <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
                   <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
                   Loading port config...
+                </div>
+              ) : !portReady ? (
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  <span>Route port configuration is unavailable.</span>
+                  <Button variant="outline" onClick={() => void loadProxyPort()}>Retry port configuration</Button>
                 </div>
               ) : (
                 <div className="flex flex-wrap items-end gap-4">
@@ -189,8 +207,9 @@ export default function SettingsPage() {
                     <Input
                       id="proxy-port-setting"
                       type="number"
-                      value={proxyPort}
-                      onChange={(e) => setProxyPortState(parseInt(e.target.value) || 15721)}
+                      value={Number.isFinite(proxyPort) ? proxyPort : ''}
+                      disabled={savingPort}
+                      onChange={(e) => { setPortSaved(false); setProxyPortState(e.target.valueAsNumber); }}
                       min={1024}
                       max={65535}
                       className="h-10 rounded-lg font-mono"
@@ -215,14 +234,16 @@ export default function SettingsPage() {
               <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Optional network proxy used when the local route connects to upstream providers and OAuth services.</p>
             </CardHeader>
             <CardContent className="space-y-5">
-              {outboundError && (
-                <ErrorAlert message={outboundError} />
-              )}
 
               {outboundLoading ? (
                 <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
                   <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
                   Loading outbound proxy...
+                </div>
+              ) : !outboundReady ? (
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  <span>Outbound proxy configuration is unavailable.</span>
+                  <Button variant="outline" onClick={() => void loadOutboundProxy()}>Retry outbound configuration</Button>
                 </div>
               ) : (
                 <>
@@ -230,7 +251,8 @@ export default function SettingsPage() {
                     <input
                       type="checkbox"
                       checked={outboundProxy.enabled}
-                      onChange={(e) => setOutboundProxy({ ...outboundProxy, enabled: e.target.checked })}
+                      disabled={savingOutbound}
+                      onChange={(e) => { setOutboundSaved(false); setOutboundProxy({ ...outboundProxy, enabled: e.target.checked }); }}
                       className="h-4 w-4 rounded border-input accent-primary"
                     />
                     Use outbound network proxy
@@ -242,8 +264,8 @@ export default function SettingsPage() {
                       <Select
                         id="outbound-proxy-type"
                         value={outboundProxy.proxy_type}
-                        onChange={(e) => setOutboundProxy({ ...outboundProxy, proxy_type: e.target.value })}
-                        disabled={!outboundProxy.enabled}
+                        onChange={(e) => { setOutboundSaved(false); setOutboundProxy({ ...outboundProxy, proxy_type: e.target.value }); }}
+                        disabled={savingOutbound || !outboundProxy.enabled}
                       >
                         <option value="http">HTTP</option>
                         <option value="socks5">SOCKS5</option>
@@ -254,8 +276,8 @@ export default function SettingsPage() {
                       <Input
                         id="outbound-proxy-host"
                         value={outboundProxy.host}
-                        onChange={(e) => setOutboundProxy({ ...outboundProxy, host: e.target.value })}
-                        disabled={!outboundProxy.enabled}
+                        onChange={(e) => { setOutboundSaved(false); setOutboundProxy({ ...outboundProxy, host: e.target.value }); }}
+                        disabled={savingOutbound || !outboundProxy.enabled}
                         placeholder="127.0.0.1"
                         className="h-10 rounded-lg font-mono"
                       />
@@ -265,9 +287,9 @@ export default function SettingsPage() {
                       <Input
                         id="outbound-proxy-port"
                         type="number"
-                        value={outboundProxy.port}
-                        onChange={(e) => setOutboundProxy({ ...outboundProxy, port: parseInt(e.target.value) || 10809 })}
-                        disabled={!outboundProxy.enabled}
+                        value={Number.isFinite(outboundProxy.port) ? outboundProxy.port : ''}
+                        onChange={(e) => { setOutboundSaved(false); setOutboundProxy({ ...outboundProxy, port: e.target.valueAsNumber }); }}
+                        disabled={savingOutbound || !outboundProxy.enabled}
                         min={1}
                         max={65535}
                         className="h-10 rounded-lg font-mono"
