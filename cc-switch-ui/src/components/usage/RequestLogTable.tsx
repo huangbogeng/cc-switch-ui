@@ -27,7 +27,7 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
     () => ({ ...params, page, page_size: pageSize }),
     [params, page],
   );
-  const { data, isLoading, isError, isPlaceholderData, isFetching } = useRequestLogs(queryParams, refreshMs);
+  const { data, isLoading, isError, isPlaceholderData, isFetching, refetch } = useRequestLogs(queryParams, refreshMs);
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0;
 
@@ -95,7 +95,10 @@ export default function RequestLogTable({ params, refreshMs = 30_000 }: Props) {
             ) : isError ? (
               <tr>
                 <td colSpan={6} className="px-3 py-12 text-center text-red-400">
-                  Failed to load request logs
+                  <div className="flex flex-col items-center gap-3">
+                    <span>Failed to load request logs</span>
+                    <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>Retry request logs</Button>
+                  </div>
                 </td>
               </tr>
             ) : data && data.data.length === 0 ? (
