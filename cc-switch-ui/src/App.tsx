@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { LayoutDashboard, Settings, Users, LogOut, Shield, Sparkles, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, LogOut, Shield, Key, BarChart3, Server, Package, type LucideIcon } from 'lucide-react';
 import { ServerStatus } from '@/components/ServerStatus';
 import LoginPage from './pages/LoginPage';
 import { queryClient } from '@/lib/queryClient';
@@ -94,23 +94,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground relative">
-      <div className="fixed inset-0 z-[-1] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-background to-background pointer-events-none" />
-      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col lg:grid lg:grid-cols-[272px_minmax(0,1fr)]">
-        <aside className="border-b border-white/5 bg-card/80 px-4 py-4 shadow-lg shadow-black/10 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:px-5 lg:py-6 flex flex-col">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
+        <aside className="border-b border-white/[0.06] bg-card/40 px-4 py-4 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:px-5 lg:py-8 flex flex-col">
           <div className="flex items-center justify-between gap-3 lg:block">
             <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/0 shadow-inner shadow-white/5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.035]">
                 <Shield className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold tracking-tight text-foreground">CC Switch</div>
-                <div className="truncate text-xs font-medium text-muted-foreground">Provider Desk</div>
+                <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-foreground">CC Switch</div>
+                <div className="truncate text-xs text-muted-foreground">Provider Desk</div>
               </div>
             </div>
-            <div className="hidden items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary lg:mt-6 lg:inline-flex shadow-[0_0_15px_rgba(var(--primary),0.15)]">
-              <Sparkles className="h-3.5 w-3.5" />
-              Web Admin
-            </div>
+
             <Button aria-label="Logout" variant="ghost" size="icon" onClick={handleLogout} className="h-9 w-9 lg:hidden hover:bg-white/10 text-muted-foreground hover:text-foreground">
               <LogOut className="h-4 w-4" />
             </Button>
@@ -125,28 +121,24 @@ export default function App() {
                 onFocus={() => preloadPage(item.id)}
                 aria-current={currentPage === item.id ? 'page' : undefined}
                 className={cn(
-                  "group relative grid min-w-max grid-cols-[16px_minmax(0,1fr)] items-center gap-3.5 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 lg:min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                  "group relative grid min-w-max grid-cols-[16px_minmax(0,1fr)] items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors duration-150 lg:min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                   currentPage === item.id
-                    ? "bg-primary/15 text-foreground shadow-sm ring-1 ring-primary/25"
-                    : "text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
                 )}
               >
-                {currentPage === item.id && (
-                  <div className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-primary lg:block hidden" />
-                )}
                 <item.icon className={cn("h-4 w-4 transition-colors", currentPage === item.id ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
                 <span className="min-w-0">
                   <span className={cn("block truncate text-sm leading-5 transition-colors", currentPage === item.id ? "font-semibold" : "font-medium")}>{item.label}</span>
-                  <span className="hidden truncate text-[11px] leading-4 text-muted-foreground/80 lg:block">{item.description}</span>
+                  <span className="hidden truncate text-xs leading-5 text-muted-foreground lg:block">{item.description}</span>
                 </span>
               </button>
             ))}
           </nav>
 
           <div className="mt-auto hidden lg:block">
-            <div className="rounded-2xl border border-white/5 bg-black/20 p-4 relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Workspace</div>
+            <div className="border-t border-white/[0.06] px-3 pt-5 pb-2">
+              <div className="text-xs font-medium text-muted-foreground">Active Workspace</div>
               <ServerStatus />
             </div>
           </div>
@@ -157,7 +149,7 @@ export default function App() {
           </Button>
         </aside>
 
-        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 relative">
+        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10 xl:px-12 relative">
           <div key={currentPage} className="mx-auto w-full max-w-[1200px] page-enter">
             <Suspense fallback={<div role="status" className="min-h-64 rounded-2xl border border-white/10 bg-card/40 p-6 text-sm text-muted-foreground">Loading page…</div>}>
               {currentPage === 'dashboard' && <DashboardPage />}

@@ -45,6 +45,7 @@ export function DeletionRecoveryPanel({ refreshKey, disabled, onBusyChange, onRe
       try { await load(); } catch { /* Keep the pending snapshot and original error for retry. */ }
     } finally { setBusy(false); onBusyChange(false); }
   };
+  if (!pending && !error && !notice) return null;
   return (
     <div className="space-y-3 rounded-lg border p-4 text-sm">
       {confirmation}

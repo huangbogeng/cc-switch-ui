@@ -36,23 +36,20 @@ export function ProviderCard({
   return (
     <Card className={`group relative overflow-hidden transition-[background-color,border-color] duration-200 ${
       active
-        ? 'ring-2 ring-primary/50 bg-gradient-to-br from-primary/5 to-transparent shadow-[0_0_20px_rgba(var(--primary),0.1)]'
-        : 'border-white/5 bg-card/40 hover:bg-card/80 hover:border-white/10 hover:shadow-lg'
+        ? 'border-primary/35 bg-card ring-1 ring-primary/10'
+        : 'border-white/[0.07] bg-card hover:border-white/15'
     }`}>
-      {active && (
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent pointer-events-none" />
-      )}
-      <CardContent className="p-5 relative">
+      <CardContent className="p-6 relative">
         <div className="flex flex-col sm:flex-row gap-5 sm:items-start justify-between">
           <div className="flex gap-4 min-w-0 flex-1">
-            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-inner transition-colors duration-300 ${
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors duration-150 ${
               active ? 'bg-primary/20 border border-primary/20 text-primary' : 'bg-white/5 border border-white/5 text-foreground/80 group-hover:bg-white/10'
             }`}>
-              <span className="text-2xl font-bold tracking-tight drop-shadow-sm">{providerInitial(provider)}</span>
+              <span className="text-xl font-medium tracking-tight">{providerInitial(provider)}</span>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1.5">
-                <h2 className="truncate text-lg font-bold tracking-tight text-foreground">{provider.name}</h2>
+                <h2 className="truncate text-lg font-semibold tracking-[-0.02em] text-foreground">{provider.name}</h2>
                 {active && (
                   <Badge variant="success" className="gap-1.5 py-0.5 px-2.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
                     <span className="relative flex h-1.5 w-1.5">
@@ -65,7 +62,7 @@ export function ProviderCard({
               </div>
 
               <div className="flex flex-wrap gap-2 mb-3">
-                <Badge variant={authMode === 'oauth_proxy' ? 'success' : 'outline'} className={`text-[10px] uppercase tracking-wider font-bold ${
+                <Badge variant={authMode === 'oauth_proxy' ? 'success' : 'outline'} className={`text-xs font-medium ${
                   authMode === 'oauth_proxy'
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                     : 'bg-white/5 text-muted-foreground border-white/10'
@@ -79,7 +76,7 @@ export function ProviderCard({
 
               <div className="space-y-1.5">
                 {baseUrl && (
-                  <div className="truncate font-mono text-[11px] text-muted-foreground bg-white/[0.03] w-fit px-2 py-1 rounded-md border border-white/10">
+                  <div className="truncate font-mono text-xs text-muted-foreground bg-white/[0.03] w-fit px-2 py-1 rounded-md border border-white/10">
                     {providerHost(baseUrl)}
                   </div>
                 )}
@@ -97,7 +94,7 @@ export function ProviderCard({
               </div>
 
               {provider.notes && (
-                <p className="mt-4 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground/90 bg-white/[0.02] p-2.5 rounded-lg border border-white/5">
+                <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                   {provider.notes}
                 </p>
               )}
@@ -109,7 +106,7 @@ export function ProviderCard({
               size="sm"
               variant={active ? 'secondary' : 'default'}
               className={`w-full sm:w-auto shadow-sm transition-colors ${
-                !active ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.2)] hover:shadow-[0_0_20px_rgba(var(--primary),0.3)]' : ''
+                !active ? 'bg-primary hover:bg-primary/90 text-primary-foreground' : ''
               }`}
               onClick={() => onSwitch(provider.id)}
               disabled={active || busy}

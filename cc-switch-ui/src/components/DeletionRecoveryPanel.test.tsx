@@ -7,6 +7,24 @@ vi.mock('@/api', () => ({ getManagedDeletion: vi.fn(), finishManagedDeletion: vi
 const pending = { operationId: 'operation-uuid', id: 'test', name: 'Test', kind: 'skill' as const };
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(getManagedDeletion).mockResolvedValue({ pending }); });
 const props = () => ({ refreshKey: 0, disabled: false, onBusyChange: vi.fn(), onResolved: vi.fn(), onPendingChange: vi.fn() });
+it('hides recovery controls when no deletion is pending and shows newly pending operations', async () => {
+  vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
+  const callbacks = props();
+  const { rerender } = render(<DeletionRecoveryPanel {...callbacks} />);
+  await waitFor(() => expect(callbacks.onPendingChange).toHaveBeenCalledWith(false));
+  expect(screen.queryByText('Deletion recovery')).toBeNull();
+  vi.mocked(getManagedDeletion).mockResolvedValue({ pending });
+  rerender(<DeletionRecoveryPanel {...callbacks} refreshKey={1} />);
+  await screen.findByRole('button', { name: 'Retry live cleanup' });
+});
+it('shows failed status queries and hides the panel after a successful retry with no pending deletion', async () => {
+  vi.mocked(getManagedDeletion).mockRejectedValueOnce(new Error('Status unavailable'));
+  render(<DeletionRecoveryPanel {...props()} />);
+  await screen.findByText('Status unavailable');
+  vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh deletion status' }));
+  await waitFor(() => expect(screen.queryByText('Deletion recovery')).toBeNull());
+});
 it('retries the captured operation and clears pending state after completion', async () => {
   vi.mocked(finishManagedDeletion).mockResolvedValue({ success: true, keptFiles: false });
   const callbacks = props();

@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Self-hosted Latin subset; Apple devices keep their native system UI font. */
+@font-face {
+  font-family: "CC Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-latin-variable.woff2') format('woff2');
+}
+
 @layer base {
   :root {
     --background: 220 22% 7%;
@@ -50,7 +59,12 @@
       radial-gradient(circle at top left, hsl(var(--primary) / 0.16), transparent 34rem),
       linear-gradient(135deg, hsl(220 24% 8%), hsl(220 18% 5%) 68%);
     color: hsl(var(--foreground));
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "CC Inter", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    letter-spacing: -0.012em;
+    font-feature-settings: "calt" 1;
+    font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -61,6 +75,7 @@
 
   button,
   input,
+  select,
   textarea {
     font: inherit;
   }
@@ -90,6 +105,9 @@
     border: 2px solid transparent;
     background-clip: padding-box;
   }
+
+  h1, h2, h3 { text-wrap: balance; }
+  table { font-variant-numeric: tabular-nums; }
 
   ::selection {
     background: hsl(var(--primary) / 0.3);

@@ -39,13 +39,11 @@ export function DashboardHeroCard({
   const proxyUrl = status?.listen_addr ? `${status.listen_addr}/v1/messages` : 'Unavailable';
 
   return (
-    <Card className="relative overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.14),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.16),_transparent_30%),linear-gradient(135deg,rgba(12,18,32,0.98),rgba(8,12,20,0.96))] shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)]">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.04),transparent)] opacity-60" />
+    <Card className="relative overflow-hidden">
       <CardContent className="relative p-6 sm:p-8">
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1.25fr)_360px]">
           <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="border-amber-400/20 bg-amber-400/12 text-amber-200">Runtime Cockpit</Badge>
               <Badge
                 variant="outline"
                 className={
@@ -60,10 +58,10 @@ export function DashboardHeroCard({
 
             <div className="space-y-2">
               <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Dashboard is now read-only. Providers owns all configuration and route control.
+                Your workspace, at a glance.
               </h2>
               <p className="max-w-2xl text-sm leading-6 text-slate-300/75">
-                Use this page to confirm the live runtime shape: direct config, route takeover target, and the local entry point currently exposed to Claude Code.
+                Review your active provider and local connection. Manage configuration in Providers.
               </p>
             </div>
 
@@ -94,10 +92,10 @@ export function DashboardHeroCard({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-3xl border border-white/10 bg-black/25 p-4 shadow-inner shadow-black/20">
+          <div className="space-y-3 rounded-2xl border border-white/[0.06] bg-background/40 p-5">
             <div className="flex items-center justify-between">
-              <div className="text-xs uppercase tracking-[0.24em] text-slate-300/55">Runtime Signals</div>
-              <div className={`h-2.5 w-2.5 rounded-full ${status?.running ? 'bg-emerald-400 shadow-[0_0_16px_rgba(74,222,128,0.95)]' : 'bg-slate-500/70'}`} />
+              <div className="text-xs font-medium text-muted-foreground">Runtime Signals</div>
+              <div className={`h-2.5 w-2.5 rounded-full ${status?.running ? 'bg-emerald-400' : 'bg-slate-500/70'}`} />
             </div>
             <HeroSignal
               label="Route Status"
@@ -256,7 +254,7 @@ export function UsageCard({ usage }: { usage: CopilotUsageResponse }) {
             </div>
             <span>Copilot Usage</span>
           </div>
-          <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold bg-white/5 border-white/10">{usage.copilot_plan}</Badge>
+          <Badge variant="outline" className="text-xs font-medium bg-white/5 border-white/10">{usage.copilot_plan}</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
@@ -309,7 +307,7 @@ function HeroStat({
 }) {
   const toneClass =
     tone === 'warning-active'
-      ? 'border-amber-400/30 bg-gradient-to-br from-amber-500/18 to-amber-500/6'
+      ? 'border-amber-400/20 bg-amber-500/5'
       : tone === 'warning'
         ? 'border-amber-500/20 bg-amber-500/8'
         : 'border-white/10 bg-white/[0.04]';
@@ -317,8 +315,8 @@ function HeroStat({
   const metaClass = tone === 'neutral' ? 'text-slate-300/70' : 'text-amber-100/75';
 
   return (
-    <div className={`rounded-2xl border px-4 py-4 backdrop-blur-sm ${toneClass}`}>
-      <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-300/55">{label}</div>
+    <div className={`rounded-2xl border px-4 py-4 ${toneClass}`}>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className={`mt-2 truncate text-lg font-semibold ${mono ? 'font-mono text-base' : ''} ${textClass}`}>{value}</div>
       <div className={`mt-1 truncate text-xs ${metaClass}`}>{meta}</div>
     </div>
@@ -336,7 +334,7 @@ function HeroSignal({
 }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300/50">{label}</div>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className={`mt-1 truncate text-sm text-slate-100 ${mono ? 'font-mono text-[13px]' : 'font-medium'}`}>{value}</div>
     </div>
   );
