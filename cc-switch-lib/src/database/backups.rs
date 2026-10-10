@@ -148,6 +148,46 @@ fn copy_sqlite(source: &Connection, destination: &mut Connection) -> Result<(), 
         }
     }
 }
+/// Snapshot existing databases before any upgrade DDL, including unversioned releases.
+pub(super) fn before_upgrade(
+    source: &Connection,
+    database_path: &Path,
+    version: u32,
+) -> Result<(), AppError> {
+    let directory = database_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("backups/upgrades");
+    refuse_link(
+        &database_path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("backups"),
+    )?;
+    refuse_link(&directory)?;
+    fs::create_dir_all(&directory).map_err(|e| AppError::io(&directory, e))?;
+    let temporary =
+        tempfile::NamedTempFile::new_in(&directory).map_err(|e| AppError::io(&directory, e))?;
+    let mut destination = Connection::open(temporary.path())?;
+    copy_sqlite(source, &mut destination)?;
+    integrity(&destination)?;
+    drop(destination);
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|e| AppError::io(temporary.path(), e))?;
+    let path = directory.join(format!(
+        "schema-{version}-to-{}-{}.db",
+        migrations::SCHEMA_VERSION,
+        uuid::Uuid::new_v4()
+    ));
+    temporary
+        .persist_noclobber(&path)
+        .map_err(|e| AppError::io(&path, e.error))?;
+    log::info!("Pre-upgrade database snapshot: {}", path.display());
+    Ok(())
+}
+
 fn integrity(conn: &Connection) -> Result<(), AppError> {
     let result: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
     if result != "ok" {
@@ -836,6 +876,11 @@ mod tests {
         delete(&ids[0]).unwrap();
         assert!(create(&db).is_ok());
         let older = snapshot(&db.conn(), "safety").unwrap();
+        // Filesystem timestamp resolution can tie snapshots created in one tick.
+        fs::File::open(path_for(&older, false).unwrap())
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::UNIX_EPOCH))
+            .unwrap();
         let newer = snapshot(&db.conn(), "safety").unwrap();
         assert!(delete(&newer).is_err());
         delete(&older).unwrap();

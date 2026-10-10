@@ -157,7 +157,18 @@ pub fn migrate_session_log_schema(conn: &Connection) -> Result<(), AppError> {
 /// Current schema version for PRAGMA user_version-based migration tracking.
 pub(crate) const SCHEMA_VERSION: u32 = 4;
 
+pub(crate) fn ensure_supported_version(conn: &Connection) -> Result<(), AppError> {
+    let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version > SCHEMA_VERSION {
+        return Err(AppError::Database(format!(
+            "Database schema {version} is newer than supported schema {SCHEMA_VERSION}; use a newer application or restore a pre-upgrade backup"
+        )));
+    }
+    Ok(())
+}
+
 pub fn run_schema_migrations(conn: &Connection) -> Result<(), AppError> {
+    ensure_supported_version(conn)?;
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
     if current_version >= SCHEMA_VERSION {
