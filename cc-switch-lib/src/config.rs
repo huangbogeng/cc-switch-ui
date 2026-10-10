@@ -183,6 +183,14 @@ pub fn write_text_file(path: &Path, data: &str) -> Result<(), AppError> {
 /// Write and sync a private temporary file, then atomically replace the target.
 /// Failed replacement leaves the existing destination intact and cleans up staging.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    let staged = stage_write(path, data)?;
+    staged
+        .persist(path)
+        .map_err(|e| AppError::io(path, e.error))?;
+    Ok(())
+}
+
+fn stage_write(path: &Path, data: &[u8]) -> Result<tempfile::NamedTempFile, AppError> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -211,17 +219,216 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
         .as_file()
         .sync_all()
         .map_err(|e| AppError::io(staged.path(), e))?;
-    // tempfile uses rename on Unix and MoveFileExW(REPLACE_EXISTING) on Windows.
-    // Never remove the destination before attempting to publish the staged file.
-    staged
-        .persist(path)
-        .map_err(|e| AppError::io(path, e.error))?;
-    Ok(())
+    Ok(staged)
+}
+
+/// Reapply a pure JSON patch against the latest file after an external edit.
+/// All in-process users of this helper share a lock. External processes do not;
+/// a small race remains between the final byte comparison and publication.
+pub fn update_json_file(
+    path: &Path,
+    patch: impl FnMut(&mut serde_json::Value) -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    update_json_with_backup(
+        path,
+        &get_app_config_dir().join("backups/live-first-write"),
+        patch,
+    )
+}
+
+fn read_current(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(AppError::io(path, e)),
+    }
+}
+
+fn refuse_symlink(path: &Path) -> Result<(), AppError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(AppError::InvalidInput(format!(
+            "Refusing symlink: {}",
+            path.display()
+        ))),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(AppError::io(path, e)),
+    }
+}
+
+fn write_private_once(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+    refuse_symlink(path)?;
+    if path.exists() {
+        return Ok(());
+    }
+    let mut file = tempfile::NamedTempFile::new_in(path.parent().unwrap())
+        .map_err(|e| AppError::io(path, e))?;
+    file.write_all(bytes)
+        .map_err(|e| AppError::io(file.path(), e))?;
+    file.as_file()
+        .sync_all()
+        .map_err(|e| AppError::io(file.path(), e))?;
+    match file.persist_noclobber(path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(AppError::io(path, e.error)),
+    }
+}
+
+fn first_write_backup(root: &Path, path: &Path, current: Option<&[u8]>) -> Result<(), AppError> {
+    use sha2::{Digest, Sha256};
+    refuse_symlink(root)?;
+    if let Some(parent) = root.parent() {
+        refuse_symlink(parent)?;
+    }
+    fs::create_dir_all(root).map_err(|e| AppError::io(root, e))?;
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| AppError::io(path, e))?
+            .join(path)
+    };
+    let key = hex::encode(Sha256::digest(absolute.to_string_lossy().as_bytes()));
+    let marker = root.join(format!("{key}.source.json"));
+    refuse_symlink(&marker)?;
+    if marker.exists() {
+        return Ok(());
+    }
+    if let Some(bytes) = current {
+        write_private_once(&root.join(format!("{key}.original")), bytes)?;
+    }
+    let metadata =
+        serde_json::to_vec(&serde_json::json!({"path": absolute, "existed": current.is_some()}))
+            .map_err(|source| AppError::JsonSerialize { source })?;
+    write_private_once(&marker, &metadata)
+}
+
+fn update_json_with_backup(
+    path: &Path,
+    backup_root: &Path,
+    mut patch: impl FnMut(&mut serde_json::Value) -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = WRITES.lock().map_err(|e| AppError::Lock(e.to_string()))?;
+    for _ in 0..3 {
+        refuse_symlink(path)?;
+        let before = read_current(path)?;
+        let mut value: serde_json::Value = match before.as_deref() {
+            Some(bytes) => serde_json::from_slice(bytes).map_err(|e| AppError::json(path, e))?,
+            None => serde_json::json!({}),
+        };
+        if !value.is_object() {
+            return Err(AppError::Config(
+                "Configuration root must be an object".into(),
+            ));
+        }
+        let original = value.clone();
+        patch(&mut value)?;
+        if value == original {
+            return Ok(());
+        }
+        let bytes = serde_json::to_vec_pretty(&value)
+            .map_err(|source| AppError::JsonSerialize { source })?;
+        let staged = stage_write(path, &bytes)?;
+        first_write_backup(backup_root, path, before.as_deref())?;
+        refuse_symlink(path)?;
+        if read_current(path)? != before {
+            continue;
+        }
+        staged
+            .persist(path)
+            .map_err(|e| AppError::io(path, e.error))?;
+        return Ok(());
+    }
+    Err(AppError::Conflict {
+        path: path.display().to_string(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guarded_update_rebases_external_edits_and_keeps_first_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("config.json");
+        let backups = temp.path().join("backups");
+        fs::write(&path, b"{\"original\":true}").unwrap();
+        let mut calls = 0;
+        update_json_with_backup(&path, &backups, |value| {
+            calls += 1;
+            value["managed"] = serde_json::json!(true);
+            if calls == 1 {
+                fs::write(&path, b"{\"external\":42}").unwrap();
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(calls, 2);
+        let result: serde_json::Value = read_json_file(&path).unwrap();
+        assert_eq!(result, serde_json::json!({"external":42, "managed":true}));
+        update_json_with_backup(&path, &backups, |value| {
+            value["managed"] = serde_json::json!(false);
+            Ok(())
+        })
+        .unwrap();
+        let entries: Vec<_> = fs::read_dir(&backups)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(entries.len(), 2);
+        let original = entries
+            .iter()
+            .find(|p| p.extension().is_some_and(|e| e == "original"))
+            .unwrap();
+        assert_eq!(fs::read(original).unwrap(), b"{\"original\":true}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(original).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
+
+    #[test]
+    fn sustained_external_writes_return_conflict_and_clean_staging() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("config.json");
+        let mut calls = 0;
+        let result = update_json_with_backup(&path, &temp.path().join("backups"), |value| {
+            calls += 1;
+            value["managed"] = serde_json::json!(true);
+            fs::write(&path, format!("{{\"external\":{calls}}}")).unwrap();
+            Ok(())
+        });
+        assert!(matches!(result, Err(AppError::Conflict { .. })));
+        assert_eq!(calls, 3);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"external\":3}");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn noop_and_invalid_json_create_neither_backup_nor_replacement() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("config.json");
+        let backups = temp.path().join("backups");
+        fs::write(&path, "{ \"managed\": true }").unwrap();
+        update_json_with_backup(&path, &backups, |value| {
+            value["managed"] = serde_json::json!(true);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{ \"managed\": true }");
+        assert!(!backups.exists());
+        fs::write(&path, "broken JSON").unwrap();
+        assert!(update_json_with_backup(&path, &backups, |_| Ok(())).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "broken JSON");
+        assert!(!backups.exists());
+    }
 
     #[test]
     fn atomic_write_replaces_complete_contents_and_cleans_staging() {
