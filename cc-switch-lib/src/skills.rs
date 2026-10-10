@@ -113,7 +113,7 @@ fn sync_one(skill: &SkillRecord, ssot_dir: &Path, target_dir: &Path) -> Result<b
 }
 
 /// Content digest without following links. Absence and an empty directory differ.
-fn directory_version(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+pub(crate) fn directory_version(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
     use sha2::{Digest, Sha256};
     fn hash_tree(path: &Path, hasher: &mut Sha256) -> Result<(), AppError> {
         reject_symlink(path)?;
@@ -580,6 +580,33 @@ fn import_candidates(
             Err(error) => report.record(name, "failed", Some(error.to_string())),
         }
     }
+}
+
+/// Delete only the installation captured before the record deletion transaction.
+pub(crate) fn remove_captured(directory: &str, expected: &Option<Vec<u8>>) -> Result<(), AppError> {
+    validate_directory(directory)?;
+    let target = get_claude_skills_dir();
+    reject_symlink(&target)?;
+    let dest = target.join(directory);
+    let current = directory_version(&dest)?;
+    if current.is_none() {
+        return Ok(());
+    }
+    if &current != expected {
+        return Err(AppError::Conflict {
+            path: dest.display().to_string(),
+        });
+    }
+    backup_target(&dest, &target)?;
+    Ok(())
+}
+pub(crate) fn deletion_snapshot(directory: &str) -> Result<(PathBuf, Option<Vec<u8>>), AppError> {
+    validate_directory(directory)?;
+    let root = get_claude_skills_dir();
+    reject_symlink(&root)?;
+    let path = root.join(directory);
+    let version = directory_version(&path)?;
+    Ok((path, version))
 }
 
 #[cfg(test)]

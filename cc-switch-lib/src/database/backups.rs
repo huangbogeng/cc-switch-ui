@@ -256,6 +256,11 @@ fn validate_and_migrate(conn: Connection) -> Result<Database, AppError> {
             }
         }
         integrity(&conn)?;
+        if crate::managed_deletion::pending_on(&conn)? {
+            return Err(AppError::InvalidInput(
+                "Backup contains unfinished managed deletion".into(),
+            ));
+        }
         let routes: u32 =
             conn.query_row("SELECT COUNT(*) FROM proxy_live_backup", [], |r| r.get(0))?;
         if routes != 0 {
@@ -373,7 +378,13 @@ pub fn create(db: &Database) -> Result<String, AppError> {
             "Manual backup limit reached; delete an old manual backup first".into(),
         ));
     }
-    snapshot(&db.conn(), "manual")
+    let conn = db.conn();
+    if crate::managed_deletion::pending_on(&conn)? {
+        return Err(AppError::ProviderInUse(
+            "Finish managed deletion before creating a database backup".into(),
+        ));
+    }
+    snapshot(&conn, "manual")
 }
 pub fn delete(id: &str) -> Result<(), AppError> {
     let _guard = OPERATIONS.lock()?;
@@ -499,6 +510,11 @@ pub fn apply_pending() -> Result<(), AppError> {
                 .into(),
         ));
     }
+    if crate::managed_deletion::pending_on(&current)? {
+        return Err(AppError::ProviderInUse(
+            "Finish managed deletion before restoring the database".into(),
+        ));
+    }
     if p.safety_id.is_none() {
         p.safety_id = Some(snapshot(&current, "safety")?);
         config::write_json_file(&manifest(), &p)?;
@@ -539,6 +555,35 @@ mod tests {
         settings::set_current_provider(&AppType::ClaudeCode, Some(&provider.id)).unwrap();
         (db, provider)
     }
+    #[test]
+    fn managed_deletion_intents_cannot_be_backed_up_or_replayed_by_restore() {
+        let _env = acquire_env_lock();
+        let home = setup_test_home();
+        let (db, _) = fixture();
+        let valid = create(&db).unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO managed_deletion(id,intent_json) VALUES (1,'{}')",
+                [],
+            )
+            .unwrap();
+        assert!(create(&db).is_err());
+        // Simulate a separately supplied SQLite snapshot containing an unfinished cleanup.
+        let unfinished = snapshot(&db.conn(), "manual").unwrap();
+        assert!(schedule(&unfinished).is_err());
+        schedule(&valid).unwrap();
+        assert!(apply_pending().is_err());
+        assert!(crate::managed_deletion::pending_on(&db.conn()).unwrap());
+        db.conn()
+            .execute("DELETE FROM managed_deletion", [])
+            .unwrap();
+        assert!(crate::managed_deletion::begin(&db, "mcp", "missing").is_err());
+        cancel().unwrap();
+        drop(db);
+        cleanup_home(home);
+        settings::reload_settings().unwrap();
+    }
+
     #[test]
     fn wal_snapshot_restores_on_restart_and_retains_exact_safety_state() {
         let _env = acquire_env_lock();

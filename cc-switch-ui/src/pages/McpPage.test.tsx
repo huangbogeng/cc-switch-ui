@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApiError, listMcpServers, saveMcpServer, toggleMcpServer, importMcpServers, syncMcpServers } from '@/api';
+import { ApiError, listMcpServers, saveMcpServer, toggleMcpServer, importMcpServers, syncMcpServers, getManagedDeletion, deleteMcpServer } from '@/api';
 import McpPage from './McpPage';
 
 vi.mock('@/api', async (original) => ({
   ...await original<typeof import('@/api')>(),
-  listMcpServers: vi.fn(), saveMcpServer: vi.fn(), toggleMcpServer: vi.fn(), importMcpServers: vi.fn(), syncMcpServers: vi.fn(),
+  listMcpServers: vi.fn(), saveMcpServer: vi.fn(), toggleMcpServer: vi.fn(), importMcpServers: vi.fn(), syncMcpServers: vi.fn(), getManagedDeletion: vi.fn(), deleteMcpServer: vi.fn(),
 }));
 vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => undefined, cacheSet: vi.fn() }));
 const server = { id: 'test', name: 'Test', appType: 'claude_code', enabled: true, serverSpec: { command: 'npx' } };
 
-beforeEach(() => {
+beforeEach(() => { vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
   vi.mocked(listMcpServers).mockResolvedValue({ servers: [server] });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
@@ -83,4 +83,18 @@ it('does not claim a successful MCP sync after a failed atomic write', async () 
   await userEvent.click(await screen.findByRole('button', { name: 'Sync' }));
   await screen.findByText('Sync failed: 0 applied, 0 skipped, 1 failed.');
   expect(screen.queryByText('MCP configuration synced to Claude Code.')).toBeNull();
+});
+
+it('refreshes committed deletion and blocks mutations while exposing live cleanup recovery', async () => {
+  vi.mocked(deleteMcpServer).mockRejectedValue(new ApiError('Record deleted, live cleanup unfinished.', true));
+  render(<McpPage />);
+  await screen.findByRole('button', { name: 'Edit Test' });
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.mocked(listMcpServers).mockResolvedValue({ servers: [] });
+  vi.mocked(getManagedDeletion).mockResolvedValue({ pending: { operationId: 'nonce', id: 'test', name: 'Test', kind: 'mcp' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Delete Test' }));
+  await screen.findByText(/record deleted, live cleanup unfinished/);
+  expect(screen.queryByRole('button', { name: 'Edit Test' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Sync' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('button', { name: 'Retry live cleanup' }).hasAttribute('disabled')).toBe(false);
 });

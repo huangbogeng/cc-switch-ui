@@ -253,6 +253,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn version_three_database_gains_durable_deletion_intent_without_replacing_it() {
+        let db = Database::test_memory();
+        db.conn()
+            .execute_batch("DROP TABLE managed_deletion; PRAGMA user_version=3;")
+            .unwrap();
+        db.create_tables().unwrap();
+        let version: u32 = db
+            .conn()
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, migrations::SCHEMA_VERSION);
+        db.conn()
+            .execute(
+                "INSERT INTO managed_deletion(id,intent_json) VALUES (1,'retained')",
+                [],
+            )
+            .unwrap();
+        db.create_tables().unwrap();
+        let value: String = db
+            .conn()
+            .query_row("SELECT intent_json FROM managed_deletion", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(value, "retained");
+    }
+
+    #[test]
     fn migrates_legacy_proxy_config_table_to_json_schema() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -329,7 +355,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, migrations::SCHEMA_VERSION);
     }
     #[test]
     fn legacy_route_backup_gains_optional_takeover_snapshot() {

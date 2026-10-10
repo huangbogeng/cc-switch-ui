@@ -13,6 +13,7 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod live;
+pub mod managed_deletion;
 pub mod mcp;
 pub mod oauth;
 pub mod operation_report;
