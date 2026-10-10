@@ -1,6 +1,7 @@
 import { memo, useId, useState } from 'react';
 import { ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Skill } from '@/api';
@@ -30,14 +31,7 @@ const SkillItem = memo(function SkillItem({
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="text-[15px] font-medium">{skill.name || skill.id}</span>
-          <button aria-label={`${skill.enabled ? 'Disable' : 'Enable'} ${skill.name || skill.id}`} disabled={busy} onClick={() => onToggle(skill)} className="cursor-pointer disabled:cursor-wait disabled:opacity-60">
-            <Badge
-              variant={skill.enabled ? 'default' : 'outline'}
-              className="text-[10px] px-1.5 py-0 hover:opacity-80"
-            >
-              {skill.enabled ? 'enabled' : 'disabled'}
-            </Badge>
-          </button>
+          <Switch checked={skill.enabled} aria-label={`${skill.enabled ? 'Disable' : 'Enable'} ${skill.name || skill.id}`} disabled={busy} onCheckedChange={() => onToggle(skill)} />
         </div>
         {skill.description && (
           <p className="text-xs text-muted-foreground line-clamp-1">{skill.description}</p>

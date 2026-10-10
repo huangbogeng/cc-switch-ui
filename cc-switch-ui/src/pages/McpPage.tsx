@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
@@ -273,11 +273,7 @@ export default function McpPage() {
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-sm">{srv.name || srv.id}</span>
-                    <button aria-label={`${srv.enabled ? 'Disable' : 'Enable'} ${srv.name || srv.id}`} disabled={pendingAction !== null || saving || hasPendingDeletion} onClick={() => handleToggle(srv)} className="cursor-pointer">
-                      <Badge variant={srv.enabled ? 'default' : 'outline'} className="text-[10px] px-1.5 py-0 hover:opacity-80">
-                        {srv.enabled ? 'enabled' : 'disabled'}
-                      </Badge>
-                    </button>
+                    <Switch checked={srv.enabled} aria-label={`${srv.enabled ? 'Disable' : 'Enable'} ${srv.name || srv.id}`} disabled={pendingAction !== null || saving || hasPendingDeletion} onCheckedChange={() => handleToggle(srv)} />
                   </div>
                   <p className="text-xs text-muted-foreground truncate font-mono">{srv.id}</p>
                 </div>
