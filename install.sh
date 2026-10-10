@@ -18,6 +18,11 @@ if [ -e "$INSTALL_DIR" ] && [ ! -x "$INSTALL_DIR/cc-switch-ui" ]; then
 fi
 LOCK="$INSTALL_DIR.upgrade-lock"
 mkdir "$LOCK" 2>/dev/null || fail "Another upgrade may be running; inspect $LOCK before removing a stale lock"
+DATA_LOCK="$HOME/.cc-switch.upgrade-lock"
+if ! mkdir "$DATA_LOCK" 2>/dev/null; then
+    rmdir "$LOCK"
+    fail "Another upgrade may be using this profile; inspect $DATA_LOCK before removing a stale lock"
+fi
 STAGING=''; BACKUP=''; WAS_RUNNING=0; OLD_MOVED=0; NEW_INSTALLED=0; NEW_PID=''; DATA_EXISTED=0; DATA_BACKED_UP=0; DATA_TOUCHED=0; COMPLETE=0
 RESTART_ARGS=(); HEALTH_ARGS=()
 alive() { kill -0 "$1" 2>/dev/null && ! ps -p "$1" -o stat= 2>/dev/null | grep -q '^Z'; }
@@ -83,7 +88,7 @@ cleanup() {
         echo 'Installation did not complete.' >&2
         if [ -n "$NEW_PID" ] && ! stop_process "$NEW_PID"; then
             echo "Rollback paused: stop $NEW_PID before restoring data. Copies: $BACKUP" >&2
-            rm -rf "$LOCK"
+            rm -rf "$LOCK" "$DATA_LOCK"
             exit 1
         fi
         if [ "$NEW_INSTALLED" -eq 1 ] && [ -e "$INSTALL_DIR" ]; then
@@ -106,7 +111,7 @@ cleanup() {
         [ -z "$BACKUP" ] || echo "Recovery copies: $BACKUP" >&2
     fi
     [ -z "$STAGING" ] || rm -rf "$STAGING"
-    rm -rf "$LOCK"
+    rm -rf "$LOCK" "$DATA_LOCK"
     exit "$result"
 }
 trap cleanup EXIT
@@ -161,6 +166,10 @@ if [ -f "$DATA_DIR/cc-switch-server.pid" ]; then
         stop_process "$OLD_PID" || fail 'Unable to stop existing service'
         WAS_RUNNING=1
     fi
+fi
+# Reject a live endpoint that cannot be tied to the stopped PID, including stale PID files.
+if "$STAGING/cc-switch-ui/cc-switch-ui" status ${HEALTH_ARGS[@]+"${HEALTH_ARGS[@]}"} >/dev/null 2>&1; then
+    fail 'A service is still responding; stop all services using this profile before upgrading'
 fi
 if [ -d "$DATA_DIR" ]; then
     DATA_EXISTED=1

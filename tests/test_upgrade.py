@@ -260,14 +260,28 @@ else:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
+            original = self.db.read_bytes()
             result = self.run_installer()
             self.assertNotEqual(result.returncode, 0)
+            self.assertIn('A service is still responding', result.stderr)
+            self.assertEqual(self.db.read_bytes(), original)
             self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
             self.assert_data(3)
         finally:
             server.shutdown()
             server.server_close()
             thread.join()
+
+    def test_profile_upgrade_lock_blocks_other_installations_without_modification(self):
+        lock = self.home / '.cc-switch.upgrade-lock'
+        lock.mkdir()
+        original = self.db.read_bytes()
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(lock.is_dir())
+        self.assertFalse(Path(str(self.install) + '.upgrade-lock').exists())
+        self.assertEqual(self.db.read_bytes(), original)
+        self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
 
     def test_foreign_service_pid_is_not_stopped(self):
         p = subprocess.Popen(['sleep', '60'])
