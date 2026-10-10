@@ -18,6 +18,7 @@ import {
   type FetchedModel,
 } from '@/api';
 import { useDialog } from '@/lib/useDialog';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 interface ProviderFormDialogProps {
   open: boolean;
@@ -52,7 +53,9 @@ export function ProviderFormDialog({
   const [endpointDetection, setEndpointDetection] = useState<EndpointDetectionResult | null>(null);
   const [detectEndpointError, setDetectEndpointError] = useState('');
   const titleId = useId();
-  const dialogRef = useDialog(open, onCancel, !saving);
+  const canDiscard = useUnsavedChanges(open && JSON.stringify(formData) !== JSON.stringify(initialFormData), open && saving);
+  const requestCancel = () => { if (canDiscard()) onCancel(); };
+  const dialogRef = useDialog(open, requestCancel, !saving);
 
   useEffect(() => {
     setFormData(initialFormData);
@@ -130,7 +133,7 @@ export function ProviderFormDialog({
 
           {!editingId && !selectedPreset && (
             <div className="mb-6 space-y-4">
-              <PresetSelector onSelect={onPresetSelect} />
+              <PresetSelector onSelect={(preset) => { if (canDiscard()) onPresetSelect(preset); }} />
               <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 text-xs leading-4 text-muted-foreground">
                 <div className="h-px flex-1 bg-border" />
                 or enter manually
@@ -529,7 +532,7 @@ export function ProviderFormDialog({
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+              <Button type="button" variant="ghost" onClick={requestCancel} disabled={saving}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>

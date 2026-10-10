@@ -11,6 +11,7 @@ import SkillsPage from './pages/SkillsPage';
 import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { confirmDiscardChanges } from '@/lib/useUnsavedChanges';
 
 type Page = 'dashboard' | 'providers' | 'mcp' | 'skills' | 'oauth' | 'usage' | 'settings';
 type NavItem = { id: Page; label: string; description: string; icon: LucideIcon };
@@ -27,22 +28,29 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>(pageFromHash);
 
   useEffect(() => {
-    const handleNavigation = () => setCurrentPage(pageFromHash());
+    const handleNavigation = () => {
+      const nextPage = pageFromHash();
+      if (nextPage === currentPage) return;
+      if (confirmDiscardChanges()) setCurrentPage(nextPage);
+      else window.history.replaceState(null, '', `#${currentPage}`);
+    };
     window.addEventListener('hashchange', handleNavigation);
     window.addEventListener('popstate', handleNavigation);
     return () => {
       window.removeEventListener('hashchange', handleNavigation);
       window.removeEventListener('popstate', handleNavigation);
     };
-  }, []);
+  }, [currentPage]);
 
   const navigate = (page: Page) => {
+    if (page === currentPage || !confirmDiscardChanges()) return;
     window.history.pushState(null, '', `#${page}`);
     setCurrentPage(page);
   };
 
   const handleLogin = () => setAuthenticated(true);
   const handleLogout = () => {
+    if (!confirmDiscardChanges()) return;
     clearAuthToken();
     setAuthenticated(false);
   };

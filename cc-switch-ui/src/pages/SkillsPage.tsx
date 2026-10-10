@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Package, Download, Search } from 'lucide-react';
 import {
+  ApiError,
   listSkills,
   deleteSkill,
   syncSkills,
@@ -16,6 +17,8 @@ import { SkillGroup } from '@/components/skills/SkillGroup';
 import { SkillFormDialog } from '@/components/skills/SkillFormDialog';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
 import { ErrorAlert } from '@/components/ErrorAlert';
+import { SkillBackupsPanel } from '@/components/skills/SkillBackupsPanel';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 const DEFAULT_COLLECTION = 'Other';
 
@@ -41,6 +44,9 @@ export default function SkillsPage() {
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const busy = syncing || importing || pendingSkillId !== null || recovering;
+  useUnsavedChanges(false, busy);
 
   const loadSkills = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -75,7 +81,7 @@ export default function SkillsPage() {
   const isSearching = searchQuery.trim().length > 0;
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this skill?')) return;
+    if (!confirm('Delete this managed skill? Its live directory will be backed up; source files are retained.')) return;
     try {
       setPendingSkillId(id);
       setError('');
@@ -127,6 +133,7 @@ export default function SkillsPage() {
       setError('');
       setNotice('');
       const res = await toggleSkill(skill.id);
+      setNotice('Skill state saved and synced to Claude Code.');
       setSkills((prev) => {
         const next = prev.map((item) =>
           item.id === skill.id ? { ...item, enabled: res.enabled } : item,
@@ -135,11 +142,12 @@ export default function SkillsPage() {
         return next;
       });
     } catch (e) {
+      if (e instanceof ApiError && e.saved) await loadSkills();
       setError(e instanceof Error ? e.message : 'Toggle failed');
     } finally {
       setPendingSkillId(null);
     }
-  }, []);
+  }, [loadSkills]);
 
   if (loading) {
     return (
@@ -154,16 +162,16 @@ export default function SkillsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Skills"
-        description="Skills synced to ~/.claude/skills/"
+        description="Save and enable/disable apply managed skills to Claude Code. Retry Sync after an application error."
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={importing || syncing || pendingSkillId !== null}>
+            <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={busy || showForm}>
               <Download className={importing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {importing ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5" disabled={syncing || importing || pendingSkillId !== null}>
+            <Button variant="outline" size="sm" onClick={handleSync} className="gap-1.5" disabled={busy || showForm}>
               <RefreshCw className={syncing ? 'animate-spin h-3.5 w-3.5' : 'h-3.5 w-3.5'} /> {syncing ? 'Syncing...' : 'Sync'}
             </Button>
-            <Button size="sm" onClick={() => { setEditingSkill(null); setShowForm(true); }} disabled={syncing || importing || pendingSkillId !== null} className="gap-1.5">
+            <Button size="sm" onClick={() => { setEditingSkill(null); setShowForm(true); }} disabled={busy || showForm} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </div>
@@ -174,6 +182,8 @@ export default function SkillsPage() {
         <ErrorAlert message={error} />
       )}
       {notice && <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">{notice}</div>}
+
+      <SkillBackupsPanel disabled={syncing || importing || pendingSkillId !== null || showForm} onRestored={loadSkills} onBusyChange={setRecovering} />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
@@ -214,6 +224,7 @@ export default function SkillsPage() {
                 onDelete={handleDelete}
                 onEdit={(skill) => { setEditingSkill(skill); setShowForm(true); }}
                 busySkillId={pendingSkillId}
+                busy={busy || showForm}
               />
             ))}
           </div>

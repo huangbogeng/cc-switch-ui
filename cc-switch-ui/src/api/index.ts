@@ -12,6 +12,15 @@ export function clearAuthToken() {
   localStorage.removeItem('ccswitch_token');
 }
 
+export class ApiError extends Error {
+  readonly saved: boolean;
+  constructor(message: string, saved = false) {
+    super(message);
+    this.name = 'ApiError';
+    this.saved = saved;
+  }
+}
+
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -31,7 +40,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+    throw new ApiError(body.error || `HTTP ${res.status}`, body.saved === true);
   }
 
   return res.json() as Promise<T>;
@@ -607,4 +616,22 @@ export async function importSkills() {
 
 export async function toggleSkill(id: string) {
   return api<{ success: boolean; enabled: boolean }>(`/skills/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
+}
+
+export interface SkillBackup {
+  id: string;
+  directory: string;
+  origin: 'live' | 'source';
+  modifiedAt: number;
+}
+
+export async function listSkillBackups(options?: RequestInit) {
+  return api<{ backups: SkillBackup[] }>('/skill-backups', options);
+}
+
+export async function restoreSkillBackup(backupId: string) {
+  return api<{ success: boolean; directory: string; enabled: boolean }>('/skill-backups/restore', {
+    method: 'POST',
+    body: JSON.stringify({ backupId }),
+  });
 }
