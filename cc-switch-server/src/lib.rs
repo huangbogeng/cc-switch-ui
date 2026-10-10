@@ -369,9 +369,9 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/mcp/servers/sync", post(mcp::sync_mcp_servers))
         .route("/api/mcp/servers/:id/toggle", post(mcp::toggle_mcp_server))
         .route("/api/mcp/servers/:id", delete(mcp::delete_mcp_server))
-        .route("/api/skills/backups", get(skills::list_skill_backups))
+        .route("/api/skill-backups", get(skills::list_skill_backups))
         .route(
-            "/api/skills/backups/restore",
+            "/api/skill-backups/restore",
             post(skills::restore_skill_backup),
         )
         .route("/api/skills", get(skills::list_skills))
