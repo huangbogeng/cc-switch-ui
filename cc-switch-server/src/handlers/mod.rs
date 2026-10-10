@@ -1,7 +1,10 @@
 pub mod auth;
 pub mod backups;
 pub mod copilot_oauth;
+pub mod managed_deletion;
 pub mod mcp;
+
+static MANAGED_MUTATIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 pub mod model_fetch;
 pub mod oauth;
 pub mod providers;
@@ -41,4 +44,17 @@ fn sync_failure(kind: &str, error: &cc_switch_lib::error::AppError) -> axum::res
         })),
     )
         .into_response()
+}
+
+fn managed_idle(db: &cc_switch_lib::database::Database) -> Option<axum::response::Response> {
+    use axum::response::IntoResponse;
+    cc_switch_lib::managed_deletion::ensure_idle(db)
+        .err()
+        .map(|error| {
+            (
+                axum::http::StatusCode::CONFLICT,
+                axum::Json(serde_json::json!({"error":error.to_string(), "recoveryRequired":true})),
+            )
+                .into_response()
+        })
 }

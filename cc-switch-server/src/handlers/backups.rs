@@ -52,6 +52,9 @@ pub async fn create(State(state): State<Arc<AppState>>) -> Response {
         )));
     }
     super::file_mutation(move || {
+        let _managed = super::MANAGED_MUTATIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         result((|| {
             ensure_idle(&state)?;
             let id = backups::create(&state.db)?;
@@ -61,6 +64,7 @@ pub async fn create(State(state): State<Arc<AppState>>) -> Response {
     .await
 }
 fn ensure_idle(state: &AppState) -> Result<(), AppError> {
+    cc_switch_lib::managed_deletion::ensure_idle(&state.db)?;
     if cc_switch_lib::provider_operations::recovery_pending()
         || state
             .db
@@ -84,6 +88,9 @@ pub async fn schedule(
         )));
     }
     super::file_mutation(move || {
+        let _managed = super::MANAGED_MUTATIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         result((|| {
             ensure_idle(&state)?;
             backups::schedule(&request.id)?;

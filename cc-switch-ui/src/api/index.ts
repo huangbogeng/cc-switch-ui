@@ -722,3 +722,13 @@ export interface OperationReport {
   failed: number;
   items: { id: string; outcome: 'imported' | 'updated' | 'applied' | 'skipped' | 'failed'; error: string | null }[];
 }
+
+export interface PendingDeletion { operationId: string; id: string; name: string; kind: 'mcp' | 'skill' }
+export async function getManagedDeletion(options?: RequestInit) {
+  return api<{ pending: PendingDeletion | null }>('/managed-deletion', options);
+}
+export async function finishManagedDeletion(operationId: string, keepFiles: boolean) {
+  return api<{ success: boolean; keptFiles: boolean }>(`/managed-deletion/${keepFiles ? 'keep-files' : 'retry'}`, {
+    method: 'POST', body: JSON.stringify({ operationId }),
+  });
+}

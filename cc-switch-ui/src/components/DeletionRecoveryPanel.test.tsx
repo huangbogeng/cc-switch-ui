@@ -1,0 +1,47 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { finishManagedDeletion, getManagedDeletion } from '@/api';
+import { DeletionRecoveryPanel } from './DeletionRecoveryPanel';
+vi.mock('@/api', () => ({ getManagedDeletion: vi.fn(), finishManagedDeletion: vi.fn() }));
+const pending = { operationId: 'operation-uuid', id: 'test', name: 'Test', kind: 'skill' as const };
+beforeEach(() => { vi.resetAllMocks(); vi.mocked(getManagedDeletion).mockResolvedValue({ pending }); });
+const props = () => ({ refreshKey: 0, disabled: false, onBusyChange: vi.fn(), onResolved: vi.fn(), onPendingChange: vi.fn() });
+it('retries the captured operation and clears pending state after completion', async () => {
+  vi.mocked(finishManagedDeletion).mockResolvedValue({ success: true, keptFiles: false });
+  const callbacks = props();
+  render(<DeletionRecoveryPanel {...callbacks} />);
+  await screen.findByText(/record deleted, live cleanup unfinished/);
+  vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
+  await userEvent.click(screen.getByRole('button', { name: 'Retry live cleanup' }));
+  await screen.findByText(/Deletion finished. Captured live configuration/);
+  expect(finishManagedDeletion).toHaveBeenCalledWith('operation-uuid', false);
+  expect(callbacks.onResolved).toHaveBeenCalledOnce();
+  await waitFor(() => expect(callbacks.onPendingChange).toHaveBeenLastCalledWith(false));
+});
+it('keeps conflicting cleanup retryable and requires confirmation before keeping files', async () => {
+  vi.mocked(finishManagedDeletion).mockRejectedValue(new Error('File changed externally'));
+  render(<DeletionRecoveryPanel {...props()} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Retry live cleanup' }));
+  await screen.findByText('File changed externally');
+  expect(screen.getByText(/record deleted, live cleanup unfinished/)).toBeTruthy();
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await userEvent.click(screen.getByRole('button', { name: 'Keep current files' }));
+  expect(finishManagedDeletion).toHaveBeenCalledTimes(1);
+  confirm.mockReturnValue(true);
+  vi.mocked(finishManagedDeletion).mockResolvedValue({ success: true, keptFiles: true });
+  vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null });
+  await userEvent.click(screen.getByRole('button', { name: 'Keep current files' }));
+  await screen.findByText('Deletion finished. Current live files were kept unmanaged.');
+  expect(finishManagedDeletion).toHaveBeenLastCalledWith('operation-uuid', true);
+  confirm.mockRestore();
+});
+it('retains completion feedback when refreshing records fails', async () => {
+  const callbacks = props();
+  callbacks.onResolved.mockRejectedValue(new Error('Refresh failed'));
+  vi.mocked(finishManagedDeletion).mockResolvedValue({ success: true, keptFiles: false });
+  render(<DeletionRecoveryPanel {...callbacks} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Retry live cleanup' }));
+  await screen.findByText('Deletion finished, but refreshing records or recovery status failed: Refresh failed');
+  expect(screen.getByText(/Deletion finished. Captured live configuration/)).toBeTruthy();
+});

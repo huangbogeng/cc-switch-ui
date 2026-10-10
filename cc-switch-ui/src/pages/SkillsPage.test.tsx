@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { listSkills, importSkills, syncSkills } from '@/api';
+import { listSkills, importSkills, syncSkills, getManagedDeletion } from '@/api';
 import SkillsPage from './SkillsPage';
 vi.mock('@/api', async (original) => ({ ...await original<typeof import('@/api')>(),
-  listSkills: vi.fn(), importSkills: vi.fn(), syncSkills: vi.fn(),
+  listSkills: vi.fn(), importSkills: vi.fn(), syncSkills: vi.fn(), getManagedDeletion: vi.fn(),
 }));
 vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => undefined, cacheSet: vi.fn() }));
-beforeEach(() => { vi.mocked(listSkills).mockResolvedValue({ skills: [] }); });
+beforeEach(() => { vi.mocked(getManagedDeletion).mockResolvedValue({ pending: null }); vi.mocked(listSkills).mockResolvedValue({ skills: [] }); });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 const partial = { success: false, imported: 0, updated: 1, applied: 0, skipped: 1, failed: 1,
   items: [{ id: 'blocked', outcome: 'failed' as const, error: 'Collection save failed' },

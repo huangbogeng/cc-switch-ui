@@ -11,7 +11,7 @@ use cc_switch_lib::database::SkillRecord;
 use serde_json::json;
 use std::sync::Arc;
 
-static MUTATIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use super::MANAGED_MUTATIONS as MUTATIONS;
 
 const APP_TYPE: &str = "claude_code";
 
@@ -35,6 +35,9 @@ pub async fn save_skill(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         let mut skill = body;
         skill.app_type = APP_TYPE.to_string();
         log::info!("[Skills] save_skill id={} name={}", skill.id, skill.name);
@@ -70,47 +73,7 @@ pub async fn delete_skill(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
-        log::info!("[Skills] delete_skill id={}", id);
-        let skill = match state.db.get_all_skills(APP_TYPE) {
-            Ok(skills) => skills.into_iter().find(|skill| skill.id == id),
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response()
-            }
-        };
-        let Some(skill) = skill else {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Skill not found"})),
-            )
-                .into_response();
-        };
-        if let Err(e) = cc_switch_lib::skills::remove_from_claude(&skill.directory) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
-            )
-                .into_response();
-        }
-        match state.db.delete_skill(&id) {
-            Ok(true) => Json(json!({ "success": true })).into_response(),
-            Ok(false) => (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Skill not found"})),
-            )
-                .into_response(),
-            Err(e) => {
-                log::error!("Failed to delete skill: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response()
-            }
-        }
+        super::managed_deletion::delete_response(&state.db, "skill", &id)
     })
     .await
 }
@@ -120,6 +83,7 @@ pub async fn sync_skills(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let state = state.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        cc_switch_lib::managed_deletion::ensure_idle(&state.db)?;
         cc_switch_lib::skills::sync_report(&state.db, APP_TYPE)
     })
     .await
@@ -128,7 +92,11 @@ pub async fn sync_skills(State(state): State<Arc<AppState>>) -> impl IntoRespons
         Ok(Err(e)) => {
             log::error!("Failed to sync skills: {}", e);
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                if matches!(e, cc_switch_lib::AppError::ProviderInUse(_)) {
+                    StatusCode::CONFLICT
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
                 Json(json!({"error": e.to_string()})),
             )
                 .into_response()
@@ -149,6 +117,7 @@ pub async fn import_skills(State(state): State<Arc<AppState>>) -> impl IntoRespo
     let state = state.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        cc_switch_lib::managed_deletion::ensure_idle(&state.db)?;
         cc_switch_lib::skills::import_from_claude(&state.db, APP_TYPE)
     })
     .await
@@ -157,7 +126,11 @@ pub async fn import_skills(State(state): State<Arc<AppState>>) -> impl IntoRespo
         Ok(Err(e)) => {
             log::error!("Failed to import skills: {}", e);
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                if matches!(e, cc_switch_lib::AppError::ProviderInUse(_)) {
+                    StatusCode::CONFLICT
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
                 Json(json!({"error": e.to_string()})),
             )
                 .into_response()
@@ -179,6 +152,9 @@ pub async fn toggle_skill(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         log::info!("[Skills] Toggle enabled for id={}", id);
         match state.db.get_all_skills(APP_TYPE) {
             Ok(skills) => {
@@ -247,6 +223,9 @@ pub async fn restore_skill_backup(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         restore_backup_response(&state.db, &body.backup_id)
     })
     .await

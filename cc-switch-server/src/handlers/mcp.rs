@@ -11,7 +11,7 @@ use cc_switch_lib::database::McpServerRecord;
 use serde_json::json;
 use std::sync::Arc;
 
-static MUTATIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use super::MANAGED_MUTATIONS as MUTATIONS;
 
 const APP_TYPE: &str = "claude_code";
 
@@ -35,6 +35,9 @@ pub async fn save_mcp_server(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         let mut server = body;
         server.app_type = APP_TYPE.to_string();
 
@@ -67,47 +70,7 @@ pub async fn delete_mcp_server(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
-        log::info!("[MCP] delete_mcp_server id={}", id);
-        match state.db.get_all_mcp_servers(APP_TYPE) {
-            Ok(servers) if servers.iter().any(|server| server.id == id) => {}
-            Ok(_) => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error": "MCP server not found"})),
-                )
-                    .into_response()
-            }
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response()
-            }
-        }
-        if let Err(e) = cc_switch_lib::mcp::remove_from_claude(&id) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
-            )
-                .into_response();
-        }
-        match state.db.delete_mcp_server(&id, APP_TYPE) {
-            Ok(true) => Json(json!({ "success": true })).into_response(),
-            Ok(false) => (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "MCP server not found"})),
-            )
-                .into_response(),
-            Err(e) => {
-                log::error!("Failed to delete MCP server: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response()
-            }
-        }
+        super::managed_deletion::delete_response(&state.db, "mcp", &id)
     })
     .await
 }
@@ -115,6 +78,9 @@ pub async fn delete_mcp_server(
 pub async fn import_mcp_servers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         log::info!("[MCP] Import from ~/.claude.json requested");
         match cc_switch_lib::mcp::import_from_claude(&state.db, APP_TYPE) {
             Ok(report) => Json(report).into_response(),
@@ -137,6 +103,9 @@ pub async fn toggle_mcp_server(
 ) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         log::info!("[MCP] Toggle enabled for id={}", id);
         match state.db.get_all_mcp_servers(APP_TYPE) {
             Ok(servers) => {
@@ -180,6 +149,9 @@ pub async fn toggle_mcp_server(
 pub async fn sync_mcp_servers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     super::file_mutation(move || {
         let _guard = MUTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(response) = super::managed_idle(&state.db) {
+            return response;
+        }
         log::info!("[MCP] Manual sync requested");
         match cc_switch_lib::mcp::sync_report(&state.db, APP_TYPE) {
             Ok(report) => Json(report).into_response(),
