@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
 
+pub mod backups;
+
 /// 获取用户主目录，带回退和日志
 ///
 /// ## Windows 注意事项
@@ -293,8 +295,14 @@ fn first_write_key(path: &Path) -> String {
 /// Read the immutable first-write snapshot for this fixed configuration path.
 /// A target which originally did not exist is represented by an empty object.
 pub fn read_first_write_backup(path: &Path) -> Result<Option<serde_json::Value>, AppError> {
-    let root = get_app_config_dir().join("backups/live-first-write");
-    refuse_symlink(&root)?;
+    read_first_write_backup_at(path, &get_app_config_dir().join("backups/live-first-write"))
+}
+
+fn read_first_write_backup_at(
+    path: &Path,
+    root: &Path,
+) -> Result<Option<serde_json::Value>, AppError> {
+    refuse_symlink(root)?;
     refuse_symlink(root.parent().unwrap())?;
     let absolute = absolute_path(path)?;
     let key = first_write_key(&absolute);
