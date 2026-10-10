@@ -126,18 +126,19 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     // Exclusive-key cleanup reference: the provider record that last wrote the
     // live config before takeover (the current direct provider). Its exclusive
     // keys are removed on takeover only if the user never edited them.
-    let previous_env = state
-        .db
-        .get_current_provider_id(APP_TYPE)
-        .ok()
-        .flatten()
-        .and_then(|pid| state.db.get_provider(&pid, APP_TYPE).ok().flatten())
-        .and_then(|p| {
-            p.settings_config
-                .get("env")
-                .and_then(|v| v.as_object())
-                .cloned()
-        });
+    let previous_env = cc_switch_lib::settings::get_effective_current_provider(
+        &state.db,
+        &cc_switch_lib::providers::AppType::ClaudeCode,
+    )
+    .ok()
+    .flatten()
+    .and_then(|pid| state.db.get_provider(&pid, APP_TYPE).ok().flatten())
+    .and_then(|p| {
+        p.settings_config
+            .get("env")
+            .and_then(|v| v.as_object())
+            .cloned()
+    });
 
     if let Err(e) =
         cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
@@ -386,10 +387,13 @@ fn direct_settings_for_stop(
 fn get_active_target_provider(
     state: &AppState,
 ) -> Result<Option<Provider>, cc_switch_lib::error::AppError> {
-    let target_id = state
-        .db
-        .get_proxy_target_provider_id()?
-        .or(state.db.get_current_provider_id(APP_TYPE)?);
+    let target_id = match state.db.get_proxy_target_provider_id()? {
+        Some(id) => Some(id),
+        None => cc_switch_lib::settings::get_effective_current_provider(
+            &state.db,
+            &cc_switch_lib::providers::AppType::ClaudeCode,
+        )?,
+    };
     match target_id {
         Some(id) => state.db.get_provider(&id, APP_TYPE),
         None => Ok(None),

@@ -398,6 +398,9 @@ mod tests {
                 .0,
             StatusCode::CONFLICT
         );
+        let (_, status) =
+            body(crate::proxy::handlers::proxy_status(State(state.clone())).await).await;
+        assert_eq!(status["active_target_provider_id"], "next");
         cc_switch_lib::settings::set_current_provider(&AppType::ClaudeCode, None).unwrap();
         // DB fallback must supply the previous provider for switching/backfill.
         assert_eq!(
@@ -462,5 +465,17 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "invalid JSON");
         assert!(state.proxy_server.read().await.is_none());
         assert!(db.get_live_backup(APP_TYPE).unwrap().is_none());
+        // No direct selection: recover the original owned fields from the backup.
+        cc_switch_lib::settings::set_current_provider(&AppType::ClaudeCode, None).unwrap();
+        db.set_current_provider("", APP_TYPE).unwrap();
+        std::fs::write(&path, r#"{"env":{"ANTHROPIC_BASE_URL":"https://before.example","ANTHROPIC_AUTH_TOKEN":"before","API_TIMEOUT_MS":"99"}}"#).unwrap();
+        let (_, started) = body(proxy_start(State(state.clone())).await).await;
+        assert_eq!(started["success"], true, "{started}");
+        let (_, stopped) = body(proxy_stop(State(state.clone())).await).await;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        let restored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(restored["env"]["ANTHROPIC_AUTH_TOKEN"], "before");
+        assert_eq!(restored["env"]["API_TIMEOUT_MS"], "99");
+        assert_eq!(restored["env"].get("CLAUDE_CODE_AUTO_MODE_SERVER"), None);
     }
 }
