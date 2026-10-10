@@ -281,6 +281,8 @@ async fn auth_middleware(
 }
 
 pub async fn run_server(config: ServerConfig) -> Result<(), String> {
+    cc_switch_lib::database::backups::apply_pending()
+        .map_err(|e| format!("failed to apply staged database restore: {e}. If it has not started, use `cc-switch-ui cancel-restore` to cancel it; otherwise fix the error and restart to finish recovery"))?;
     let db = Database::init().map_err(|e| format!("failed to initialize database: {e}"))?;
 
     // Seed default providers and import live config on first run (idempotent).
@@ -318,6 +320,22 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
     });
 
     let app = Router::new()
+        .route(
+            "/api/database-backups",
+            get(handlers::backups::list).post(handlers::backups::create),
+        )
+        .route(
+            "/api/database-backups/delete",
+            post(handlers::backups::delete),
+        )
+        .route(
+            "/api/database-backups/restore",
+            post(handlers::backups::schedule),
+        )
+        .route(
+            "/api/database-backups/cancel",
+            post(handlers::backups::cancel),
+        )
         .route("/health", get(|| async { "ok" }))
         .route("/", get(|| async { Redirect::permanent("/ui") }))
         .route("/api/auth/login", post(auth::login))

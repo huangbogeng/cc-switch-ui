@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod backups;
 pub mod copilot_oauth;
 pub mod mcp;
 pub mod model_fetch;
