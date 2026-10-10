@@ -53,6 +53,7 @@ export default function ProvidersPage() {
   const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
   const [proxyStatus, setProxyStatus] = useState<{
     running: boolean;
+    recovery_required?: boolean;
     listen_addr: string | null;
     active_target_provider_id: string | null;
   } | null>(null);
@@ -227,8 +228,8 @@ export default function ProvidersPage() {
       setError('Select another direct Provider before deleting this one.');
       return;
     }
-    if (proxyStatus?.running && id === proxyStatus.active_target_provider_id) {
-      setError('Choose another route target or stop the local route before deleting this Provider.');
+    if (id === proxyStatus?.active_target_provider_id) {
+      setError('Choose another route target before deleting this Provider.');
       return;
     }
     if (!confirm('Delete this provider?')) return;
@@ -317,6 +318,7 @@ export default function ProvidersPage() {
           providers={providerList}
           currentProviderId={currentProviderId}
           proxyRunning={proxyStatus?.running ?? false}
+          recoveryRequired={proxyStatus?.recovery_required ?? false}
           proxyTargetId={proxyStatus?.active_target_provider_id ?? currentProviderId ?? providerList[0]?.id ?? null}
           busy={pendingAction !== null}
           onTargetChange={(providerId) => void handleProxyTargetChange(providerId)}

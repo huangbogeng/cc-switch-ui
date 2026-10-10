@@ -22,10 +22,20 @@ impl super::Database {
 
     pub fn set_proxy_target_provider_id(&self, provider_id: &str) -> Result<(), AppError> {
         let conn = self.conn();
+        if !provider_id.is_empty() {
+            let exists: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM providers WHERE id = ?1 AND app_type = ?2)",
+                params![provider_id, crate::DEFAULT_APP_TYPE],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(AppError::InvalidInput("Route provider not found".into()));
+            }
+        }
         conn.execute(
             "INSERT INTO proxy_target_config (id, active_target_provider_id) VALUES (1, ?1)
              ON CONFLICT(id) DO UPDATE SET active_target_provider_id = excluded.active_target_provider_id",
-            params![provider_id],
+            params![if provider_id.is_empty() { None } else { Some(provider_id) }],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
@@ -100,11 +110,23 @@ impl super::Database {
     pub fn get_live_backup(&self, app_type: &str) -> Result<Option<LiveBackup>, AppError> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT app_type, provider_id, original_config, created_at
+            "SELECT app_type, provider_id, original_config, created_at, takeover_env
              FROM proxy_live_backup WHERE app_type = ?1",
         )?;
         let mut rows = stmt.query_map(params![app_type], |row| {
+            let snapshot: Option<String> = row.get(4)?;
+            let takeover_env = snapshot
+                .map(|raw| serde_json::from_str(&raw))
+                .transpose()
+                .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
             Ok(LiveBackup {
+                takeover_env,
                 app_type: row.get(0)?,
                 provider_id: row.get(1)?,
                 original_config: row.get(2)?,
@@ -123,15 +145,30 @@ impl super::Database {
         provider_id: &str,
         original_config: &str,
     ) -> Result<(), AppError> {
+        self.save_live_backup_with_takeover(app_type, provider_id, original_config, None)
+    }
+
+    pub fn save_live_backup_with_takeover(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+        original_config: &str,
+        takeover_env: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> Result<(), AppError> {
+        let snapshot = takeover_env
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|source| AppError::JsonSerialize { source })?;
         let conn = self.conn();
         conn.execute(
-            "INSERT INTO proxy_live_backup (app_type, provider_id, original_config)
-             VALUES (?1, ?2, ?3)
+            "INSERT INTO proxy_live_backup (app_type, provider_id, original_config, takeover_env)
+             VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(app_type) DO UPDATE SET
                 provider_id = excluded.provider_id,
                 original_config = excluded.original_config,
+                takeover_env = excluded.takeover_env,
                 created_at = datetime('now')",
-            params![app_type, provider_id, original_config],
+            params![app_type, provider_id, original_config, snapshot],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())

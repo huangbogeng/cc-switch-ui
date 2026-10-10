@@ -200,27 +200,52 @@ impl super::Database {
     }
 
     pub fn delete_provider(&self, id: &str, app_type: &str) -> Result<(), AppError> {
-        let conn = self.conn();
-        conn.execute(
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let current: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM providers WHERE id = ?1 AND app_type = ?2 AND is_current = 1)",
+            params![id, app_type], |row| row.get(0),
+        )?;
+        let target: bool = app_type == crate::DEFAULT_APP_TYPE && tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM proxy_target_config WHERE active_target_provider_id = ?1)",
+            params![id], |row| row.get(0),
+        )?;
+        if current || target {
+            return Err(AppError::ProviderInUse(
+                "Select another direct provider and route target before deleting this provider."
+                    .into(),
+            ));
+        }
+        tx.execute(
             "DELETE FROM providers WHERE id = ?1 AND app_type = ?2",
             params![id, app_type],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
     pub fn set_current_provider(&self, id: &str, app_type: &str) -> Result<(), AppError> {
-        let conn = self.conn();
-        conn.execute(
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        if !id.is_empty() {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM providers WHERE id = ?1 AND app_type = ?2)",
+                params![id, app_type],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(AppError::InvalidInput("Provider not found".into()));
+            }
+        }
+        tx.execute(
             "UPDATE providers SET is_current = 0 WHERE app_type = ?1",
             params![app_type],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        conn.execute(
+        )?;
+        tx.execute(
             "UPDATE providers SET is_current = 1 WHERE id = ?1 AND app_type = ?2",
             params![id, app_type],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -523,6 +548,54 @@ mod tests {
         assert_eq!(
             db.get_proxy_target_provider_id().unwrap().as_deref(),
             Some("provider-b")
+        );
+    }
+    #[test]
+    fn protected_deletion_and_missing_selection_preserve_references() {
+        let db = in_memory_db();
+        let app = crate::DEFAULT_APP_TYPE;
+        insert_provider(&db, "direct", app);
+        insert_provider(&db, "route", app);
+        insert_provider(&db, "unused", app);
+        db.set_current_provider("direct", app).unwrap();
+        db.set_proxy_target_provider_id("route").unwrap();
+        assert!(matches!(
+            db.delete_provider("direct", app),
+            Err(crate::error::AppError::ProviderInUse(_))
+        ));
+        assert!(matches!(
+            db.delete_provider("route", app),
+            Err(crate::error::AppError::ProviderInUse(_))
+        ));
+        assert!(db.set_current_provider("missing", app).is_err());
+        assert!(db.set_proxy_target_provider_id("missing").is_err());
+        assert_eq!(
+            db.get_current_provider_id(app).unwrap().as_deref(),
+            Some("direct")
+        );
+        assert_eq!(
+            db.get_proxy_target_provider_id().unwrap().as_deref(),
+            Some("route")
+        );
+        db.delete_provider("unused", app).unwrap();
+        assert!(db.get_provider("unused", app).unwrap().is_none());
+        db.set_proxy_target_provider_id("").unwrap();
+        assert_eq!(db.get_proxy_target_provider_id().unwrap(), None);
+        db.delete_provider("route", app).unwrap();
+    }
+
+    #[test]
+    fn failed_selection_rolls_back_the_previous_current_provider() {
+        let db = in_memory_db();
+        let app = crate::DEFAULT_APP_TYPE;
+        insert_provider(&db, "a", app);
+        insert_provider(&db, "b", app);
+        db.set_current_provider("a", app).unwrap();
+        db.conn().execute_batch("CREATE TRIGGER reject_b BEFORE UPDATE OF is_current ON providers WHEN NEW.id = 'b' AND NEW.is_current = 1 BEGIN SELECT RAISE(FAIL, 'test'); END;").unwrap();
+        assert!(db.set_current_provider("b", app).is_err());
+        assert_eq!(
+            db.get_current_provider_id(app).unwrap().as_deref(),
+            Some("a")
         );
     }
 }

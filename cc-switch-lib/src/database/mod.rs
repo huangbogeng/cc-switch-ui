@@ -161,6 +161,7 @@ impl Database {
                 app_type TEXT PRIMARY KEY,
                 provider_id TEXT NOT NULL,
                 original_config TEXT NOT NULL,
+                takeover_env TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -208,6 +209,18 @@ impl Database {
             "
         )?;
 
+        let has_takeover = conn
+            .prepare("PRAGMA table_info(proxy_live_backup)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .any(|name| name == "takeover_env");
+        if !has_takeover {
+            conn.execute(
+                "ALTER TABLE proxy_live_backup ADD COLUMN takeover_env TEXT",
+                [],
+            )?;
+        }
         migrations::migrate_proxy_config(&conn)?;
         migrations::migrate_proxy_request_logs(&conn)?;
         migrations::migrate_session_log_schema(&conn)?;
@@ -307,5 +320,31 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
         assert_eq!(version, 3);
+    }
+    #[test]
+    fn legacy_route_backup_gains_optional_takeover_snapshot() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE proxy_live_backup (app_type TEXT PRIMARY KEY, provider_id TEXT NOT NULL, original_config TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))); INSERT INTO proxy_live_backup (app_type, provider_id, original_config) VALUES ('claude_code', 'route', '{}');").unwrap();
+        let db = Database {
+            conn: Mutex::new(conn),
+        };
+        db.create_tables().unwrap();
+        db.create_tables().unwrap();
+        let backup = db.get_live_backup("claude_code").unwrap().unwrap();
+        assert!(backup.takeover_env.is_none());
+        assert_eq!(backup.original_config, "{}");
+        let env = serde_json::json!({"CLAUDE_CODE_AUTO_MODE_SERVER": "0"})
+            .as_object()
+            .unwrap()
+            .clone();
+        db.save_live_backup_with_takeover("claude_code", "route", "{}", Some(&env))
+            .unwrap();
+        assert_eq!(
+            db.get_live_backup("claude_code")
+                .unwrap()
+                .unwrap()
+                .takeover_env,
+            Some(env)
+        );
     }
 }

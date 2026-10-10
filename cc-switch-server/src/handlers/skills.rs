@@ -357,6 +357,7 @@ mod tests {
 
     #[tokio::test]
     async fn restores_deleted_records_preserves_disabled_state_and_reports_partial_failure() {
+        let _env = crate::state::TEST_ENV_LOCK.lock().await;
         let home = TestHome {
             path: std::env::temp_dir()
                 .join(format!("cc-skill-recovery-test-{}", rand::random::<u64>())),

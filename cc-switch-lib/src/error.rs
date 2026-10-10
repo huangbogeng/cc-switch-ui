@@ -6,6 +6,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
+    #[error("{0}")]
+    ProviderInUse(String),
     #[error("Configuration changed externally; retry the operation: {path}")]
     Conflict { path: String },
     #[error("配置错误: {0}")]

@@ -89,6 +89,7 @@ pub async fn save_provider(
     State(state): State<Arc<AppState>>,
     Json(mut provider): Json<Provider>,
 ) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!(
         "[Providers] save_provider requested id={} name={}",
         provider.id,
@@ -119,6 +120,7 @@ pub async fn update_provider(
     Path(id): Path<String>,
     Json(mut provider): Json<Provider>,
 ) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!(
         "[Providers] update_provider requested path_id={} payload_id={}",
         id,
@@ -152,19 +154,17 @@ pub async fn delete_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!("[Providers] delete_provider requested id={}", id);
 
-    // Clear stale references before deleting so the deleted provider
-    // doesn't leave dangling current/target pointers.
-    if let Ok(Some(current_id)) = state.db.get_current_provider_id(APP_TYPE) {
-        if current_id == id {
-            let _ = state.db.set_current_provider("", APP_TYPE);
-        }
-    }
-    if let Ok(Some(target_id)) = state.db.get_proxy_target_provider_id() {
-        if target_id == id {
-            let _ = state.db.set_proxy_target_provider_id("");
-        }
+    let app_type: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
+    match cc_switch_lib::settings::get_effective_current_provider(&state.db, &app_type) {
+        Ok(Some(current)) if current == id => return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "Select another direct provider before deleting this provider."})),
+        ).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+        _ => {}
     }
 
     match state.db.delete_provider(&id, APP_TYPE) {
@@ -172,6 +172,11 @@ pub async fn delete_provider(
             log::info!("[Providers] delete_provider success id={}", id);
             Json(serde_json::json!({ "success": true })).into_response()
         }
+        Err(cc_switch_lib::error::AppError::ProviderInUse(message)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": message})),
+        )
+            .into_response(),
         Err(e) => {
             log::error!("Failed to delete provider: {}", e);
             (
@@ -187,6 +192,7 @@ pub async fn switch_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!("[Providers] switch_provider requested id={}", id);
 
     let app_type = APP_TYPE;
@@ -221,7 +227,10 @@ pub async fn switch_provider(
         }
     };
 
-    let takeover_active = (backup.is_some() || live_taken_over) && proxy_running;
+    let takeover_active = proxy_running;
+    if !proxy_running && backup.is_some() && live_taken_over {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({"error": "The previous route was interrupted. Stop the local route to restore direct config before switching."}))).into_response();
+    }
     let mut warnings: Vec<String> = Vec::new();
 
     // Always update current-provider state. During route takeover we intentionally
@@ -243,7 +252,19 @@ pub async fn switch_provider(
         // switch, while one left untouched is removed.
         let mut previous_env: Option<serde_json::Map<String, serde_json::Value>> = None;
         let app_type_enum: AppType = APP_TYPE.parse().unwrap_or(AppType::ClaudeCode);
-        let current_id = cc_switch_lib::settings::get_current_provider(&app_type_enum);
+        let current_id = match cc_switch_lib::settings::get_effective_current_provider(
+            &state.db,
+            &app_type_enum,
+        ) {
+            Ok(id) => id,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+                    .into_response()
+            }
+        };
         if let Some(ref old_id) = current_id {
             if old_id != &id {
                 match state.db.get_provider(old_id, app_type) {
@@ -324,4 +345,137 @@ pub async fn switch_provider(
         "warnings": warnings
     }))
     .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy::handlers::{proxy_start, proxy_stop};
+    use crate::state::{TestHome, TEST_ENV_LOCK};
+    use cc_switch_lib::database::Database;
+    use cc_switch_lib::oauth::{codex::CodexOAuthManager, copilot::CopilotAuthManager};
+    use serde_json::{json, Value};
+
+    async fn body(response: impl IntoResponse) -> (StatusCode, Value) {
+        let response = response.into_response();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 1_000_000)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn deletion_and_route_lifecycle_keep_direct_config_consistent() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        for id in ["direct", "route", "next"] {
+            let provider: Provider = serde_json::from_value(json!({
+                "id": id, "name": id,
+                "settingsConfig": {"env": {"ANTHROPIC_BASE_URL": format!("https://{id}.example"), "ANTHROPIC_AUTH_TOKEN": id}},
+                "meta": {"apiFormat": "anthropic"}
+            })).unwrap();
+            db.save_provider(APP_TYPE, &provider).unwrap();
+        }
+        db.set_current_provider("direct", APP_TYPE).unwrap();
+        // Device selection takes precedence even if the DB flag diverges.
+        cc_switch_lib::settings::set_current_provider(&AppType::ClaudeCode, Some("next")).unwrap();
+        let occupied = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = occupied.local_addr().unwrap().port();
+        let state = Arc::new(AppState {
+            db: db.clone(),
+            token: "test".into(),
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+            proxy_host: "127.0.0.1".into(),
+            proxy_listen_port: port,
+        });
+        assert_eq!(
+            body(delete_provider(State(state.clone()), Path("next".into())).await)
+                .await
+                .0,
+            StatusCode::CONFLICT
+        );
+        let (_, status) =
+            body(crate::proxy::handlers::proxy_status(State(state.clone())).await).await;
+        assert_eq!(status["active_target_provider_id"], "next");
+        cc_switch_lib::settings::set_current_provider(&AppType::ClaudeCode, None).unwrap();
+        // DB fallback must supply the previous provider for switching/backfill.
+        assert_eq!(
+            body(switch_provider(State(state.clone()), Path("next".into())).await)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        db.set_proxy_target_provider_id("route").unwrap();
+        assert_eq!(
+            body(delete_provider(State(state.clone()), Path("route".into())).await)
+                .await
+                .0,
+            StatusCode::CONFLICT
+        );
+        let path = live::get_live_settings_path();
+        let before = std::fs::read(&path).unwrap();
+        let (_, failed) = body(proxy_start(State(state.clone())).await).await;
+        assert_eq!(failed["success"], false);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(db.get_live_backup(APP_TYPE).unwrap().is_none());
+        drop(occupied);
+        let (_, started) = body(proxy_start(State(state.clone())).await).await;
+        assert_eq!(started["success"], true, "{started}");
+        let takeover = std::fs::read(&path).unwrap();
+        assert_eq!(
+            body(switch_provider(State(state.clone()), Path("direct".into())).await)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), takeover);
+        assert_eq!(
+            db.get_proxy_target_provider_id().unwrap().as_deref(),
+            Some("route")
+        );
+        cc_switch_lib::config::update_json_file(&path, |value| {
+            value["env"]["API_TIMEOUT_MS"] = json!("12345");
+            value["permissions"] = json!({"allow": ["Read"]});
+            Ok(())
+        })
+        .unwrap();
+        // Simulate a server restart: only the persisted takeover snapshot remains.
+        let server = state.proxy_server.write().await.take().unwrap();
+        server.stop().await.unwrap();
+        let (_, status) =
+            body(crate::proxy::handlers::proxy_status(State(state.clone())).await).await;
+        assert_eq!(status["recovery_required"], true);
+        let (_, stopped) = body(proxy_stop(State(state.clone())).await).await;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        let restored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(restored["env"]["ANTHROPIC_AUTH_TOKEN"], "direct");
+        assert_eq!(restored["env"]["API_TIMEOUT_MS"], "12345");
+        assert_eq!(restored["permissions"]["allow"], json!(["Read"]));
+        assert!(db.get_live_backup(APP_TYPE).unwrap().is_none());
+        let before = std::fs::read(&path).unwrap();
+        body(proxy_stop(State(state.clone())).await).await;
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        std::fs::write(&path, "invalid JSON").unwrap();
+        let (_, failed) = body(proxy_start(State(state.clone())).await).await;
+        assert_eq!(failed["success"], false);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "invalid JSON");
+        assert!(state.proxy_server.read().await.is_none());
+        assert!(db.get_live_backup(APP_TYPE).unwrap().is_none());
+        // No direct selection: recover the original owned fields from the backup.
+        cc_switch_lib::settings::set_current_provider(&AppType::ClaudeCode, None).unwrap();
+        db.set_current_provider("", APP_TYPE).unwrap();
+        std::fs::write(&path, r#"{"env":{"ANTHROPIC_BASE_URL":"https://before.example","ANTHROPIC_AUTH_TOKEN":"before","API_TIMEOUT_MS":"99"}}"#).unwrap();
+        let (_, started) = body(proxy_start(State(state.clone())).await).await;
+        assert_eq!(started["success"], true, "{started}");
+        let (_, stopped) = body(proxy_stop(State(state.clone())).await).await;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        let restored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(restored["env"]["ANTHROPIC_AUTH_TOKEN"], "before");
+        assert_eq!(restored["env"]["API_TIMEOUT_MS"], "99");
+        assert_eq!(restored["env"].get("CLAUDE_CODE_AUTO_MODE_SERVER"), None);
+    }
 }

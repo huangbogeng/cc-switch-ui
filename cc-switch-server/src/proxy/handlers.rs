@@ -22,6 +22,7 @@ pub struct SetProxyTargetRequest {
 }
 
 pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!("[ProxyAPI] proxy_start requested");
     if state.proxy_server.read().await.is_some() {
         return Json(serde_json::json!({"success": false, "error": "Proxy already running"}))
@@ -93,36 +94,52 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     let provider_id = target_provider.id.clone();
     let db = state.db.clone();
 
-    // Save backup of original live config before overwriting, so we can
-    // restore it when the proxy is stopped or the server crashes.
-    if let Ok(raw) = std::fs::read_to_string(cc_switch_lib::live::get_live_settings_path()) {
-        if let Err(e) = state.db.save_live_backup(APP_TYPE, &provider_id, &raw) {
-            log::warn!("[ProxyAPI] failed to save live backup: {}", e);
-        } else {
-            log::info!(
-                "[ProxyAPI] saved live backup for provider_id={}",
-                provider_id
-            );
-        }
+    if state.db.get_live_backup(APP_TYPE).ok().flatten().is_some()
+        && live::detect_takeover_in_live_config()
+    {
+        return Json(serde_json::json!({"success": false, "error": "The previous route was interrupted. Restore direct config before starting again."})).into_response();
+    }
+    let original = match std::fs::read_to_string(live::get_live_settings_path()) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => "{}".into(),
+        Err(e) => return Json(serde_json::json!({"success": false, "error": format!("Cannot back up live config: {e}")})).into_response(),
+    };
+    // Bind first: a busy port must never leave live config pointing at a dead listener.
+    if let Err(e) = server
+        .start(registry, account_id, db, provider_id.clone(), APP_TYPE)
+        .await
+    {
+        return Json(serde_json::json!({"success": false, "error": e})).into_response();
+    }
+    let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
+    server.takeover_env = live_settings.get("env").and_then(Value::as_object).cloned();
+    if let Err(e) = state.db.save_live_backup_with_takeover(
+        APP_TYPE,
+        &provider_id,
+        &original,
+        server.takeover_env.as_ref(),
+    ) {
+        let _ = server.stop().await;
+        return Json(serde_json::json!({"success": false, "error": format!("Cannot save route backup: {e}")})).into_response();
     }
 
     // Exclusive-key cleanup reference: the provider record that last wrote the
     // live config before takeover (the current direct provider). Its exclusive
     // keys are removed on takeover only if the user never edited them.
-    let previous_env = state
-        .db
-        .get_current_provider_id(APP_TYPE)
-        .ok()
-        .flatten()
-        .and_then(|pid| state.db.get_provider(&pid, APP_TYPE).ok().flatten())
-        .and_then(|p| {
-            p.settings_config
-                .get("env")
-                .and_then(|v| v.as_object())
-                .cloned()
-        });
+    let previous_env = cc_switch_lib::settings::get_effective_current_provider(
+        &state.db,
+        &cc_switch_lib::providers::AppType::ClaudeCode,
+    )
+    .ok()
+    .flatten()
+    .and_then(|pid| state.db.get_provider(&pid, APP_TYPE).ok().flatten())
+    .and_then(|p| {
+        p.settings_config
+            .get("env")
+            .and_then(|v| v.as_object())
+            .cloned()
+    });
 
-    let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, true);
     if let Err(e) =
         cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
     {
@@ -131,6 +148,8 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
             target_provider.id,
             e
         );
+        let _ = server.stop().await;
+        let _ = state.db.delete_live_backup(APP_TYPE);
         return Json(serde_json::json!({
             "success": false,
             "error": format!("Failed to apply proxied provider config: {}", e)
@@ -141,51 +160,44 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
     // change (or be edited) while running, so it cannot reconstruct this later.
     server.takeover_env = live_settings.get("env").and_then(Value::as_object).cloned();
     if let Err(msg) = ensure_live_base_url_is_proxy(state.proxy_listen_port) {
-        log::error!(
-            "[ProxyAPI] proxy_start live settings verification failed: {}",
-            msg
-        );
-        return Json(serde_json::json!({
-            "success": false,
-            "error": format!("Live settings mismatch after proxy start: {}", msg)
-        }))
-        .into_response();
-    }
-
-    match server
-        .start(registry, account_id, db, provider_id, APP_TYPE)
-        .await
-    {
-        Ok(_actual_addr) => {
+        let restored = serde_json::from_str::<Value>(&original)
+            .map_err(|e| e.to_string())
+            .and_then(|original| {
+                live::apply_provider_to_live(&original, server.takeover_env.as_ref())
+                    .map_err(|e| e.to_string())
+            });
+        if restored.is_ok() {
+            let _ = server.stop().await;
+            let _ = state.db.delete_live_backup(APP_TYPE);
+        } else {
+            // Keep a usable listener and the backup until the user retries Stop.
             *state.proxy_server.write().await = Some(server);
-            log::info!(
-                "[ProxyAPI] proxy_start success listen_port={} provider_id={}",
-                listen_port,
-                target_provider.id
-            );
-            Json(serde_json::json!({"success": true, "listen_addr": format!("http://{}:{}", state.proxy_host, listen_port), "message": "Proxy started"})).into_response()
         }
-        Err(e) => {
-            log::error!("[ProxyAPI] proxy_start failed: {}", e);
-            Json(serde_json::json!({"success": false, "error": e})).into_response()
-        }
+        return Json(serde_json::json!({"success": false, "error": format!("Live settings mismatch: {msg}. Restore result: {restored:?}")})).into_response();
     }
+    *state.proxy_server.write().await = Some(server);
+    Json(serde_json::json!({"success": true, "listen_addr": format!("http://{}:{}", state.proxy_host, listen_port), "message": "Proxy started"})).into_response()
 }
 
 pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!("[ProxyAPI] proxy_stop requested");
-    let target_provider = match get_active_target_provider(&state) {
-        Ok(Some(provider)) => provider,
-        Ok(None) => {
-            return Json(serde_json::json!({
-                "success": false,
-                "error": "No route target selected. Choose a provider route first."
-            }))
-            .into_response();
-        }
+    let backup = match state.db.get_live_backup(APP_TYPE) {
+        Ok(backup) => backup,
         Err(e) => {
             return Json(serde_json::json!({"success": false, "error": e.to_string()}))
-                .into_response();
+                .into_response()
+        }
+    };
+    if state.proxy_server.read().await.is_none() && backup.is_none() {
+        return Json(serde_json::json!({"success": true, "message": "Proxy already stopped"}))
+            .into_response();
+    }
+    let live_settings = match direct_settings_for_stop(&state.db, state.proxy_listen_port) {
+        Ok(settings) => settings,
+        Err(e) => {
+            return Json(serde_json::json!({"success": false, "error": e.to_string()}))
+                .into_response()
         }
     };
 
@@ -194,13 +206,9 @@ pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse
         .read()
         .await
         .as_ref()
-        .and_then(|server| server.takeover_env.clone());
+        .and_then(|server| server.takeover_env.clone())
+        .or_else(|| backup.and_then(|backup| backup.takeover_env));
 
-    let live_settings = live::settings_for_live(&target_provider, state.proxy_listen_port, false);
-    log::info!(
-        "[ProxyAPI] proxy_stop restoring live settings for provider_id={}",
-        target_provider.id
-    );
     if let Err(e) =
         cc_switch_lib::live::apply_provider_to_live(&live_settings, previous_env.as_ref())
     {
@@ -245,6 +253,7 @@ pub async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoRespon
     );
     Json(serde_json::json!({
         "running": running,
+        "recovery_required": !running && state.db.get_live_backup(APP_TYPE).ok().flatten().is_some(),
         "listen_addr": if running { Some(format!("http://{}:{}", state.proxy_host, state.proxy_listen_port)) } else { None },
         "upstream_url": CODEX_RESPONSES_UPSTREAM,
         "http_proxy_url": global_http_proxy_url(&state),
@@ -270,6 +279,7 @@ pub async fn proxy_set_target(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<SetProxyTargetRequest>,
 ) -> impl IntoResponse {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
     log::info!(
         "[ProxyAPI] proxy_set_target requested provider_id={}",
         payload.provider_id
@@ -351,13 +361,39 @@ pub async fn proxy_set_target(
     }
 }
 
+fn direct_settings_for_stop(
+    db: &cc_switch_lib::database::Database,
+    port: u16,
+) -> Result<Value, cc_switch_lib::error::AppError> {
+    let app_type = cc_switch_lib::providers::AppType::ClaudeCode;
+    if let Some(id) = cc_switch_lib::settings::get_effective_current_provider(db, &app_type)? {
+        if let Some(provider) = db.get_provider(&id, APP_TYPE)? {
+            return Ok(live::settings_for_live(&provider, port, false));
+        }
+    }
+    // A route can start without a direct selection. Restore its original owned
+    // fields, while apply_provider_to_live keeps user edits in the live file.
+    if let Some(backup) = db.get_live_backup(APP_TYPE)? {
+        return serde_json::from_str(&backup.original_config).map_err(|e| {
+            cc_switch_lib::error::AppError::Config(format!("Invalid route backup: {e}"))
+        });
+    }
+    Err(cc_switch_lib::error::AppError::Config(
+        "No direct provider or route backup available; choose a direct provider before stopping."
+            .into(),
+    ))
+}
+
 fn get_active_target_provider(
     state: &AppState,
 ) -> Result<Option<Provider>, cc_switch_lib::error::AppError> {
-    let target_id = state
-        .db
-        .get_proxy_target_provider_id()?
-        .or(state.db.get_current_provider_id(APP_TYPE)?);
+    let target_id = match state.db.get_proxy_target_provider_id()? {
+        Some(id) => Some(id),
+        None => cc_switch_lib::settings::get_effective_current_provider(
+            &state.db,
+            &cc_switch_lib::providers::AppType::ClaudeCode,
+        )?,
+    };
     match target_id {
         Some(id) => state.db.get_provider(&id, APP_TYPE),
         None => Ok(None),
