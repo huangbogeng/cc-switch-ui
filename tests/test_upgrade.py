@@ -272,6 +272,65 @@ else:
             server.server_close()
             thread.join()
 
+    def install_update_capable_cli(self):
+        replacement = self.install / 'cc-switch-ui.new'
+        shutil.copy2(NEW, replacement)
+        replacement.replace(self.install / 'cc-switch-ui')
+
+    def run_update(self, force=False):
+        command = [str(self.install / 'cc-switch-ui'), 'update']
+        if force:
+            command.append('--force')
+        return subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=40)
+
+    def test_update_command_skips_latest_without_mutating_program_or_data(self):
+        self.install_update_capable_cli()
+        original = self.db.read_bytes()
+        program = (self.install / 'cc-switch-ui').read_bytes()
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Already up to date', result.stdout)
+        self.assertEqual(self.db.read_bytes(), original)
+        self.assertEqual((self.install / 'cc-switch-ui').read_bytes(), program)
+        self.assertFalse((self.home / 'cc-switch-upgrade-backups').exists())
+
+    def test_updater_never_downgrades_a_newer_installed_version(self):
+        self.env['CC_SWITCH_CURRENT_VERSION'] = '99.0.0'
+        self.env['CC_SWITCH_UPDATE_FORCE'] = '1'
+        original = self.db.read_bytes()
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('no downgrade performed', result.stdout)
+        self.assertEqual(self.db.read_bytes(), original)
+        self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
+
+    def test_update_command_force_reuses_verified_installer_and_preserves_running_service(self):
+        self.start_old()
+        self.install_update_capable_cli()
+        result = self.run_update(force=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.wait_health()
+        self.assert_data(4)
+        self.assertEqual((self.install / 'dist/index.html').read_text(), 'new frontend')
+
+    def test_update_command_propagates_failure_and_restores_idle_installation(self):
+        self.install_update_capable_cli()
+        self.package(failing=True)
+        program_hash = hashlib.sha256((self.install / 'cc-switch-ui').read_bytes()).digest()
+        result = self.run_update(force=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_data(3)
+        self.assertEqual(hashlib.sha256((self.install / 'cc-switch-ui').read_bytes()).digest(), program_hash)
+        self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
+
+    def test_update_command_rejects_source_build_directory(self):
+        self.install_update_capable_cli()
+        shutil.rmtree(self.install / 'dist')
+        result = self.run_update()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('source build directories cannot be updated', result.stderr)
+        self.assert_data(3)
+
     def test_profile_upgrade_lock_blocks_other_installations_without_modification(self):
         lock = self.home / '.cc-switch.upgrade-lock'
         lock.mkdir()

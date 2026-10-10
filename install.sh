@@ -128,6 +128,27 @@ case "$PLATFORM-$ARCH" in
 esac
 VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Cannot determine stable release version'
+# A stable-channel update must never silently downgrade a newer installed version.
+CURRENT_CORE="${CC_SWITCH_CURRENT_VERSION:-}"
+CURRENT_CORE="${CURRENT_CORE%%-*}"
+CURRENT_CORE="${CURRENT_CORE%%+*}"
+if [[ "$CURRENT_CORE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    IFS=. read -r -a CURRENT_PARTS <<< "$CURRENT_CORE"
+    IFS=. read -r -a RELEASE_PARTS <<< "${VERSION#v}"
+    for index in 0 1 2; do
+        if (( 10#${RELEASE_PARTS[$index]} < 10#${CURRENT_PARTS[$index]} )); then
+            COMPLETE=1
+            echo "Installed version ${CC_SWITCH_CURRENT_VERSION} is newer than stable $VERSION; no downgrade performed."
+            exit 0
+        fi
+        if (( 10#${RELEASE_PARTS[$index]} > 10#${CURRENT_PARTS[$index]} )); then break; fi
+    done
+fi
+if [ "${CC_SWITCH_CURRENT_VERSION:-}" = "${VERSION#v}" ] && [ "${CC_SWITCH_UPDATE_FORCE:-0}" != 1 ]; then
+    COMPLETE=1
+    echo "Already up to date ($VERSION)."
+    exit 0
+fi
 FILENAME="cc-switch-ui-$DEST.tar.gz"
 URL="https://github.com/$REPO/releases/download/$VERSION/$FILENAME"
 echo "Downloading $VERSION ($DEST)..."
