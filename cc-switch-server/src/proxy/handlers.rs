@@ -23,6 +23,9 @@ pub struct SetProxyTargetRequest {
 
 pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    if let Err(error) = cc_switch_lib::provider_operations::recover(&state.db) {
+        return Json(serde_json::json!({"success": false, "error": error.to_string(), "recovery_required": true})).into_response();
+    }
     log::info!("[ProxyAPI] proxy_start requested");
     if state.proxy_server.read().await.is_some() {
         return Json(serde_json::json!({"success": false, "error": "Proxy already running"}))
@@ -181,6 +184,9 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
 
 pub async fn proxy_stop(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    if let Err(error) = cc_switch_lib::provider_operations::recover(&state.db) {
+        return Json(serde_json::json!({"success": false, "error": error.to_string(), "recovery_required": true})).into_response();
+    }
     log::info!("[ProxyAPI] proxy_stop requested");
     let backup = match state.db.get_live_backup(APP_TYPE) {
         Ok(backup) => backup,
@@ -280,6 +286,9 @@ pub async fn proxy_set_target(
     Json(payload): Json<SetProxyTargetRequest>,
 ) -> impl IntoResponse {
     let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    if let Err(error) = cc_switch_lib::provider_operations::recover(&state.db) {
+        return Json(serde_json::json!({"success": false, "error": error.to_string(), "recovery_required": true})).into_response();
+    }
     log::info!(
         "[ProxyAPI] proxy_set_target requested provider_id={}",
         payload.provider_id

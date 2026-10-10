@@ -299,8 +299,60 @@ pub fn apply_provider_to_live(
     Ok(())
 }
 
+/// Three-way editor merge: unchanged fields retain live edits; conflicting
+/// changes to the same owned field require the user to reload the editor.
+pub(crate) fn merge_provider_edit(
+    current: &mut Value,
+    desired: &Value,
+    base: &Value,
+) -> Result<(), AppError> {
+    let desired = sanitize_claude_settings_for_live(desired);
+    let base = sanitize_claude_settings_for_live(base);
+    let empty = Map::new();
+    let desired_env = desired
+        .get("env")
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
+    let base_env = base.get("env").and_then(Value::as_object).unwrap_or(&empty);
+    let root = current
+        .as_object_mut()
+        .ok_or_else(|| AppError::Config("Live settings must be a JSON object".into()))?;
+    let env = root
+        .entry("env")
+        .or_insert_with(|| Value::Object(Map::new()));
+    let env = env
+        .as_object_mut()
+        .ok_or_else(|| AppError::Config("Live env must be a JSON object".into()))?;
+    let keys: std::collections::BTreeSet<_> = desired_env
+        .keys()
+        .chain(base_env.keys())
+        .filter(|key| floor::claude_owned_env(key))
+        .collect();
+    for key in keys {
+        let before = base_env.get(key);
+        let after = desired_env.get(key);
+        if before == after {
+            continue;
+        }
+        if env.get(key) != before && env.get(key) != after {
+            return Err(AppError::Conflict {
+                path: format!("live field {key}; reconcile the external edit before retrying"),
+            });
+        }
+        match after {
+            Some(value) => {
+                env.insert(key.clone(), value.clone());
+            }
+            None => {
+                env.remove(key);
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
     use std::sync::{Mutex, OnceLock};
@@ -311,11 +363,11 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    pub(super) fn acquire_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    pub(crate) fn acquire_env_lock() -> std::sync::MutexGuard<'static, ()> {
         env_lock().lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub(super) fn setup_test_home() -> std::path::PathBuf {
+    pub(crate) fn setup_test_home() -> std::path::PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time")
@@ -331,7 +383,7 @@ mod tests {
         test_home
     }
 
-    pub(super) fn cleanup(test_home: std::path::PathBuf) {
+    pub(crate) fn cleanup(test_home: std::path::PathBuf) {
         unsafe {
             std::env::remove_var("CC_SWITCH_TEST_HOME");
         }
