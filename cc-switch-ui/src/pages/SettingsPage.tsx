@@ -17,6 +17,7 @@ import {
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { errorMessage } from '@/lib/errors';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 export default function SettingsPage() {
   const cachedPort = cacheGet<number>('settings-proxy-port');
@@ -41,10 +42,19 @@ export default function SettingsPage() {
   const [savingPort, setSavingPort] = useState(false);
   const [savingOutbound, setSavingOutbound] = useState(false);
 
+  const [savedPort, setSavedPort] = useState(cachedPort ?? 15721);
+  const [savedOutbound, setSavedOutbound] = useState(JSON.stringify(outboundProxy));
+  useUnsavedChanges(
+    (!portLoading && proxyPort !== savedPort)
+      || (!outboundLoading && JSON.stringify(outboundProxy) !== savedOutbound),
+    savingPort || savingOutbound,
+  );
+
   const loadProxyPort = useCallback(async (signal?: AbortSignal) => {
     try {
       const data = await getProxyPort({ signal });
       setProxyPortState(data.port);
+      setSavedPort(data.port);
       cacheSet('settings-proxy-port', data.port);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -58,6 +68,7 @@ export default function SettingsPage() {
     try {
       const config = await getProxyConfig({ signal });
       setOutboundProxy(config);
+      setSavedOutbound(JSON.stringify(config));
       cacheSet('settings-outbound-proxy', config);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -84,6 +95,7 @@ export default function SettingsPage() {
     setSavingPort(true);
     try {
       await setProxyPort(proxyPort);
+      setSavedPort(proxyPort);
       cacheSet('settings-proxy-port', proxyPort);
       setPortSaved(true);
       setTimeout(() => setPortSaved(false), 2000);
@@ -107,6 +119,7 @@ export default function SettingsPage() {
     setSavingOutbound(true);
     try {
       await setProxyConfig(outboundProxy);
+      setSavedOutbound(JSON.stringify(outboundProxy));
       cacheSet('settings-outbound-proxy', outboundProxy);
       setOutboundSaved(true);
       setTimeout(() => setOutboundSaved(false), 2000);
@@ -129,6 +142,7 @@ export default function SettingsPage() {
         port: 10809,
       };
       setOutboundProxy(resetConfig);
+      setSavedOutbound(JSON.stringify(resetConfig));
       cacheSet('settings-outbound-proxy', resetConfig);
       setOutboundSaved(true);
       setTimeout(() => setOutboundSaved(false), 2000);
@@ -151,7 +165,7 @@ export default function SettingsPage() {
           <Card className="border-white/5 bg-card/40 hover:bg-card/60 transition-colors duration-300">
             <CardHeader className="border-b border-white/5 bg-black/10 pb-4">
               <CardTitle className="text-[15px] font-bold tracking-tight">Local Route Port</CardTitle>
-              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the local Claude Code endpoint port.</p>
+              <p className="text-xs font-medium text-muted-foreground/80 mt-1.5">Set the local Claude Code endpoint port. Restart the CC Switch server after saving to apply a new port.</p>
             </CardHeader>
             <CardContent className="space-y-5 pt-6">
               {portError && (

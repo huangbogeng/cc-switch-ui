@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Package, Download, Search } from 'lucide-react';
 import {
+  ApiError,
   listSkills,
   deleteSkill,
   syncSkills,
@@ -75,7 +76,7 @@ export default function SkillsPage() {
   const isSearching = searchQuery.trim().length > 0;
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this skill?')) return;
+    if (!confirm('Delete this managed skill? Its live directory will be backed up; source files are retained.')) return;
     try {
       setPendingSkillId(id);
       setError('');
@@ -127,6 +128,7 @@ export default function SkillsPage() {
       setError('');
       setNotice('');
       const res = await toggleSkill(skill.id);
+      setNotice('Skill state saved and synced to Claude Code.');
       setSkills((prev) => {
         const next = prev.map((item) =>
           item.id === skill.id ? { ...item, enabled: res.enabled } : item,
@@ -135,11 +137,12 @@ export default function SkillsPage() {
         return next;
       });
     } catch (e) {
+      if (e instanceof ApiError && e.saved) await loadSkills();
       setError(e instanceof Error ? e.message : 'Toggle failed');
     } finally {
       setPendingSkillId(null);
     }
-  }, []);
+  }, [loadSkills]);
 
   if (loading) {
     return (
@@ -154,7 +157,7 @@ export default function SkillsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Skills"
-        description="Skills synced to ~/.claude/skills/"
+        description="Save and enable/disable apply managed skills to Claude Code. Retry Sync after an application error."
         action={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5" disabled={importing || syncing || pendingSkillId !== null}>

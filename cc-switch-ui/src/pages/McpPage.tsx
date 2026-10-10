@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, RefreshCw, Trash2, Server, Download, Pencil } from 'lucide-react';
 import {
+  ApiError,
   listMcpServers,
   saveMcpServer,
   deleteMcpServer,
@@ -18,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cacheGet, cacheSet } from '@/lib/fetchCache';
 import { ErrorAlert } from '@/components/ErrorAlert';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 function emptyForm(): McpServer {
   return {
@@ -42,6 +44,9 @@ export default function McpPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [baseline, setBaseline] = useState('');
+  const draft = JSON.stringify([form, specText]);
+  const canDiscard = useUnsavedChanges(showForm && draft !== baseline, saving || pendingAction !== null);
 
   const loadServers = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -90,12 +95,18 @@ export default function McpPage() {
       };
 
       await saveMcpServer(server);
+      setError('');
+      setNotice('MCP server saved and synced to Claude Code.');
       setShowForm(false);
       setForm(emptyForm());
       setSpecText('');
       setEditingId(null);
       await loadServers();
     } catch (e) {
+      if (e instanceof ApiError && e.saved) {
+        setBaseline(draft);
+        await loadServers();
+      }
       setFormError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
@@ -103,7 +114,7 @@ export default function McpPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this MCP server?')) return;
+    if (!confirm('Delete this managed MCP server and remove it from Claude Code?')) return;
     try {
       setPendingAction(`delete:${id}`);
       setError('');
@@ -154,6 +165,7 @@ export default function McpPage() {
       setError('');
       setNotice('');
       const res = await toggleMcpServer(srv.id);
+      setNotice('MCP server state saved and synced to Claude Code.');
       setServers((prev) => {
         const next = prev.map((server) =>
           server.id === srv.id ? { ...server, enabled: res.enabled } : server,
@@ -162,6 +174,7 @@ export default function McpPage() {
         return next;
       });
     } catch (e) {
+      if (e instanceof ApiError && e.saved) await loadServers();
       setError(e instanceof Error ? e.message : 'Toggle failed');
     } finally {
       setPendingAction(null);
@@ -169,16 +182,23 @@ export default function McpPage() {
   };
 
   const openCreate = () => {
-    setForm(emptyForm());
-    setSpecText(JSON.stringify({ command: '', args: [] }, null, 2));
+    if (showForm && !canDiscard()) return;
+    const nextForm = emptyForm();
+    const nextSpec = JSON.stringify(nextForm.serverSpec, null, 2);
+    setBaseline(JSON.stringify([nextForm, nextSpec]));
+    setForm(nextForm);
+    setSpecText(nextSpec);
     setFormError('');
     setEditingId(null);
     setShowForm(true);
   };
 
   const openEdit = (server: McpServer) => {
+    if (showForm && !canDiscard()) return;
+    const nextSpec = JSON.stringify(server.serverSpec, null, 2);
+    setBaseline(JSON.stringify([server, nextSpec]));
     setForm(server);
-    setSpecText(JSON.stringify(server.serverSpec, null, 2));
+    setSpecText(nextSpec);
     setFormError('');
     setEditingId(server.id);
     setShowForm(true);
@@ -197,13 +217,13 @@ export default function McpPage() {
     <div className="space-y-6">
       <PageHeader
         title="MCP Servers"
-        description="MCP server configs synced to ~/.claude.json"
+        description="Save and enable/disable apply managed servers to Claude Code. Retry Sync after an application error."
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleImport} disabled={pendingAction !== null} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={handleImport} disabled={pendingAction !== null || saving} className="gap-1.5">
               <Download className="h-3.5 w-3.5" /> {pendingAction === 'import' ? 'Importing...' : 'Import'}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={pendingAction !== null} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={pendingAction !== null || saving} className="gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" /> {pendingAction === 'sync' ? 'Syncing...' : 'Sync'}
             </Button>
             <Button size="sm" onClick={openCreate} disabled={pendingAction !== null || saving} className="gap-1.5">
@@ -234,7 +254,7 @@ export default function McpPage() {
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-sm">{srv.name || srv.id}</span>
-                    <button aria-label={`${srv.enabled ? 'Disable' : 'Enable'} ${srv.name || srv.id}`} disabled={pendingAction !== null} onClick={() => handleToggle(srv)} className="cursor-pointer">
+                    <button aria-label={`${srv.enabled ? 'Disable' : 'Enable'} ${srv.name || srv.id}`} disabled={pendingAction !== null || saving} onClick={() => handleToggle(srv)} className="cursor-pointer">
                       <Badge variant={srv.enabled ? 'default' : 'outline'} className="text-[10px] px-1.5 py-0 hover:opacity-80">
                         {srv.enabled ? 'enabled' : 'disabled'}
                       </Badge>
@@ -248,7 +268,7 @@ export default function McpPage() {
                     variant="ghost"
                     size="icon"
                     onClick={() => openEdit(srv)}
-                    disabled={pendingAction !== null}
+                    disabled={pendingAction !== null || saving}
                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
                   >
                     <Pencil className="h-4 w-4" />
@@ -258,7 +278,7 @@ export default function McpPage() {
                     variant="ghost"
                     size="icon"
                     onClick={() => handleDelete(srv.id)}
-                    disabled={pendingAction !== null}
+                    disabled={pendingAction !== null || saving}
                     className="h-8 w-8 text-muted-foreground hover:text-red-400"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -280,13 +300,14 @@ export default function McpPage() {
                 placeholder="e.g. context7"
                 value={form.id}
                 onChange={(e) => setForm({ ...form, id: e.target.value })}
-                disabled={editingId !== null}
+                disabled={editingId !== null || saving || pendingAction !== null}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="mcp-name">Name</Label>
               <Input
                 id="mcp-name"
+                disabled={saving || pendingAction !== null}
                 placeholder="e.g. Context7"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -296,6 +317,7 @@ export default function McpPage() {
               <Label htmlFor="mcp-spec">Server Spec (JSON)</Label>
               <Textarea
                 id="mcp-spec"
+                disabled={saving || pendingAction !== null}
                 placeholder='{"command":"npx","args":["-y","@upstash/context7-mcp"]}'
                 value={specText}
                 onChange={(e) => setSpecText(e.target.value)}
@@ -306,8 +328,8 @@ export default function McpPage() {
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</div>
             )}
             <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button>
-              <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Button variant="ghost" size="sm" onClick={() => { if (canDiscard()) setShowForm(false); }} disabled={saving}>Cancel</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving || pendingAction !== null}>
                 {saving ? 'Saving...' : 'Save'}
               </Button>
             </div>
