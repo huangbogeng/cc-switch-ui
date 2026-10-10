@@ -24,3 +24,16 @@ it('refreshes saved records but retains the editor when applying a skill fails',
   expect(close).not.toHaveBeenCalled();
   expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Edited');
 });
+it('refreshes observed records after a lost save response while retaining the draft', async () => {
+  const refreshed = vi.fn();
+  const close = vi.fn();
+  vi.mocked(saveSkill).mockRejectedValue(new Error('Save response lost'));
+  render(<SkillFormDialog open onClose={close} onSaved={refreshed} initialSkill={{ id: 'test', name: 'Test', directory: 'test', appType: 'claude_code', enabled: true, installedAt: 0 }} />);
+  await userEvent.clear(screen.getByLabelText('Name'));
+  await userEvent.type(screen.getByLabelText('Name'), 'My draft');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByText('Save response lost');
+  expect(refreshed).toHaveBeenCalledOnce();
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Name')).toHaveProperty('value', 'My draft');
+});

@@ -36,3 +36,26 @@ it('restores only selected removed items and explains disabled restoration', asy
   await userEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
   expect(apply).toHaveBeenCalledExactlyOnceWith(['two']); expect(listImportCandidates).not.toHaveBeenCalled();
 });
+it('rescans after discovery fails instead of claiming that no candidates exist', async () => {
+  vi.mocked(listImportCandidates).mockRejectedValueOnce(new Error('Scan unavailable'));
+  render(<ManagedImportDialog kind="skill" mode="Import" onApply={vi.fn()} onClose={vi.fn()} />);
+  await screen.findByText('Items could not be loaded. Use Rescan to retry.');
+  expect(screen.queryByText('No new items to import.')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Rescan' }));
+  await screen.findByRole('checkbox', { name: /One/ });
+  expect(listImportCandidates).toHaveBeenCalledTimes(2);
+});
+it('bounds rendered candidates while selection applies to matching items', async () => {
+  const many = Array.from({ length: 100 }, (_, index) => ({ id: `item-${index}`, name: `Candidate ${index}`, source: 'Claude Code' }));
+  vi.mocked(listImportCandidates).mockResolvedValue({ items: many, report: { success: true, imported: 0, updated: 0, applied: 0, skipped: 0, failed: 0, items: [] } });
+  const apply = vi.fn().mockResolvedValue(undefined);
+  render(<ManagedImportDialog kind="mcp" mode="Import" onApply={apply} onClose={vi.fn()} />);
+  await screen.findByRole('checkbox', { name: /Candidate 0/ });
+  expect(screen.getAllByRole('checkbox')).toHaveLength(80);
+  await userEvent.click(screen.getByRole('button', { name: 'Select matching' }));
+  expect(screen.getByText('100 selected · 100 available')).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Show next 20 items' }));
+  expect(screen.getAllByRole('checkbox')).toHaveLength(100);
+  await userEvent.click(screen.getByRole('button', { name: 'Import selected' }));
+  expect(apply).toHaveBeenCalledWith(many.map(item => item.id));
+});

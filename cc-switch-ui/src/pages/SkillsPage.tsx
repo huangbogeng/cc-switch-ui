@@ -45,6 +45,7 @@ export default function SkillsPage() {
   const { confirmAction, confirmation } = useConfirm();
   const [importMode, setImportMode] = useState<'Import' | 'Restore' | null>(null);
   const [skills, setSkills] = useState<Skill[]>(cached ?? []);
+  const [hasLoaded, setHasLoaded] = useState(cached != null);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,12 +63,15 @@ export default function SkillsPage() {
   const [operation, setOperation] = useState<{ report: OperationReport; action: 'Import' | 'Sync' | 'Restore' } | null>(null);
   const [recovering, setRecovering] = useState(false);
   const operationBusy = pendingCollection !== null || syncing || importing || pendingSkillId !== null || recovering;
-  const busy = operationBusy || hasPendingDeletion;
+  const busy = operationBusy || hasPendingDeletion || !hasLoaded || importMode !== null;
   useUnsavedChanges(false, operationBusy);
 
   const loadSkills = useCallback(async (signal?: AbortSignal) => {
     try {
       const data = await listSkills({ signal });
+      if (signal?.aborted) return false;
+      setHasLoaded(true);
+      setError('');
       setSkills(data.skills);
       cacheSet('skills', data.skills);
       return true;
@@ -146,7 +150,8 @@ export default function SkillsPage() {
       // A lost response can still follow committed imports; refresh observed records.
       const message = e instanceof Error ? e.message : 'Import failed';
       const refreshed = await loadSkills();
-      setError((previous) => refreshed ? message : `${message}. Refresh failed: ${previous}`);
+      setError('');
+      throw new Error(refreshed ? message : `${message}. Refresh failed; rescan before retrying.`, { cause: e });
     } finally { setImporting(false); }
   };
 
@@ -178,24 +183,26 @@ export default function SkillsPage() {
         return next;
       });
     } catch (e) {
-      if (e instanceof ApiError && e.saved) await loadSkills();
-      setError(e instanceof Error ? e.message : 'Toggle failed');
+      await loadSkills();
+      setError(e instanceof ApiError && e.saved ? `${e.message} State is saved; use Sync to retry applying it.` : e instanceof Error ? e.message : 'Toggle failed');
     } finally {
       setPendingSkillId(null);
     }
   }, [loadSkills]);
 
   const handleToggleGroup = useCallback(async (collection: string, enabled: boolean) => {
+    let failure = '';
     setPendingCollection(collection);
     setError(''); setNotice(''); setOperation(null);
     try {
       await setSkillCollectionEnabled(collection, enabled);
       setNotice(`All skills in ${collection} ${enabled ? 'enabled' : 'disabled'} and synced to Claude Code.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Group update failed');
+      failure = e instanceof ApiError && e.saved ? `${e.message} State is saved; use Sync to retry applying it.` : e instanceof Error ? e.message : 'Group update failed';
     } finally {
       // Refresh even after a lost response or a committed state with failed file sync.
       await loadSkills();
+      if (failure) setError(failure);
       setPendingCollection(null);
     }
   }, [loadSkills]);
@@ -251,7 +258,12 @@ export default function SkillsPage() {
       </div>
 
       {isSearching && <p role="status" className="mt-2 text-xs text-muted-foreground">{updatingSearch ? 'Updating results…' : `${filtered.length} matching skills · ${visibleResults.length} loaded`}</p>}
-      {skills.length === 0 ? (
+      {!hasLoaded ? (
+        <Card><CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+          <p className="text-sm text-muted-foreground">Skills could not be loaded.</p>
+          <Button variant="outline" onClick={() => { setLoading(true); void loadSkills(); }}>Retry Skills</Button>
+        </CardContent></Card>
+      ) : skills.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Package className="mb-3 h-10 w-10 text-muted-foreground/40" />

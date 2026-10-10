@@ -73,3 +73,5 @@ The **Usage** page distinguishes local proxy logs from imported Claude Code sess
 ### Skill collection controls
 
 Use the switch beside a collection title to enable or disable every managed skill in that collection. A centered switch and the enabled count indicate a partially enabled group; clicking it enables the whole group. Group controls include members hidden by search or pagination. Individual skill switches remain independent. The group state is saved together and synced once; if file sync fails, the saved state remains visible and Sync can retry it.
+
+For the MCP/Skills action contract and upstream comparison, see [interaction decisions](mcp-skills-design.md).
