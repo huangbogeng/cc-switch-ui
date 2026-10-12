@@ -76,4 +76,10 @@ Use the switch beside a collection title to enable or disable every managed skil
 
 For the MCP/Skills action contract and upstream comparison, see [interaction decisions](mcp-skills-design.md).
 
+On Linux, `update` recognizes running release binaries started through PATH, relative paths, or the bundled command aliases, and preserves argument boundaries when restarting. A PID referring to a different executable is rejected. macOS retains conservative command-path checks.
+
+Claude Code User Settings compares only fields you edited. Unedited fields retain external changes. A conflicting edit offers **Keep external changes** or **Use my changes**; cancelling keeps the draft. If the file changes again during confirmation, review is required again. Provider connection edits retain their existing conflict checks.
+
+In **Claude Code User Settings**, **Preview changes** reads the current live file and shows only the fields that saving would change. It uses the same merge and validation rules as Save. Preview creates no backups and changes no files; Save rechecks concurrent edits. Editing the draft clears the preview. This preview covers the two user settings in this panel.
+
 Use **Settings → Configuration overrides → Check overrides** when a provider change appears ineffective. The read-only check reports supported Claude Code/Codex variable names and sources, never their values. It inspects the server environment and common shell files without executing them. Shell assignments are potential overrides; terminal/client environments can differ. Partial scan failures are listed. Nothing is automatically removed.

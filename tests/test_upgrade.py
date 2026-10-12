@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import sys
 import socket
 import sqlite3
 import subprocess
@@ -173,6 +174,39 @@ else:
         self.wait_health()
         self.assert_data(5)
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux executable identity')
+    def test_path_launched_service_updates_and_preserves_spaced_token(self):
+        self.env['PATH'] = str(self.install) + os.pathsep + self.env['PATH']
+        log = open(self.home / 'old.log', 'w')
+        old = subprocess.Popen(['cc-switch-ui', 'start', '--admin-token', 'token with spaces'], env=self.env, stdout=log, stderr=log)
+        log.close(); self.processes.append(old); self.wait_health()
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.wait_health(); self.assert_data(5)
+        request = urllib.request.Request(f'http://127.0.0.1:{self.port}/api/providers', headers={'Authorization': 'Bearer token with spaces'})
+        with urllib.request.urlopen(request) as response: self.assertEqual(response.status, 200)
+        self.assertIsNotNone(old.poll())
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux executable identity')
+    def test_relative_launch_and_alias_are_recognized_by_executable(self):
+        alias = self.install / 'cc-switch-web'; alias.symlink_to('cc-switch-ui')
+        log = open(self.home / 'old.log', 'w')
+        old = subprocess.Popen(['./cc-switch-web', 'start'], cwd=self.install, env=self.env, stdout=log, stderr=log)
+        log.close(); self.processes.append(old); self.wait_health()
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.wait_health(); self.assert_data(5); self.assertIsNotNone(old.poll())
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux executable identity')
+    def test_forged_installed_argv_does_not_allow_stopping_foreign_process(self):
+        foreign = subprocess.Popen([str(self.install / 'cc-switch-ui'), '60'], executable=shutil.which('sleep'), env=self.env)
+        self.processes.append(foreign)
+        (self.data / 'cc-switch-server.pid').write_text(str(foreign.pid))
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('not from this installation', result.stderr)
+        self.assertIsNone(foreign.poll()); self.assert_data(3)
+
     def test_running_upgrade_preserves_explicit_port_and_login_token(self):
         # Stored defaults deliberately differ from the currently running command.
         (self.data / 'cli.json').write_text(json.dumps({'host': '127.0.0.1', 'port': 1, 'proxy_port': 15721}))
@@ -305,8 +339,9 @@ else:
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
 
     def test_update_command_force_reuses_verified_installer_and_preserves_running_service(self):
-        self.start_old()
+        # The running executable must still belong to the installed inode.
         self.install_update_capable_cli()
+        self.start_old()
         result = self.run_update(force=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.wait_health()

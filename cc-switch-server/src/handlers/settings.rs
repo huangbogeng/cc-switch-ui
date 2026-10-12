@@ -249,15 +249,16 @@ pub struct RestoreUserSettingsRequest {
 fn user_settings_error(error: cc_switch_lib::error::AppError) -> axum::response::Response {
     use cc_switch_lib::error::AppError;
     let status = match &error {
-        AppError::Conflict { .. } => StatusCode::CONFLICT,
+        AppError::Conflict { .. } | AppError::SettingsConflict { .. } => StatusCode::CONFLICT,
         AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     };
-    (
-        status,
-        Json(serde_json::json!({"error": error.to_string()})),
-    )
-        .into_response()
+    let mut body = serde_json::json!({"error": error.to_string()});
+    if let AppError::SettingsConflict { keys, revision } = &error {
+        body["conflictKeys"] = serde_json::json!(keys);
+        body["conflictRevision"] = serde_json::json!(revision);
+    }
+    (status, Json(body)).into_response()
 }
 
 pub async fn get_claude_user_settings() -> axum::response::Response {
@@ -291,6 +292,38 @@ pub async fn save_claude_user_settings(
             user_settings_error(cc_switch_lib::error::AppError::Message(error.to_string()))
         }
     }
+}
+
+pub async fn preview_claude_user_settings(
+    Json(request): Json<cc_switch_lib::live::user_settings::MergeRequest>,
+) -> axum::response::Response {
+    super::file_mutation(move || {
+        use axum::response::IntoResponse;
+        match cc_switch_lib::live::user_settings::preview(
+            &cc_switch_lib::config::get_claude_settings_path(),
+            &request,
+        ) {
+            Ok(preview) => Json(preview).into_response(),
+            Err(error) => user_settings_error(error),
+        }
+    })
+    .await
+}
+
+pub async fn merge_claude_user_settings(
+    Json(request): Json<cc_switch_lib::live::user_settings::MergeRequest>,
+) -> axum::response::Response {
+    super::file_mutation(move || {
+        use axum::response::IntoResponse;
+        match cc_switch_lib::live::user_settings::merge(
+            &cc_switch_lib::config::get_claude_settings_path(),
+            &request,
+        ) {
+            Ok(()) => Json(serde_json::json!({"success": true})).into_response(),
+            Err(error) => user_settings_error(error),
+        }
+    })
+    .await
 }
 
 pub async fn restore_claude_user_settings(
@@ -333,6 +366,21 @@ mod user_settings_tests {
             .await
             .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn field_conflict_response_contains_only_keys_and_revision() {
+        let (code, json) = body(user_settings_error(
+            cc_switch_lib::AppError::SettingsConflict {
+                keys: vec!["API_TIMEOUT_MS".into()],
+                revision: "observed".into(),
+            },
+        ))
+        .await;
+        assert_eq!(code, StatusCode::CONFLICT);
+        assert_eq!(json["conflictKeys"], serde_json::json!(["API_TIMEOUT_MS"]));
+        assert_eq!(json["conflictRevision"], "observed");
+        assert!(json.get("values").is_none());
     }
 
     #[tokio::test]
