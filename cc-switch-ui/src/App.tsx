@@ -9,6 +9,7 @@ import { clearAuthToken } from './api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { confirmDiscardChanges } from '@/lib/useUnsavedChanges';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const pageLoaders = {
   dashboard: () => import('./pages/DashboardPage'),
@@ -150,15 +151,17 @@ export default function App() {
 
         <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10 xl:px-12 relative">
           <div key={currentPage} className="mx-auto w-full max-w-[1200px] page-enter">
-            <Suspense fallback={<div role="status" className="min-h-64 rounded-2xl border border-white/10 bg-card/40 p-6 text-sm text-muted-foreground">Loading page…</div>}>
-              {currentPage === 'dashboard' && <DashboardPage />}
-              {currentPage === 'providers' && <ProvidersPage />}
-              {currentPage === 'mcp' && <McpPage />}
-              {currentPage === 'skills' && <SkillsPage />}
-              {currentPage === 'oauth' && <OAuthPage />}
-              {currentPage === 'usage' && <UsagePage />}
-              {currentPage === 'settings' && <SettingsPage />}
-            </Suspense>
+            <ErrorBoundary page>
+              <Suspense fallback={<div role="status" className="min-h-64 rounded-2xl border border-white/10 bg-card/40 p-6 text-sm text-muted-foreground">Loading page…</div>}>
+                {currentPage === 'dashboard' && <DashboardPage />}
+                {currentPage === 'providers' && <ProvidersPage />}
+                {currentPage === 'mcp' && <McpPage />}
+                {currentPage === 'skills' && <SkillsPage />}
+                {currentPage === 'oauth' && <OAuthPage />}
+                {currentPage === 'usage' && <UsagePage />}
+                {currentPage === 'settings' && <SettingsPage />}
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>

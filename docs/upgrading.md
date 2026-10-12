@@ -4,6 +4,37 @@
 
 This guide describes the current upgrade implementation. A merged PR does not itself publish a release. The installer requires a stable release archive, matching binary version and `.sha256` asset; older releases without checksums are rejected before replacing installed files.
 
+## Upgrading to v0.3.3 / 升级到 v0.3.3
+
+v0.3.3 retains database **schema 5**, as used by v0.3.1 and v0.3.2. Existing
+providers, model mappings and OAuth bindings remain intact. Once the release is
+published, Linux/macOS release installations can use `cc-switch-ui update`;
+Windows installations replace the release package while the service is stopped.
+
+Reload the UI after upgrading. Open a Codex provider, review **ChatGPT Account**,
+then use **Fetch models** to populate all four mapping menus. **Diagnostics →
+Check OAuth connection** checks catalog reachability separately; neither action
+requires an API key or a running local route. Fetching and checking do not change
+saved mappings. Select any intended models, then explicitly **Save**. Verify
+generation through **Route Target → Start Route** and a request from Claude Code.
+See the [editor guide](provider-editor.md) for cache and account behavior.
+
+An already-open tab may still reference page files from the previous bundle. Use
+**Reload interface** or reopen the UI if a dynamically imported module fails to
+load; see [page loading recovery](troubleshooting.md#a-page-fails-to-load-after-updating).
+The new server prevents entry caching and the new UI keeps navigation available
+on page-load failure. Older pages need an initial manual reload to receive this
+behavior.
+
+The Linux CI upgrade matrix includes published v0.3.2 alongside v0.1.9, v0.2.0
+and v0.3.1. The v0.3.1/v0.3.2 cases prepare profiles with the published program
+and exercise its own updater with idle/running installations, synthetic account
+bindings and remembered removals. Tests use isolated profiles and mock downloads.
+
+本次不新增数据库迁移，不会因获取模型而改写已有映射或账号绑定。升级前保留完整
+profile 与重要 live 配置的备份，升级后刷新页面并检查账号、模型和路由。
+获取模型和连接诊断成功只证明目录可访问，生成权限仍需实际请求确认。
+
 ## Upgrading to v0.3.2 / 升级到 v0.3.2
 
 v0.3.2 retains database **schema 5**, the same as v0.3.1; upgrading that profile does not require another schema migration. The installer still retains the previous program and complete profile. Older schemas receive a private pre-migration database snapshot as before.

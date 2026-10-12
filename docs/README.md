@@ -4,7 +4,7 @@
 
 These guides describe the current repository. Check the release notes before assuming a published binary contains every feature. The Web UI uses English labels; the guides below include Chinese instructions using those same labels.
 
-Current release: [v0.3.2 / 更新说明](releases/v0.3.2.md). Previous release: [v0.3.1](releases/v0.3.1.md).
+Release notes: [v0.3.3 / 更新说明](releases/v0.3.3.md). Previous releases: [v0.3.2](releases/v0.3.2.md), [v0.3.1](releases/v0.3.1.md). Check the [published releases](https://github.com/huangbogeng/cc-switch-ui/releases) for availability.
 
 | Guide | What you will find / 内容 |
 |-------|---------------------------|

@@ -13,7 +13,10 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::header::AUTHORIZATION,
+    http::{
+        header::{AUTHORIZATION, CACHE_CONTROL},
+        HeaderValue,
+    },
     middleware::Next,
     response::{Redirect, Response},
     routing::{delete, get, post, put},
@@ -503,6 +506,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
         .route("/api/usage/sync-session", post(usage::sync_session_usage))
         .route("/api/usage/sources", get(usage::get_usage_sources))
         .nest_service("/ui", ServeDir::new(config.ui_dist_dir.clone()))
+        .layer(axum::middleware::from_fn(ui_cache_control))
         .layer(axum::middleware::from_fn_with_state(
             app_state.clone(),
             auth_middleware,
@@ -520,6 +524,29 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
     axum::serve(listener, app)
         .await
         .map_err(|e| format!("server failed: {e}"))
+}
+
+async fn ui_cache_control(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    let is_ui = path == "/ui" || path.starts_with("/ui/");
+    let is_asset = path.starts_with("/ui/assets/");
+    let mut response = next.run(request).await;
+    if is_ui {
+        // HTML must not reuse an entry that references assets removed by an upgrade.
+        // Assets may be cached, but must be revalidated; failed requests are not cached.
+        let policy = if is_asset
+            && (response.status().is_success()
+                || response.status() == axum::http::StatusCode::NOT_MODIFIED)
+        {
+            "no-cache"
+        } else {
+            "no-store"
+        };
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static(policy));
+    }
+    response
 }
 
 #[cfg(test)]

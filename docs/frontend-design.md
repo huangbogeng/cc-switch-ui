@@ -82,6 +82,13 @@ Keep form validation next to its input or form. Retain inline recovery controls 
 
 Keep page imports lazy and preserve reduced-motion support. Typography must work using assets shipped with the frontend; do not require server fonts or external font services.
 
+Keep a page-level error boundary around lazy routes so a missing chunk does not
+remove navigation. Explain update/network-related module failures with an
+explicit **Reload interface** action; do not automatically reload and discard
+drafts or loop on a persistent outage. The server must not cache the UI entry or
+missing assets, and must revalidate cached assets after upgrades. Keep the outer
+error boundary for failures in the app shell.
+
 Provider brands use the shared `ProviderLogo` component and the bundled assets documented in `public/logos/README.md`. Use the same icon identifier in preset selection and saved providers. Preserve original brand shapes, use a neutral icon for unknown providers, and keep logo display independent from third-party network services.
 
 The app brand uses `BrandMark` and `public/brand-mark.svg`: two concentric open C arcs form a compact monogram. The sidebar, login screen and About panel share this mark. The mark has a transparent background and uses the existing blue accent with a pale outer arc. `public/favicon.svg` is the same asset at browser-tab scale; version its URL when replacing the mark to avoid stale favicon caches.
