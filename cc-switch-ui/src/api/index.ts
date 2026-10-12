@@ -746,3 +746,11 @@ export interface ImportCandidate { id: string; name: string; source: string }
 export function listImportCandidates(kind: ManagedKind) { return api<{ items: ImportCandidate[]; report: OperationReport }>(`/managed-items/${kind}/candidates`); }
 export function listRemovedItems(kind: ManagedKind) { return api<ImportCandidate[]>(`/managed-items/${kind}/removed`); }
 export function restoreRemovedItems(kind: ManagedKind, ids: string[]) { return api<OperationReport>(`/managed-items/${kind}/restore`, { method: 'POST', body: JSON.stringify({ ids }) }); }
+
+export interface EnvironmentDiagnostics {
+  findings: { variable: string; application: string; source: string; kind: 'process' | 'shell' }[];
+  warnings: string[];
+}
+export function getEnvironmentDiagnostics() {
+  return api<EnvironmentDiagnostics>('/settings/environment-diagnostics');
+}

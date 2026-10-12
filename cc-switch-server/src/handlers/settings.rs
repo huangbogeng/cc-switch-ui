@@ -312,6 +312,15 @@ pub async fn restore_claude_user_settings(
     }
 }
 
+/// Metadata-only inspection of environment and startup files; no shell execution.
+pub async fn environment_diagnostics() -> axum::response::Response {
+    super::file_mutation(move || {
+        use axum::response::IntoResponse;
+        Json(cc_switch_lib::environment::inspect()).into_response()
+    })
+    .await
+}
+
 #[cfg(test)]
 mod user_settings_tests {
     use super::*;
