@@ -19,6 +19,7 @@ pub mod managed_items;
 pub mod mcp;
 pub mod oauth;
 pub mod operation_report;
+pub mod provider_edit;
 pub mod provider_operations;
 pub mod providers;
 pub mod settings;

@@ -302,10 +302,10 @@ export async function recoverProviderOperation() {
   return api<ProviderOperationResult>('/providers/recover', { method: 'POST' });
 }
 
-export async function saveProvider(provider: Provider, base?: Provider) {
-  return api<ProviderOperationResult>('/providers', {
+export async function saveProvider(provider: Provider, base?: Provider, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse', resolutionRevision?: string) {
+  return api<ProviderOperationResult>(base ? '/providers/edit' : '/providers', {
     method: 'POST',
-    body: JSON.stringify({ ...provider, ...(base ? { base } : { create: true }) }),
+    body: JSON.stringify(base ? { provider, base, policy, resolutionRevision } : { ...provider, create: true }),
   });
 }
 
@@ -767,4 +767,12 @@ export interface EnvironmentDiagnostics {
 }
 export function getEnvironmentDiagnostics() {
   return api<EnvironmentDiagnostics>('/settings/environment-diagnostics');
+}
+
+export interface ProviderPreview {
+  applied: boolean; recordPath: string; livePath: string | null;
+  recordKeys: string[]; liveKeys: string[]; message: string;
+}
+export function previewProvider(provider: Provider, base?: Provider) {
+  return api<ProviderPreview>('/providers/preview', { method: 'POST', body: JSON.stringify({ provider, base }) });
 }

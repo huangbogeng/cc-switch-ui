@@ -149,3 +149,11 @@ describe('provider form serialization', () => {
   });
 
 });
+
+it('preserves stored values hidden by form defaults when editing a different field', async () => {
+  const { buildEditedProvider } = await import('./providerForm');
+  const base: Provider = { id: 'legacy', name: 'Legacy', settingsConfig: { env: { ANTHROPIC_AUTH_TOKEN: 'key', UNKNOWN_USER_KEY: 'keep' } }, meta: {}, inFailoverQueue: false };
+  const draft = formFromProvider(base); draft.name = 'Renamed';
+  const edited = buildEditedProvider(draft, null, base);
+  expect(edited.name).toBe('Renamed'); expect(edited.meta).toEqual({}); expect(edited.settingsConfig).toEqual(base.settingsConfig);
+});

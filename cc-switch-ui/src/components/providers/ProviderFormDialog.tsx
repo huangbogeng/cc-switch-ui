@@ -17,6 +17,7 @@ import {
   type CodexAccount,
   type EndpointDetectionResult,
   type FetchedModel,
+  type ProviderPreview,
 } from '@/api';
 import { useDialog } from '@/lib/useDialog';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
@@ -32,6 +33,7 @@ interface ProviderFormDialogProps {
   onPresetSelect: (preset: ProviderPreset) => void;
   onCancel: () => void;
   onSubmit: (formData: ProviderFormData) => void;
+  onPreview?: (formData: ProviderFormData) => Promise<ProviderPreview>;
 }
 
 export function ProviderFormDialog({
@@ -45,8 +47,13 @@ export function ProviderFormDialog({
   onPresetSelect,
   onCancel,
   onSubmit,
+  onPreview,
 }: ProviderFormDialogProps) {
   const [formData, setFormData] = useState<ProviderFormData>(initialFormData);
+  const [previewState, setPreviewState] = useState<{ fingerprint: string; result: ProviderPreview } | null>(null);
+  const preview = previewState?.fingerprint === JSON.stringify(formData) ? previewState.result : null;
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState('');
@@ -54,9 +61,9 @@ export function ProviderFormDialog({
   const [endpointDetection, setEndpointDetection] = useState<EndpointDetectionResult | null>(null);
   const [detectEndpointError, setDetectEndpointError] = useState('');
   const titleId = useId();
-  const canDiscard = useUnsavedChanges(open && JSON.stringify(formData) !== JSON.stringify(initialFormData), open && saving);
+  const canDiscard = useUnsavedChanges(open && JSON.stringify(formData) !== JSON.stringify(initialFormData), open && (saving || previewing));
   const requestCancel = () => { if (canDiscard()) onCancel(); };
-  const dialogRef = useDialog(open, requestCancel, !saving);
+  const dialogRef = useDialog(open, requestCancel, !saving && !previewing);
 
   useEffect(() => {
     setFormData(initialFormData);
@@ -65,6 +72,15 @@ export function ProviderFormDialog({
     setEndpointDetection(null);
     setDetectEndpointError('');
   }, [initialFormData, open]);
+
+  useEffect(() => { setPreviewState(null); setPreviewError(''); }, [formData, open]);
+  const inspectChanges = async () => {
+    if (!onPreview || saving || previewing) return;
+    setPreviewing(true); setPreviewState(null); setPreviewError('');
+    try { setPreviewState({ fingerprint: JSON.stringify(formData), result: await onPreview(formData) }); }
+    catch (e) { setPreviewError(e instanceof Error ? e.message : 'Preview unavailable'); }
+    finally { setPreviewing(false); }
+  };
 
   const modelOptions = useMemo(
     () => fetchedModels.map((model) => model.id).filter((value, index, list) => list.indexOf(value) === index),
@@ -165,7 +181,7 @@ export function ProviderFormDialog({
           <form
             onSubmit={(event: FormEvent) => {
               event.preventDefault();
-              onSubmit(formData);
+              if (!saving && !previewing) onSubmit(formData);
             }}
             className="space-y-5"
             noValidate
@@ -176,6 +192,7 @@ export function ProviderFormDialog({
               </div>
             )}
 
+            <fieldset disabled={saving || previewing} className="contents">
             <FormSection title="Basic">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -523,11 +540,21 @@ export function ProviderFormDialog({
               />
             </div>
 
+            </fieldset>
+            {previewError && <p role="alert" className="text-sm text-destructive">{previewError}</p>}
+            {preview && <div className="rounded-xl border border-border p-4 space-y-3">
+              <h3 className="text-sm font-semibold">Save preview</h3>
+              <p className="text-sm text-muted-foreground">{preview.message}</p>
+              <div className="text-xs space-y-2"><p className="break-all font-mono">{preview.recordPath}</p><p>{preview.recordKeys.length ? 'Provider fields that change:' : 'No provider fields change.'}</p><ul className="break-all font-mono">{preview.recordKeys.slice(0, 60).map(key => <li key={key}>{key}</li>)}</ul>{preview.recordKeys.length > 60 && <p>{preview.recordKeys.length - 60} additional fields</p>}</div>
+              {preview.livePath && <div className="text-xs space-y-2"><p className="break-all font-mono">{preview.livePath}</p><p>{preview.liveKeys.length ? 'Live fields that change:' : 'No live fields change.'}</p><ul className="break-all font-mono">{preview.liveKeys.slice(0, 60).map(key => <li key={key}>{key}</li>)}</ul></div>}
+              <p className="text-xs text-muted-foreground">Credential values are hidden. User settings are preserved. Preview changes no files; Save checks the current configuration again.</p>
+            </div>}
             <div className="dialog-actions">
-              <Button type="button" variant="ghost" onClick={requestCancel} disabled={saving}>
+              <Button type="button" variant="ghost" onClick={requestCancel} disabled={saving || previewing}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
+              {onPreview && <Button type="button" variant="outline" disabled={saving || previewing} onClick={() => void inspectChanges()}>{previewing ? 'Checking...' : 'Preview save'}</Button>}
+              <Button type="submit" disabled={saving || previewing}>
                 {saving ? 'Saving...' : 'Save'}
               </Button>
             </div>

@@ -1,9 +1,11 @@
 import { ToastNotice } from '@/components/ToastNotice';
+import { useDialog } from '@/lib/useDialog';
 import { useConfirm } from '@/lib/useConfirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
   saveProvider,
+  previewProvider,
   recoverProviderOperation,
   deleteProvider,
   switchProvider,
@@ -19,7 +21,8 @@ import { LocalRoutePanel } from '@/components/providers/LocalRoutePanel';
 import { ProviderList } from '@/components/providers/ProviderList';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
 import {
-  buildProvider,
+  buildEditedProvider,
+  validateProviderDraft,
   emptyProviderForm,
   formFromPreset,
   formFromProvider,
@@ -53,6 +56,8 @@ export default function ProvidersPage() {
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
   const [draftFormData, setDraftFormData] = useState<ProviderFormData>(emptyProviderForm);
   const [saving, setSaving] = useState(false);
+  const [conflict, setConflict] = useState<{ keys: string[]; revision: string; draft: ProviderFormData } | null>(null);
+  const conflictRef = useDialog(conflict !== null, () => setConflict(null), !saving);
   const [formError, setFormError] = useState('');
   const [editingBase, setEditingBase] = useState<Provider>();
   const [operationNotice, setOperationNotice] = useState('');
@@ -232,29 +237,15 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleSubmit = async (formData: ProviderFormData) => {
+  const handleSubmit = async (formData: ProviderFormData, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse') => {
     setSaving(true);
     setError('');
     setFormError('');
     setOperationNotice('');
 
     try {
-      const id = formData.id.trim();
+      validateProviderDraft(formData);
       const name = formData.name.trim();
-      if (!id || !name) {
-        throw new Error('Provider ID and name are required.');
-      }
-      if (formData.baseUrl.trim()) {
-        let endpoint: URL;
-        try {
-          endpoint = new URL(formData.baseUrl.trim());
-        } catch {
-          throw new Error('Base URL must be a valid absolute URL.');
-        }
-        if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
-          throw new Error('Base URL must use HTTP or HTTPS.');
-        }
-      }
       if (formData.authMode !== 'oauth_proxy' && !formData.noAuth && !formData.apiKey.trim()) {
         const providerName = selectedPreset?.name || name;
         const shouldContinue = await confirmAction(
@@ -266,11 +257,16 @@ export default function ProvidersPage() {
           return;
         }
       }
-      const result = await saveProvider(buildProvider(formData, selectedPreset, editingBase), editingBase);
+      const result = await saveProvider(buildEditedProvider(formData, selectedPreset, editingBase), editingBase, policy, conflict?.revision);
+      setConflict(null);
       setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' '));
       setShowForm(false);
       await applyProviders();
     } catch (e) {
+      if (e instanceof Error && 'conflictKeys' in e && 'conflictRevision' in e && Array.isArray(e.conflictKeys) && typeof e.conflictRevision === 'string') {
+        setConflict({ keys: e.conflictKeys as string[], revision: e.conflictRevision, draft: formData });
+        return;
+      }
       setFormError(e instanceof Error ? e.message : 'Save failed');
       await applyProviders();
     } finally {
@@ -281,6 +277,15 @@ export default function ProvidersPage() {
   return (
     <div>
       {confirmation}
+      {conflict && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+        <div ref={conflictRef} role="dialog" aria-modal="true" aria-labelledby="provider-conflict-title" tabIndex={-1} className="dialog-panel w-full max-w-lg p-6 space-y-4">
+          <h2 id="provider-conflict-title" className="text-lg font-semibold">Provider settings changed externally</h2>
+          <p className="text-sm text-muted-foreground">Choose how to resolve conflicting edits. Unedited fields keep the latest changes. Credential values are not shown.</p>
+          <ul className="break-all text-xs font-mono space-y-1">{conflict.keys.map(key => <li key={key}>{key}</li>)}</ul>
+          {!conflict.keys.length && <p className="text-sm">The configuration changed again. Confirm against the latest state.</p>}
+          <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setConflict(null)}>Cancel</Button><Button variant="outline" disabled={saving} onClick={() => void handleSubmit(conflict.draft, 'keepTheirs')}>Keep external changes</Button><Button disabled={saving} onClick={() => void handleSubmit(conflict.draft, 'keepMine')}>Use my changes</Button></div>
+        </div>
+      </div>}
       <PageHeader
         title="Providers"
         description="Your connections, direct configuration, and local route."
@@ -365,7 +370,7 @@ export default function ProvidersPage() {
         editingId={editingId}
         selectedPreset={selectedPreset}
         initialFormData={draftFormData}
-        saving={saving}
+        saving={saving || conflict !== null}
         error={formError}
         codexAccounts={codexAccounts}
         onPresetSelect={handlePresetSelect}
@@ -374,6 +379,10 @@ export default function ProvidersPage() {
           setFormError('');
         }}
         onSubmit={handleSubmit}
+        onPreview={async (formData) => {
+          validateProviderDraft(formData);
+          return previewProvider(buildEditedProvider(formData, selectedPreset, editingBase), editingBase);
+        }}
       />
     </div>
   );

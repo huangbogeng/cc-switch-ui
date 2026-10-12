@@ -36,6 +36,8 @@ All UI labels are English. **Dashboard** summarizes Direct Config, Local Route a
 
 The **Claude Official** preset clears third-party connection settings and relies on your existing Claude Code login. It does not create an Anthropic subscription or authenticate Claude Code for you.
 
+See the [provider editor guide](provider-editor.md) for concurrent edits and save behavior.
+
 ## Codex subscription without an API key / Codex 订阅路由
 
 1. Open **OAuth → ChatGPT Codex → Connect**. Follow the displayed verification URL and device code.
@@ -78,7 +80,7 @@ For the MCP/Skills action contract and upstream comparison, see [interaction dec
 
 On Linux, `update` recognizes running release binaries started through PATH, relative paths, or the bundled command aliases, and preserves argument boundaries when restarting. A PID referring to a different executable is rejected. macOS retains conservative command-path checks.
 
-Claude Code User Settings compares only fields you edited. Unedited fields retain external changes. A conflicting edit offers **Keep external changes** or **Use my changes**; cancelling keeps the draft. If the file changes again during confirmation, review is required again. Provider connection edits retain their existing conflict checks.
+Claude Code User Settings compares only fields you edited. Unedited fields retain external changes. A conflicting edit offers **Keep external changes** or **Use my changes**; cancelling keeps the draft. If the file changes again during confirmation, review is required again.
 
 In **Claude Code User Settings**, **Preview changes** reads the current live file and shows only the fields that saving would change. It uses the same merge and validation rules as Save. Preview creates no backups and changes no files; Save rechecks concurrent edits. Editing the draft clears the preview. This preview covers the two user settings in this panel.
 
