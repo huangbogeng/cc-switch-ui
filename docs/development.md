@@ -74,7 +74,7 @@ python3 tests/test_upgrade.py \
   --old-binary /absolute/path/to/old-release/cc-switch-ui -v
 ```
 
-The test runner isolates HOME and uses real processes for upgrade, rollback and updater checks. CI runs the matrix with old releases `v0.1.9` and `v0.2.0`. Do not substitute your running installation or real profile for the fixtures.
+The test runner isolates HOME and uses real processes for upgrade, rollback and updater checks. CI runs the matrix with old releases `v0.1.9`, `v0.2.0` and `v0.3.1`. For v0.3.1, add `--prepare-old-profile`: the old binary initializes the fixture to its own schema first, then tests also retain OAuth binding metadata and remembered removals, check rollback against that original schema, and exercise the published old updater itself. The earlier versions retain the legacy schema fixture and skip the two tests requiring an old `update` command. Do not substitute your running installation or real profile for the fixtures.
 
 ## Structure and contracts
 

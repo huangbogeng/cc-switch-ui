@@ -5,7 +5,7 @@ import { providerBaseUrl } from './provider';
 export const providerLogos: Record<string, string> = {
   anthropic: 'anthropic.svg', minimax: 'minimax.svg', siliconflow: 'siliconflow.svg',
   deepseek: 'deepseek.svg', openai: 'openai.svg', openrouter: 'openrouter.svg',
-  orcarouter: 'orcarouter.png', google: 'google.svg', kimi: 'kimi.svg',
+  google: 'google.svg', kimi: 'kimi.svg',
   zhipu: 'zhipu.svg', huoshan: 'huoshan.png', qianwenai: 'qianwenai.svg',
   aihubmix: 'aihubmix-color.svg', ppio: 'ppio.svg',
 };
@@ -14,7 +14,7 @@ const domains: Record<string, string> = {
   'anthropic.com': 'anthropic', 'minimaxi.com': 'minimax', 'minimax.io': 'minimax',
   'siliconflow.cn': 'siliconflow', 'siliconflow.com': 'siliconflow',
   'deepseek.com': 'deepseek', 'openai.com': 'openai', 'chatgpt.com': 'openai',
-  'openrouter.ai': 'openrouter', 'orcarouter.ai': 'orcarouter',
+  'openrouter.ai': 'openrouter',
   'googleapis.com': 'google', 'moonshot.cn': 'kimi', 'moonshot.ai': 'kimi',
   'kimi.com': 'kimi', 'kimi.ai': 'kimi', 'bigmodel.cn': 'zhipu', 'z.ai': 'zhipu',
   'volces.com': 'huoshan', 'volcengine.com': 'huoshan',

@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        old_version: [v0.1.9, v0.2.0]
+        old_version: [v0.1.9, v0.2.0, v0.3.1]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -59,6 +59,12 @@ jobs:
           curl -fSL "https://github.com/huangbogeng/cc-switch-ui/releases/download/$OLD_VERSION/cc-switch-ui-linux-x86_64.tar.gz" -o /tmp/cc-old-release/release.tar.gz
           tar -xzf /tmp/cc-old-release/release.tar.gz -C /tmp/cc-old-release
       - name: Test upgrade and rollback with isolated data and real processes
+        env:
+          OLD_VERSION: ${{ matrix.old_version }}
         run: |
           bash -n install.sh
-          python3 tests/test_upgrade.py --new-binary target/debug/cc-switch-ui --old-binary /tmp/cc-old-release/cc-switch-ui/cc-switch-ui -v
+          PROFILE_ARGS=()
+          if [[ "$OLD_VERSION" == v0.3.1 ]]; then
+            PROFILE_ARGS+=(--prepare-old-profile)
+          fi
+          python3 tests/test_upgrade.py --new-binary target/debug/cc-switch-ui --old-binary /tmp/cc-old-release/cc-switch-ui/cc-switch-ui "${PROFILE_ARGS[@]}" -v

@@ -4,6 +4,8 @@
 
 These guides describe the current repository. Check the release notes before assuming a published binary contains every feature. The Web UI uses English labels; the guides below include Chinese instructions using those same labels.
 
+Current release: [v0.3.2 / 更新说明](releases/v0.3.2.md). Previous release: [v0.3.1](releases/v0.3.1.md).
+
 | Guide | What you will find / 内容 |
 |-------|---------------------------|
 | [User guide / 使用指南](user-guide.md) | Providers, Codex subscription routing, OAuth, MCP, Skills and usage |

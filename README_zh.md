@@ -56,7 +56,6 @@ UI 内置 **17 个预设，覆盖 14 个服务商品牌**，也支持自定义�
 | MiniMax | API key | MiniMax |
 | SiliconFlow | API key | SiliconFlow |
 | OpenRouter | API key | OpenRouter |
-| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | API key | OrcaRouter |
 | Google | API key | Gemini Native |
 | Kimi | API key | Kimi, Kimi For Coding, Kimi For Coding Global |
 | Zhipu | API key | Zhipu GLM, Zhipu GLM en |
@@ -65,7 +64,6 @@ UI 内置 **17 个预设，覆盖 14 个服务商品牌**，也支持自定义�
 | AiHubMix | API key | AiHubMix |
 | PPIO | API key | PPIO |
 
-使用 OrcaRouter 时，可通过[项目专属链接注册或获取 API Key](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21)，然后选择内置的 **OrcaRouter** 预设。该预设可以从服务端获取当前模型列表。
 
 自定义 Provider 可选择 `anthropic`、`openai_chat`、`openai_responses` 或 Gemini 兼容协议。面对未知端点时，可在 Provider 编辑器中使用**检测端点类型**与**获取模型**。
 
@@ -130,6 +128,8 @@ cc-switch-ui start --host 0.0.0.0 --port 5007 --proxy-port 15721
 本地服务使用 OAuth 账号转发请求并完成协议转换。授权完成不会自动启动路由；详细步骤见[使用指南](docs/user-guide.md)。
 
 ## 升级与恢复
+
+协议兼容、配置预览、预设变更和升级检查见 [v0.3.2 发布说明](docs/releases/v0.3.2.md)。
 
 ```bash
 cc-switch-ui update          # 更新到稳定发布版本；Linux/macOS 发布包安装
