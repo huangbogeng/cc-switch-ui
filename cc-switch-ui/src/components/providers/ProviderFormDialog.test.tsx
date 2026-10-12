@@ -1,6 +1,6 @@
 import { fetchProviderModels, fetchCodexModels } from '@/api';
 vi.mock('@/api', () => ({ fetchProviderModels: vi.fn(), fetchCodexModels: vi.fn(), detectProviderEndpointType: vi.fn() }));
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { providerPresets } from '@/config/providerPresets';
 import { ProviderFormDialog } from './ProviderFormDialog';
@@ -149,4 +149,29 @@ it('discards the catalog if the bound OAuth account is disconnected', async () =
   rerender(<ProviderFormDialog {...props} codexAccounts={[accountA]} />);
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull());
   expect(screen.getByRole('button', { name: 'Fetch models' })).toHaveProperty('disabled', true);
+});
+
+it('updates all four mapping menus after fetching and selects each role without another request', async () => {
+  vi.mocked(fetchCodexModels).mockClear();
+  vi.mocked(fetchCodexModels).mockResolvedValue({ models: [{ id: 'catalog-a' }, { id: 'catalog-b' }] });
+  const form = { ...formFromPreset(providerPresets.find(item => item.id === 'codex')!), model: 'unlisted-main', haikuModel: 'unlisted-haiku', sonnetModel: 'unlisted-sonnet', opusModel: 'unlisted-opus' };
+  const submit = vi.fn();
+  render(<ProviderFormDialog open editingId="codex" selectedPreset={null} initialFormData={form} saving={false} codexAccounts={[{ id: 'fixture-a', login: 'Account A', is_default: true }, { id: 'fixture-b', login: 'Account B', is_default: false }]} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  await screen.findByRole('dialog', { name: 'Choose model' });
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Choose model' })).getByRole('button', { name: 'Cancel' }));
+  for (const role of ['Main', 'Haiku', 'Sonnet', 'Opus']) {
+    fireEvent.click(screen.getByRole('button', { name: `Choose ${role} model` }));
+    expect(screen.getByRole('option', { name: 'catalog-a' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'catalog-b' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('option', { name: 'catalog-b' }));
+    expect(screen.getByLabelText(role)).toHaveProperty('value', 'catalog-b');
+  }
+  expect(fetchCodexModels).toHaveBeenCalledOnce();
+  expect(submit).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('ChatGPT Account'), { target: { value: 'fixture-b' } });
+  for (const role of ['Main', 'Haiku', 'Sonnet', 'Opus']) {
+    expect(screen.getByRole('button', { name: `Choose ${role} model` })).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText(role)).toHaveProperty('value', 'catalog-b');
+  }
 });

@@ -1,4 +1,5 @@
 import { ModelPickerDialog } from './ModelPickerDialog';
+import { ModelMappingInput } from './ModelMappingInput';
 import { ProviderLogo } from './ProviderLogo';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Download, Loader2 } from 'lucide-react';
@@ -315,33 +316,37 @@ export function ProviderFormDialog({
             <FormSection title="Models" action={<Button type="button" size="sm" variant="outline" disabled={fetchingModels || !canFetchModels} onClick={() => { if (availableModels.length > 0) setPickerOpen(true); else void handleFetchModels(); }}>{fetchingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}{availableModels.length ? 'Choose model' : 'Fetch models'}</Button>}>
               {usesOAuthProxy && <p className="text-xs text-muted-foreground">{canFetchModels ? 'Fetch models uses the selected OAuth account. The local route does not need to be running.' : 'Connect an account on the OAuth page and choose a connected account here to fetch models.'}</p>}
               {fetchModelsError && !pickerOpen && <p role="alert" className="text-xs text-destructive">{fetchModelsError}</p>}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ModelInput
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                <ModelMappingInput
                   id="model-main"
                   label="Main"
                   value={formData.model}
                   options={modelOptions}
+                  disabled={saving || previewing || pickerOpen}
                   onChange={(value) => setFormData({ ...formData, model: value })}
                 />
-                <ModelInput
+                <ModelMappingInput
                   id="model-haiku"
                   label="Haiku"
                   value={formData.haikuModel}
                   options={modelOptions}
+                  disabled={saving || previewing || pickerOpen}
                   onChange={(value) => setFormData({ ...formData, haikuModel: value })}
                 />
-                <ModelInput
+                <ModelMappingInput
                   id="model-sonnet"
                   label="Sonnet"
                   value={formData.sonnetModel}
                   options={modelOptions}
+                  disabled={saving || previewing || pickerOpen}
                   onChange={(value) => setFormData({ ...formData, sonnetModel: value })}
                 />
-                <ModelInput
+                <ModelMappingInput
                   id="model-opus"
                   label="Opus"
                   value={formData.opusModel}
                   options={modelOptions}
+                  disabled={saving || previewing || pickerOpen}
                   onChange={(value) => setFormData({ ...formData, opusModel: value })}
                 />
               </div>
@@ -565,35 +570,6 @@ function FormSection({ title, children, action }: { title: string; children: Rea
       <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-medium leading-5 text-muted-foreground">{title}</h3>{action}</div>
       {children}
     </section>
-  );
-}
-
-function ModelInput({
-  id,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  options?: string[];
-  onChange: (value: string) => void;
-}) {
-  const listId = `${id}-models`;
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} list={options?.length ? listId : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
-      {options?.length ? (
-        <datalist id={listId}>
-          {options.slice(0,100).map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
-      ) : null}
-    </div>
   );
 }
 
