@@ -271,6 +271,13 @@ export async function fetchProviderModels(payload: {
   });
 }
 
+export async function fetchCodexModels(accountId?: string) {
+  return api<{ models: FetchedModel[] }>('/providers/codex-models', {
+    method: 'POST',
+    body: JSON.stringify({ accountId }),
+  });
+}
+
 export async function detectProviderEndpointType(payload: {
   baseUrl: string;
   apiKey: string;

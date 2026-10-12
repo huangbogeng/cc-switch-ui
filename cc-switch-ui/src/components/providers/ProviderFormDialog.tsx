@@ -15,6 +15,7 @@ import type { ApiFormat, ApiKeyField, ProviderFormData } from './providerForm';
 import {
   detectProviderEndpointType,
   fetchProviderModels,
+  fetchCodexModels,
   type CodexAccount,
   type EndpointDetectionResult,
   type FetchedModel,
@@ -86,7 +87,9 @@ export function ProviderFormDialog({
     finally { setPreviewing(false); }
   };
 
-  const modelsContext = JSON.stringify([formData.baseUrl, formData.apiKey, formData.isFullUrl, formData.authMode, formData.noAuth, selectedPreset?.modelsUrl]);
+  const modelAccountId = formData.codexAccountId.trim() || codexAccounts.find(account => account.is_default)?.id || codexAccounts[0]?.id;
+  const hasModelAccount = codexAccounts.some(account => account.id === modelAccountId);
+  const modelsContext = JSON.stringify([formData.baseUrl, formData.apiKey, formData.isFullUrl, formData.authMode, formData.noAuth, selectedPreset?.modelsUrl, formData.codexAccountId, modelAccountId, hasModelAccount]);
   useEffect(() => {
     modelRequest.current += 1; setModelsFor(null); setFetchedModels([]); setFetchModelsError(''); setFetchingModels(false); setPickerOpen(false);
     return () => { modelRequest.current += 1; };
@@ -103,14 +106,18 @@ export function ProviderFormDialog({
   const noAuth = formData.noAuth;
   const showApiKey = !usesOAuthProxy && !noAuth;
   const showEndpoint = !noAuth && (!usesOAuthProxy || !!formData.baseUrl);
-  const canFetchModels = !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
+  const canFetchModels = usesOAuthProxy
+    ? hasModelAccount
+    : !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
   const canDetectEndpointType = canFetchModels && !usesOAuthProxy;
 
   const handleFetchModels = async (openOnSuccess = true) => {
     const request = ++modelRequest.current;
     setFetchingModels(true); setFetchModelsError('');
     try {
-      const response = await fetchProviderModels({ baseUrl: formData.baseUrl.trim(), apiKey: formData.apiKey.trim(), isFullUrl: formData.isFullUrl, modelsUrl: selectedPreset?.modelsUrl });
+      const response = usesOAuthProxy
+        ? await fetchCodexModels(formData.codexAccountId.trim() || undefined)
+        : await fetchProviderModels({ baseUrl: formData.baseUrl.trim(), apiKey: formData.apiKey.trim(), isFullUrl: formData.isFullUrl, modelsUrl: selectedPreset?.modelsUrl });
       if (request !== modelRequest.current) return;
       if (response.models.length === 0) { setFetchModelsError('No models returned from this endpoint.'); return; }
       setFetchedModels(response.models); setModelsFor(modelsContext);
@@ -305,7 +312,8 @@ export function ProviderFormDialog({
               </FormSection>
             )}
 
-            <FormSection title="Models" action={<Button type="button" size="sm" variant="outline" disabled={usesOAuthProxy || fetchingModels || !canFetchModels} onClick={() => { if (availableModels.length > 0) setPickerOpen(true); else void handleFetchModels(); }}>{fetchingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}{availableModels.length ? 'Choose model' : 'Fetch models'}</Button>}>
+            <FormSection title="Models" action={<Button type="button" size="sm" variant="outline" disabled={fetchingModels || !canFetchModels} onClick={() => { if (availableModels.length > 0) setPickerOpen(true); else void handleFetchModels(); }}>{fetchingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}{availableModels.length ? 'Choose model' : 'Fetch models'}</Button>}>
+              {usesOAuthProxy && <p className="text-xs text-muted-foreground">{canFetchModels ? 'Fetch models uses the selected OAuth account. The local route does not need to be running.' : 'Connect an account on the OAuth page and choose a connected account here to fetch models.'}</p>}
               {fetchModelsError && !pickerOpen && <p role="alert" className="text-xs text-destructive">{fetchModelsError}</p>}
               <div className="grid gap-4 sm:grid-cols-2">
                 <ModelInput

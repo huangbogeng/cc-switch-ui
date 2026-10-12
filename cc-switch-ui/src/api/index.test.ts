@@ -1,7 +1,16 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { ApiError, saveMcpServer, restoreSkillBackup } from './index';
+import { ApiError, saveMcpServer, restoreSkillBackup, fetchCodexModels } from './index';
 
 afterEach(() => vi.unstubAllGlobals());
+
+it('sends only the account selection to the dedicated managed Codex catalog route', async () => {
+  const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ models: [{ id: 'fixture-model' }] })));
+  vi.stubGlobal('fetch', fetch);
+  await fetchCodexModels('fixture-account');
+  expect(fetch).toHaveBeenCalledWith('/api/providers/codex-models', expect.objectContaining({ method: 'POST', body: JSON.stringify({ accountId: 'fixture-account' }) }));
+  await fetchCodexModels();
+  expect(fetch).toHaveBeenLastCalledWith('/api/providers/codex-models', expect.objectContaining({ body: '{}' }));
+});
 
 it('preserves partial-save status on failed HTTP responses', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
