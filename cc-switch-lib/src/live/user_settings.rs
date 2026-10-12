@@ -197,6 +197,80 @@ pub fn restore(path: &Path, expected_revision: &str) -> Result<(), AppError> {
     patch(path, expected_revision, &values_of(&original)?, false, None)
 }
 
+fn validate_values(old: &UserValues, desired: &UserValues) -> Result<(), AppError> {
+    if desired.timeout_ms != old.timeout_ms {
+        if let Some(timeout) = &desired.timeout_ms {
+            if timeout.is_empty()
+                || !timeout.bytes().all(|c| c.is_ascii_digit())
+                || timeout.parse::<u64>().ok().is_none_or(|value| value == 0)
+            {
+                return Err(AppError::InvalidInput(
+                    "API timeout must be a positive integer in milliseconds, or unset".into(),
+                ));
+            }
+        }
+    }
+    if desired.nonessential_traffic != old.nonessential_traffic
+        && desired
+            .nonessential_traffic
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "0" | "1"))
+    {
+        return Err(AppError::InvalidInput(
+            "Nonessential traffic must be unset, 0 or 1".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPreview {
+    pub path: String,
+    pub revision: String,
+    pub changes: Vec<SettingsChange>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsChange {
+    pub field: &'static str,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+/// Preview is read-only and uses the same per-field merge and validation as saving.
+pub fn preview(path: &Path, request: &MergeRequest) -> Result<SettingsPreview, AppError> {
+    if revision(&request.baseline) != request.revision {
+        return Err(AppError::InvalidInput(
+            "Baseline does not match the loaded revision".into(),
+        ));
+    }
+    let current = read(path)?;
+    let desired = merge_values(&current.values, request)?;
+    validate_values(&current.values, &desired)?;
+    let changes = [
+        (TIMEOUT, current.values.timeout_ms, desired.timeout_ms),
+        (
+            TRAFFIC,
+            current.values.nonessential_traffic,
+            desired.nonessential_traffic,
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, before, after)| before != after)
+    .map(|(field, before, after)| SettingsChange {
+        field,
+        before,
+        after,
+    })
+    .collect();
+    Ok(SettingsPreview {
+        path: current.path,
+        revision: current.revision,
+        changes,
+    })
+}
+
 fn patch(
     path: &Path,
     expected_revision: &str,
@@ -218,28 +292,8 @@ fn patch(
                 path: path.display().to_string(),
             });
         }
-        if validate && desired.timeout_ms != old.timeout_ms {
-            if let Some(timeout) = &desired.timeout_ms {
-                if timeout.is_empty()
-                    || !timeout.bytes().all(|c| c.is_ascii_digit())
-                    || timeout.parse::<u64>().ok().is_none_or(|value| value == 0)
-                {
-                    return Err(AppError::InvalidInput(
-                        "API timeout must be a positive integer in milliseconds, or unset".into(),
-                    ));
-                }
-            }
-        }
-        if validate
-            && desired.nonessential_traffic != old.nonessential_traffic
-            && desired
-                .nonessential_traffic
-                .as_deref()
-                .is_some_and(|value| !matches!(value, "0" | "1"))
-        {
-            return Err(AppError::InvalidInput(
-                "Nonessential traffic must be unset, 0 or 1".into(),
-            ));
+        if validate {
+            validate_values(&old, desired)?;
         }
         if *desired == old {
             return Ok(());
@@ -269,6 +323,41 @@ fn patch(
 mod tests {
     use super::*;
     use crate::live::tests::{acquire_env_lock, cleanup, setup_test_home};
+
+    #[test]
+    fn preview_has_no_side_effects_and_save_rechecks_external_changes() {
+        let _env = acquire_env_lock();
+        let home = setup_test_home();
+        let path = crate::config::get_claude_settings_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = br#"{ "env": {"API_TIMEOUT_MS":"2000","ANTHROPIC_AUTH_TOKEN":"secret"}}"#;
+        std::fs::write(&path, bytes).unwrap();
+        let current = read(&path).unwrap();
+        let request = MergeRequest {
+            revision: current.revision,
+            baseline: current.values,
+            values: UserValues {
+                timeout_ms: Some("4000".into()),
+                nonessential_traffic: None,
+            },
+            policy: ConflictPolicy::Refuse,
+            resolution_revision: None,
+        };
+        let report = preview(&path, &request).unwrap();
+        assert_eq!(report.changes.len(), 1);
+        assert_eq!(report.changes[0].after.as_deref(), Some("4000"));
+        assert!(!serde_json::to_string(&report).unwrap().contains("secret"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert!(!crate::config::get_app_config_dir()
+            .join("backups/live-first-write")
+            .exists());
+        std::fs::write(&path, br#"{"env":{"API_TIMEOUT_MS":"3000"}}"#).unwrap();
+        assert!(matches!(
+            merge(&path, &request),
+            Err(AppError::SettingsConflict { .. })
+        ));
+        cleanup(home);
+    }
 
     #[test]
     fn merge_preserves_unedited_fields_and_guards_explicit_resolution() {

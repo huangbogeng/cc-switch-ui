@@ -294,6 +294,22 @@ pub async fn save_claude_user_settings(
     }
 }
 
+pub async fn preview_claude_user_settings(
+    Json(request): Json<cc_switch_lib::live::user_settings::MergeRequest>,
+) -> axum::response::Response {
+    super::file_mutation(move || {
+        use axum::response::IntoResponse;
+        match cc_switch_lib::live::user_settings::preview(
+            &cc_switch_lib::config::get_claude_settings_path(),
+            &request,
+        ) {
+            Ok(preview) => Json(preview).into_response(),
+            Err(error) => user_settings_error(error),
+        }
+    })
+    .await
+}
+
 pub async fn merge_claude_user_settings(
     Json(request): Json<cc_switch_lib::live::user_settings::MergeRequest>,
 ) -> axum::response::Response {

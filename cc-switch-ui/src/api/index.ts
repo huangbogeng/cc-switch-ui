@@ -750,3 +750,13 @@ export interface ImportCandidate { id: string; name: string; source: string }
 export function listImportCandidates(kind: ManagedKind) { return api<{ items: ImportCandidate[]; report: OperationReport }>(`/managed-items/${kind}/candidates`); }
 export function listRemovedItems(kind: ManagedKind) { return api<ImportCandidate[]>(`/managed-items/${kind}/removed`); }
 export function restoreRemovedItems(kind: ManagedKind, ids: string[]) { return api<OperationReport>(`/managed-items/${kind}/restore`, { method: 'POST', body: JSON.stringify({ ids }) }); }
+
+export interface ClaudeSettingsPreview {
+  path: string; revision: string;
+  changes: { field: string; before: string | null; after: string | null }[];
+}
+export function previewClaudeUserSettings(revision: string, values: ClaudeUserValues, baseline: ClaudeUserValues) {
+  return api<ClaudeSettingsPreview>('/settings/claude-user/preview', {
+    method: 'POST', body: JSON.stringify({ revision, values, baseline, policy: 'refuse' }),
+  });
+}

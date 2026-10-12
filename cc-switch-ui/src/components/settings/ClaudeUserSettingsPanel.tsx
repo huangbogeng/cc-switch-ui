@@ -3,8 +3,8 @@ import { useDialog } from '@/lib/useDialog';
 import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  getClaudeUserSettings, saveClaudeUserSettings, restoreClaudeUserSettings,
-  type ClaudeUserSettings, type ClaudeUserValues,
+  getClaudeUserSettings, saveClaudeUserSettings, restoreClaudeUserSettings, previewClaudeUserSettings,
+  type ClaudeUserSettings, type ClaudeUserValues, type ClaudeSettingsPreview,
 } from '@/api';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ const defaults: ClaudeUserValues = { timeoutMs: null, nonessentialTraffic: null 
 export function ClaudeUserSettingsPanel() {
   const { confirmAction, confirmation } = useConfirm();
   const [conflict, setConflict] = useState<{ keys: string[]; revision: string } | null>(null);
+  const [preview, setPreview] = useState<ClaudeSettingsPreview | null>(null);
   const [snapshot, setSnapshot] = useState<ClaudeUserSettings | null>(null);
   const [values, setValues] = useState<ClaudeUserValues>(defaults);
   const [baseline, setBaseline] = useState(defaults);
@@ -33,6 +34,7 @@ export function ClaudeUserSettingsPanel() {
   const load = useCallback(async (signal?: AbortSignal) => {
     const data = await getClaudeUserSettings({ signal });
     if (signal?.aborted) return;
+    setPreview(null);
     setSnapshot(data);
     setValues(data.values);
     setBaseline(data.values);
@@ -56,6 +58,14 @@ export function ClaudeUserSettingsPanel() {
     finally { setBusy(false); }
   };
 
+  const inspectChanges = async () => {
+    if (!snapshot || busy || needsReload) return;
+    setBusy(true); setError(''); setPreview(null);
+    try { setPreview(await previewClaudeUserSettings(snapshot.revision, values, snapshot.values)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Preview unavailable'); }
+    finally { setBusy(false); }
+  };
+
   const submit = async (restore: boolean, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse') => {
     if (!snapshot || busy || needsReload) return;
     setError('');
@@ -73,6 +83,7 @@ export function ClaudeUserSettingsPanel() {
       if (restore) await restoreClaudeUserSettings(snapshot.revision);
       else await saveClaudeUserSettings(snapshot.revision, values, snapshot.values, policy, conflict?.revision);
       setConflict(null);
+      setPreview(null);
       setNotice(restore ? 'User settings restored to the live file.' : 'User settings saved to the live file.');
       // A successful write is complete even if the follow-up read fails.
       setNeedsReload(true);
@@ -118,13 +129,13 @@ export function ClaudeUserSettingsPanel() {
           <div className="space-y-2">
             <Label htmlFor="claude-api-timeout">API Timeout MS</Label>
             <Input id="claude-api-timeout" inputMode="numeric" value={values.timeoutMs ?? ''}
-              placeholder="Claude Code default" onChange={(e) => { setNotice(''); setValues({ ...values, timeoutMs: e.target.value || null }); }} />
+              placeholder="Claude Code default" onChange={(e) => { setNotice(''); setPreview(null); setValues({ ...values, timeoutMs: e.target.value || null }); }} />
             <p className="text-xs text-muted-foreground">Leave blank to remove the override.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="claude-nonessential-traffic">Nonessential traffic</Label>
             <Select id="claude-nonessential-traffic" value={values.nonessentialTraffic ?? 'default'}
-              onChange={(e) => { setNotice(''); setValues({ ...values, nonessentialTraffic: e.target.value === 'default' ? null : e.target.value }); }}>
+              onChange={(e) => { setNotice(''); setPreview(null); setValues({ ...values, nonessentialTraffic: e.target.value === 'default' ? null : e.target.value }); }}>
               <option value="default">Use Claude Code default</option>
               <option value="1">Disable nonessential traffic</option>
               <option value="0">Allow nonessential traffic</option>
@@ -133,7 +144,14 @@ export function ClaudeUserSettingsPanel() {
             </Select>
           </div>
         </fieldset>}
+        {preview && <div className="rounded-xl border border-border p-4 space-y-3">
+          <p className="text-sm font-medium">Changes to the live file</p>
+          <p className="break-all text-xs font-mono text-muted-foreground">{preview.path}</p>
+          {preview.changes.length === 0 ? <p className="text-sm">The live file already has these values.</p> : <ul className="space-y-2 text-xs">{preview.changes.map(change => <li key={change.field}><p className="font-mono">{change.field}</p><p className="text-muted-foreground">{change.before ?? 'Claude Code default'} → {change.after ?? 'Claude Code default'}</p></li>)}</ul>}
+          <p className="text-xs text-muted-foreground">These are global user settings. Provider credentials and other fields are preserved. Preview changes no files; saving checks the latest file again.</p>
+        </div>}
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={!snapshot || busy || needsReload || !dirty || conflict !== null} onClick={() => void inspectChanges()}>Preview changes</Button>
           <Button disabled={!snapshot || busy || needsReload || !dirty || conflict !== null} onClick={() => void submit(false)}>Save User Settings</Button>
           <Button variant="secondary" disabled={busy} onClick={() => void reload()}>Reload from file</Button>
           <Button variant="secondary" disabled={!snapshot?.initialValues || busy || needsReload} onClick={() => void submit(true)}>Restore user settings</Button>
