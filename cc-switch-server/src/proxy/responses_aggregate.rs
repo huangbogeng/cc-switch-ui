@@ -1,10 +1,64 @@
 //! OpenAI Responses SSE aggregation for non-streaming Anthropic clients.
 
+use super::reasoning_bridge::anthropic_block_from_openai_reasoning_item;
+use super::responses_contract::{
+    stop_reason as response_stop_reason, terminal_error, usage as usage_from_responses,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// Public Responses endpoints can return JSON; Codex OAuth requires SSE even
+/// for a non-streaming Messages client. Keep both contracts explicit.
+pub fn responses_json_to_anthropic_message(response: &Value) -> Result<Value, String> {
+    if let Some(error) = terminal_error(response) {
+        return Err(error);
+    }
+    let output = response
+        .get("output")
+        .and_then(Value::as_array)
+        .ok_or("Responses JSON is missing output")?;
+    let mut content = Vec::new();
+    for item in output {
+        match item.get("type").and_then(Value::as_str) {
+            Some("message") => {
+                for part in item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if let Some(text) = part
+                        .get("text")
+                        .or_else(|| part.get("refusal"))
+                        .and_then(Value::as_str)
+                    {
+                        content.push(json!({"type":"text", "text":text}));
+                    }
+                }
+            }
+            Some("function_call") => {
+                let arguments = item
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or("{}");
+                content.push(json!({"type":"tool_use", "id":item.get("call_id"), "name":item.get("name"), "input":serde_json::from_str::<Value>(arguments).map_err(|e|e.to_string())?}));
+            }
+            Some("reasoning") => {
+                if let Some(block) = anthropic_block_from_openai_reasoning_item(item) {
+                    content.push(block);
+                }
+            }
+            other => return Err(format!("Unsupported Responses output item: {other:?}")),
+        }
+    }
+    let stop = response_stop_reason(response, content.iter().any(|c| c["type"] == "tool_use"));
+    Ok(
+        json!({"id":response.get("id"),"type":"message","role":"assistant","model":response.get("model"),"content":content,"stop_reason":stop,"stop_sequence":Value::Null,"usage":usage_from_responses(response.get("usage"))}),
+    )
+}
+
 pub fn responses_sse_to_anthropic_message(bytes: &[u8]) -> Result<Value, String> {
-    let text = String::from_utf8_lossy(bytes);
+    let text = String::from_utf8_lossy(bytes).replace("\r\n", "\n");
     let mut message_id = String::new();
     let mut model = String::new();
     let mut text_parts = Vec::new();
@@ -12,6 +66,8 @@ pub fn responses_sse_to_anthropic_message(bytes: &[u8]) -> Result<Value, String>
     let mut stop_reason = "end_turn";
     let mut tool_calls: HashMap<String, ToolCallAccumulator> = HashMap::new();
     let mut tool_aliases: HashMap<String, String> = HashMap::new();
+    let mut reasoning = Vec::new();
+    let mut terminal = false;
 
     for block in text.split("\n\n") {
         let Some((event_name, data)) = parse_sse_block(block) else {
@@ -21,7 +77,10 @@ pub fn responses_sse_to_anthropic_message(bytes: &[u8]) -> Result<Value, String>
             continue;
         };
 
-        match event_name.as_deref() {
+        match event_name
+            .as_deref()
+            .or_else(|| data.get("type").and_then(Value::as_str))
+        {
             Some("response.created") => {
                 let response = data.get("response").unwrap_or(&data);
                 if let Some(id) = response.get("id").and_then(Value::as_str) {
@@ -57,12 +116,22 @@ pub fn responses_sse_to_anthropic_message(bytes: &[u8]) -> Result<Value, String>
                 if let Some(item) = data.get("item") {
                     if item.get("type").and_then(Value::as_str) == Some("function_call") {
                         finish_tool_call(&mut tool_calls, &mut tool_aliases, item);
+                    } else if let Some(block) = anthropic_block_from_openai_reasoning_item(item) {
+                        reasoning.push(block);
                     }
                 }
             }
             Some("response.completed") | Some("response.incomplete") => {
                 let response = data.get("response").unwrap_or(&data);
-                stop_reason = stop_reason_from_response(response);
+                if let Some(error) = terminal_error(response) {
+                    return Err(error);
+                }
+                // Complete snapshots are authoritative and preserve output order.
+                if response.get("output").and_then(Value::as_array).is_some() {
+                    return responses_json_to_anthropic_message(response);
+                }
+                terminal = true;
+                stop_reason = response_stop_reason(response, !tool_calls.is_empty());
                 usage = usage_from_responses(response.get("usage"));
                 if let Some(id) = response.get("id").and_then(Value::as_str) {
                     message_id = id.to_string();
@@ -70,18 +139,25 @@ pub fn responses_sse_to_anthropic_message(bytes: &[u8]) -> Result<Value, String>
                 if let Some(response_model) = response.get("model").and_then(Value::as_str) {
                     model = response_model.to_string();
                 }
+                break;
             }
-            Some("error") => return Err(data.to_string()),
+            Some("error" | "response.failed" | "response.cancelled") => {
+                return Err(data.to_string())
+            }
             _ => {}
         }
     }
 
+    if !terminal {
+        return Err("Responses stream ended without a terminal event".into());
+    }
+    reasoning.extend(build_content(text_parts.concat(), tool_calls));
     Ok(json!({
         "id": message_id,
         "type": "message",
         "role": "assistant",
         "model": model,
-        "content": build_content(text_parts.concat(), tool_calls),
+        "content": reasoning,
         "stop_reason": stop_reason,
         "stop_sequence": Value::Null,
         "usage": usage,
@@ -197,23 +273,6 @@ fn parse_sse_block(block: &str) -> Option<(Option<String>, String)> {
     }
 }
 
-fn usage_from_responses(usage: Option<&Value>) -> Value {
-    let Some(usage) = usage else {
-        return json!({ "input_tokens": 0, "output_tokens": 0 });
-    };
-    json!({
-        "input_tokens": usage.get("input_tokens").and_then(Value::as_u64).unwrap_or(0),
-        "output_tokens": usage.get("output_tokens").and_then(Value::as_u64).unwrap_or(0),
-    })
-}
-
-fn stop_reason_from_response(response: &Value) -> &'static str {
-    match response.get("status").and_then(Value::as_str) {
-        Some("incomplete") => "max_tokens",
-        _ => "end_turn",
-    }
-}
-
 fn response_call_id(data: &Value) -> Option<String> {
     data.get("call_id")
         .or_else(|| data.get("item_id"))
@@ -230,6 +289,33 @@ struct ToolCallAccumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_failed_cancelled_and_truncated_responses() {
+        for status in ["failed", "cancelled"] {
+            let response =
+                json!({"status":status,"output":[],"error":{"message":"backend unavailable"}});
+            assert!(responses_json_to_anthropic_message(&response)
+                .unwrap_err()
+                .contains("backend unavailable"));
+            let sse = format!("event: response.{status}\ndata: {{\"response\":{response}}}\n\n");
+            assert!(responses_sse_to_anthropic_message(sse.as_bytes()).is_err());
+        }
+        assert!(
+            responses_sse_to_anthropic_message(b"event: response.created\ndata: {}\n\n").is_err()
+        );
+    }
+
+    #[test]
+    fn terminal_snapshot_preserves_order_and_ignores_late_events() {
+        let response = json!({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"先检查"}]},{"type":"reasoning","id":"rs","summary":[],"encrypted_content":"opaque"},{"type":"function_call","call_id":"call","name":"Read","arguments":"{}"}]});
+        let sse=format!("event: response.completed\r\ndata: {{\"response\":{response}}}\r\n\r\nevent: response.failed\r\ndata: {{}}\r\n\r\n");
+        let result = responses_sse_to_anthropic_message(sse.as_bytes()).unwrap();
+        assert_eq!(result["content"][0]["text"], "先检查");
+        assert_eq!(result["content"][1]["type"], "redacted_thinking");
+        assert_eq!(result["content"][2]["type"], "tool_use");
+        assert_eq!(result["stop_reason"], "tool_use");
+    }
 
     #[test]
     fn aggregates_responses_sse_to_anthropic_message() {

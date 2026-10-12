@@ -262,6 +262,7 @@ async fn handle_proxy(
             let adapter = runtime_state.registry.find_for_provider(&provider);
             match adapter {
                 Some(adapter) => {
+                    let adapter = super::adapters::ProtocolAdapter::wrap(adapter, &provider);
                     log::info!(
                         "[Proxy] adapter matched: provider={} type={}",
                         provider.id,

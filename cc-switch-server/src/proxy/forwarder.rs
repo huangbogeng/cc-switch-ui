@@ -157,6 +157,12 @@ impl Forwarder {
                 is_stream,
                 body.len()
             );
+            if state.adapter.streaming_response_format() != StreamingResponseFormat::Anthropic {
+                super::transform_responses::make_default_adaptive_thinking_explicit(
+                    &mut body_json,
+                    request_model.as_deref(),
+                );
+            }
             apply_model_mapping(&mut body_json, &self.config.model_mapping);
             let request_model = extract_request_model(&body_json);
 
@@ -288,6 +294,13 @@ impl Forwarder {
         path: String,
         query: String,
     ) -> Result<Response, StatusCode> {
+        if path.ends_with("/count_tokens")
+            && state.adapter.streaming_response_format() != StreamingResponseFormat::Anthropic
+        {
+            return Ok(invalid_request_response(
+                "Token counting is available only for Anthropic-format routes".into(),
+            ));
+        }
         // Resolve auth through the adapter; it decides the provider strategy,
         // while the forwarder only injects the resulting headers.
         let auth_info = state
@@ -317,7 +330,8 @@ impl Forwarder {
             .extract_prompt_cache_key(&state.provider)
             .or_else(|| self.config.prompt_cache_key.clone());
 
-        let requested_stream = body_json.get("stream").and_then(Value::as_bool) != Some(false);
+        let requested_stream = !path.ends_with("/count_tokens")
+            && body_json.get("stream").and_then(Value::as_bool) != Some(false);
         let session = extract_session_id(&headers, &body_json);
         let cache_key = build_prompt_cache_key(
             prompt_cache_key.as_deref(),
@@ -341,13 +355,17 @@ impl Forwarder {
             requested_stream,
             codex_fast_mode: self.config.codex_fast_mode,
         };
-        let transform_output = state
-            .adapter
-            .transform_request(transform_input)
-            .map_err(|e| {
-                log::error!("[Proxy] Failed to transform request for {}: {}", path, e);
-                StatusCode::BAD_REQUEST
-            })?;
+        let transform_output = match state.adapter.transform_request(transform_input) {
+            Ok(output) => output,
+            Err(error) => {
+                log::error!(
+                    "[Proxy] Failed to transform request for {}: {}",
+                    path,
+                    error
+                );
+                return Ok(invalid_request_response(error.to_string()));
+            }
+        };
 
         log::info!(
             "[Proxy] {} {}{} -> {}{} | auth={} stream={}",
@@ -421,6 +439,14 @@ impl Forwarder {
         // Copy other headers (excluding hop-by-hop)
         upstream_req = copy_forward_headers(upstream_req, &headers);
         upstream_req = upstream_req.header(header::CONTENT_TYPE, "application/json");
+        if state.adapter.streaming_response_format() == StreamingResponseFormat::Anthropic
+            && !query.is_empty()
+        {
+            let parsed = reqwest::Url::parse(&format!("http://localhost/?{query}"))
+                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            let pairs: Vec<_> = parsed.query_pairs().collect();
+            upstream_req = upstream_req.query(&pairs);
+        }
 
         // Send request
         let upstream_res = upstream_req.send().await.map_err(|e| {
@@ -722,6 +748,17 @@ fn deepseek_strict_rectify_request(mut value: Value) -> Value {
     }
     walk(&mut value);
     value
+}
+
+fn invalid_request_response(message: String) -> Response {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({"type":"error", "error":{"type":"invalid_request_error", "message":message}})
+                .to_string(),
+        ))
+        .unwrap()
 }
 
 fn apply_model_mapping(body: &mut Value, mapping: &super::types::ModelMapping) {

@@ -50,9 +50,12 @@ impl ProviderAdapter for ResponsesAdapter {
     }
 
     fn transform_request(&self, input: TransformInput) -> Result<TransformOutput, ProviderError> {
-        let transformed = crate::proxy::transform_responses::anthropic_to_codex_responses(
-            input.body,
+        let mut body = input.body;
+        body["stream"] = serde_json::json!(input.requested_stream);
+        let transformed = crate::proxy::transform_responses::anthropic_to_responses(
+            body,
             input.prompt_cache_key.as_deref(),
+            false,
             input.codex_fast_mode,
         )
         .map_err(ProviderError::TransformFailed)?;

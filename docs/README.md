@@ -13,6 +13,6 @@ These guides describe the current repository. Check the release notes before ass
 | [Development / 开发](development.md) | Toolchain, local servers, isolated workflow tests and upgrade regressions |
 | [Frontend design](frontend-design.md) | Shared layouts, dialogs, notifications, typography and branding |
 
-Start with the user guide for normal operations. Use the recovery reference when an operation reports a conflict, partial result or pending recovery.
+Start with the user guide for normal operations. See [protocol compatibility](protocol-compatibility.md) for local-route capabilities and prompt preservation. Use the recovery reference when an operation reports a conflict, partial result or pending recovery.
 
 Run one server per profile. The default profile is `~/.cc-switch`; Claude Code's live files are outside it. A database snapshot, a profile archive and a live configuration snapshot have different scopes. The [upgrade guide](upgrading.md#backup-locations-and-scope) compares them.

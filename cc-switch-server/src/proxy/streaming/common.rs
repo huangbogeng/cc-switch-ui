@@ -1,10 +1,23 @@
 use bytes::Bytes;
 use serde_json::{json, Value};
 
-pub(super) fn take_sse_block(buffer: &mut String) -> Option<String> {
-    let index = buffer.find("\n\n")?;
-    let block = buffer[..index].to_string();
-    buffer.drain(..index + 2);
+// Keep raw bytes until an entire SSE event arrives: a UTF-8 character can span
+// HTTP chunks. Decode once per event, including CRLF-framed upstream streams.
+pub(super) fn take_sse_block(buffer: &mut Vec<u8>) -> Option<String> {
+    let delimiter = buffer
+        .windows(2)
+        .position(|w| w == b"\n\n")
+        .map(|i| (i, 2))
+        .into_iter()
+        .chain(
+            buffer
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .map(|i| (i, 4)),
+        )
+        .min_by_key(|(i, _)| *i)?;
+    let block = String::from_utf8_lossy(&buffer[..delimiter.0]).into_owned();
+    buffer.drain(..delimiter.0 + delimiter.1);
     Some(block)
 }
 

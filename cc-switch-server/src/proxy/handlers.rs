@@ -72,6 +72,15 @@ pub async fn proxy_start(State(state): State<Arc<AppState>>) -> impl IntoRespons
         }))
         .into_response();
     }
+    if let Err(error) = super::adapters::ProtocolAdapter::validate(
+        registry
+            .find_for_provider(&target_provider)
+            .unwrap()
+            .as_ref(),
+        &target_provider,
+    ) {
+        return Json(serde_json::json!({"success":false,"error":error})).into_response();
+    }
 
     let proxy_addr = format!("{}:{}", state.proxy_host, state.proxy_listen_port)
         .parse::<SocketAddr>()
@@ -319,6 +328,12 @@ pub async fn proxy_set_target(
                 provider.meta.get("providerType").and_then(|v| v.as_str()).unwrap_or("unknown"))
         }))
         .into_response();
+    }
+    if let Err(error) = super::adapters::ProtocolAdapter::validate(
+        registry.find_for_provider(&provider).unwrap().as_ref(),
+        &provider,
+    ) {
+        return Json(serde_json::json!({"success":false,"error":error})).into_response();
     }
 
     let proxy_running = {
