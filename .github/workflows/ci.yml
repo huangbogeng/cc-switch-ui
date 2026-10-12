@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        old_version: [v0.1.9, v0.2.0, v0.3.1]
+        old_version: [v0.1.9, v0.2.0, v0.3.1, v0.3.2]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -64,7 +64,7 @@ jobs:
         run: |
           bash -n install.sh
           PROFILE_ARGS=()
-          if [[ "$OLD_VERSION" == v0.3.1 ]]; then
+          if [[ "$OLD_VERSION" == v0.3.1 || "$OLD_VERSION" == v0.3.2 ]]; then
             PROFILE_ARGS+=(--prepare-old-profile)
           fi
           python3 tests/test_upgrade.py --new-binary target/debug/cc-switch-ui --old-binary /tmp/cc-old-release/cc-switch-ui/cc-switch-ui "${PROFILE_ARGS[@]}" -v
