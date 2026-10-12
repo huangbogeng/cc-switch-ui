@@ -257,3 +257,33 @@ function setOptionalEnv(env: Record<string, string>, key: string, value: string)
     delete env[key];
   }
 }
+
+export function validateProviderDraft(form: ProviderFormData) {
+  if (!form.id.trim() || !form.name.trim()) throw new Error('Provider ID and name are required.');
+  if (form.baseUrl.trim()) {
+    let endpoint: URL;
+    try { endpoint = new URL(form.baseUrl.trim()); } catch { throw new Error('Base URL must be a valid absolute URL.'); }
+    if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') throw new Error('Base URL must use HTTP or HTTPS.');
+  }
+}
+
+/** Emit edits relative to the displayed baseline, preserving stored values hidden by form defaults. */
+export function buildEditedProvider(form: ProviderFormData, preset: ProviderPreset | null, base?: Provider): Provider {
+  const desired = buildProvider(form, preset, base);
+  if (!base) return desired;
+  const displayed = buildProvider(formFromProvider(base), null, base);
+  const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const apply = (before: unknown, after: unknown, current: unknown): unknown => {
+    if (JSON.stringify(before) === JSON.stringify(after)) return current;
+    if (object(before) && object(after)) {
+      const result: Record<string, unknown> = object(current) ? { ...current } : {};
+      for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        if (!(key in after)) { if (key in before) delete result[key]; }
+        else { const next = apply(before[key], after[key], result[key]); if (next === undefined) delete result[key]; else result[key] = next; }
+      }
+      return result;
+    }
+    return after;
+  };
+  return apply(displayed, desired, base) as Provider;
+}

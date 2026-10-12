@@ -36,6 +36,8 @@ All UI labels are English. **Dashboard** summarizes Direct Config, Local Route a
 
 The **Claude Official** preset clears third-party connection settings and relies on your existing Claude Code login. It does not create an Anthropic subscription or authenticate Claude Code for you.
 
+See the [provider editor guide](provider-editor.md) for concurrent edits and save behavior.
+
 ## Codex subscription without an API key / Codex 订阅路由
 
 1. Open **OAuth → ChatGPT Codex → Connect**. Follow the displayed verification URL and device code.
