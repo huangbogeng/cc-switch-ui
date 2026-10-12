@@ -20,7 +20,7 @@ import { LocalRoutePanel } from '@/components/providers/LocalRoutePanel';
 import { ProviderList } from '@/components/providers/ProviderList';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
 import {
-  buildProvider,
+  buildEditedProvider,
   emptyProviderForm,
   formFromPreset,
   formFromProvider,
@@ -269,7 +269,7 @@ export default function ProvidersPage() {
           return;
         }
       }
-      const result = await saveProvider(buildProvider(formData, selectedPreset, editingBase), editingBase, policy, conflict?.revision);
+      const result = await saveProvider(buildEditedProvider(formData, selectedPreset, editingBase), editingBase, policy, conflict?.revision);
       setConflict(null);
       setOperationNotice([result.message, ...(result.warnings ?? [])].filter(Boolean).join(' '));
       setShowForm(false);
