@@ -379,6 +379,14 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             get(settings::get_claude_user_settings).put(settings::save_claude_user_settings),
         )
         .route(
+            "/api/settings/claude-user/preview",
+            post(settings::preview_claude_user_settings),
+        )
+        .route(
+            "/api/settings/claude-user/merge",
+            put(settings::merge_claude_user_settings),
+        )
+        .route(
             "/api/settings/claude-user/restore",
             post(settings::restore_claude_user_settings),
         )
