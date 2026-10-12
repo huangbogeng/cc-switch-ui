@@ -66,6 +66,8 @@ Removing a record may leave pending live cleanup. **Deletion recovery → Retry 
 
 **Settings → Backup Center** groups manual database snapshots, first-write configuration snapshots and Skills backups. **Restore on restart** stages a database restore; after restarting, select a provider explicitly and review MCP/Skills before syncing. A pending restore blocks starting a local route. Read the [recovery reference](configuration-recovery.md) before replacing a complete live configuration file.
 
+**Backup Center → Inspect backup storage** inventories known database, migration, original-file, Skills and release-upgrade locations. It shows paths, logical bytes, top-level entry counts and the latest modification time without reading backup contents. Missing, partial and unavailable locations are distinct. Recovery remains in the existing panels or the [upgrade recovery guide](configuration-recovery.md); inventory does not certify restorability.
+
 ## Usage / 用量
 
 The **Usage** page distinguishes local proxy logs from imported Claude Code session data. Choose the data source and date range before comparing totals. Session import is optional; requests made outside the local route will not appear as proxy logs. Request details and model/provider breakdowns help locate upstream failures.

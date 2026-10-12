@@ -776,3 +776,9 @@ export interface ProviderPreview {
 export function previewProvider(provider: Provider, base?: Provider) {
   return api<ProviderPreview>('/providers/preview', { method: 'POST', body: JSON.stringify({ provider, base }) });
 }
+export interface BackupLocation {
+  id: string; label: string; path: string | null; scope: string; recovery: string;
+  entries: number; sizeBytes: number; modifiedAt: number | null;
+  status: 'available' | 'missing' | 'partial' | 'unavailable'; warnings: string[];
+}
+export function getBackupStorage() { return api<{ locations: BackupLocation[] }>('/backup-storage'); }
