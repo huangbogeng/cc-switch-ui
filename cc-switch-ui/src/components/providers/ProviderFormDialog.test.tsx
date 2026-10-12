@@ -72,3 +72,24 @@ it('ignores a response from the previous endpoint while a new model list is fetc
   await screen.findByRole('radio', {name:/new-endpoint-model/});
   expect(screen.queryByRole('radio', {name:/old-endpoint-model/})).toBeNull();
 });
+
+it('locks Codex OAuth to Responses and keeps model discovery disabled', () => {
+  const preset = providerPresets.find(item => item.id === 'codex')!;
+  const submit = vi.fn();
+  render(<ProviderFormDialog open editingId={null} selectedPreset={preset} initialFormData={{ ...formFromPreset(preset), apiFormat: 'gemini_native' }} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
+  const format = screen.getByLabelText('API Format');
+  expect(format).toHaveProperty('value', 'openai_responses');
+  expect(format).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'Fetch models' })).toHaveProperty('disabled', true);
+  fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ apiFormat: 'openai_responses' }));
+});
+
+it('explains Gemini routing limits while allowing its configuration to be saved', () => {
+  const preset = providerPresets.find(item => item.apiFormat === 'gemini_native')!;
+  const submit = vi.fn();
+  render(<ProviderFormDialog open editingId={null} selectedPreset={preset} initialFormData={formFromPreset(preset)} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
+  expect(screen.getByText('Gemini Native can be saved for configuration and model discovery. Local routing is not supported.')).toBeTruthy();
+  fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ apiFormat: 'gemini_native' }));
+});

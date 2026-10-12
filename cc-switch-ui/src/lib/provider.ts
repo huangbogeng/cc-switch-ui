@@ -1,6 +1,20 @@
 import type { Provider } from '@/api';
 
 export type ProviderAuthMode = 'api_key' | 'oauth_proxy';
+export type ProviderApiFormat = 'anthropic' | 'openai_chat' | 'openai_responses' | 'gemini_native';
+
+// Keep fallback order aligned with ProviderRegistry and ProtocolAdapter.
+const adapterTypes = ['claude', 'codex_oauth', 'copilot', 'deepseek', 'gemini', 'minimax', 'openai_responses', 'openrouter', 'siliconflow'];
+function providerAdapterType(provider: Provider): string | undefined {
+  const meta = provider.meta as { providerType?: string } | null;
+  for (const value of [meta?.providerType, provider.id]) {
+    if (typeof value !== 'string' || !value) continue;
+    if (adapterTypes.includes(value)) return value;
+    const match = adapterTypes.find(type => value.includes(type));
+    if (match) return match;
+  }
+  return undefined;
+}
 
 export function sortProviders(providers: Record<string, Provider>) {
   return Object.values(providers).sort(compareProviders);
@@ -27,7 +41,7 @@ export function providerAuthMode(provider: Provider): ProviderAuthMode {
   } | null;
   if (
     meta?.authMode === 'oauth_proxy' ||
-    meta?.providerType === 'codex_oauth' ||
+    providerAdapterType(provider) === 'codex_oauth' ||
     meta?.authBinding?.authProvider === 'codex_oauth' ||
     meta?.authBinding?.auth_provider === 'codex_oauth'
   ) {
@@ -42,9 +56,26 @@ export function providerAuthLabel(provider: Provider) {
   return meta?.apiKeyField === 'ANTHROPIC_API_KEY' ? 'API Key' : 'Auth Token';
 }
 
-export function providerApiFormat(provider: Provider) {
-  const meta = provider.meta as { apiFormat?: string } | null;
-  return meta?.apiFormat || 'anthropic';
+export function providerApiFormat(provider: Provider): string {
+  if (providerAuthMode(provider) === 'oauth_proxy') return 'openai_responses';
+  const meta = provider.meta as { apiFormat?: unknown } | null;
+  if (typeof meta?.apiFormat === 'string') return meta.apiFormat;
+  const settings = provider.settingsConfig as { api_format?: unknown } | null;
+  if (typeof settings?.api_format === 'string') return settings.api_format;
+  switch (providerAdapterType(provider)) {
+    case 'deepseek': case 'minimax': case 'openrouter': case 'siliconflow': case 'copilot':
+      return 'openai_chat';
+    case 'openai_responses': return 'openai_responses';
+    case 'gemini': return 'gemini_native';
+    default: return 'anthropic';
+  }
+}
+
+export function providerRouteUnsupportedReason(provider: Provider): string | null {
+  const format = providerApiFormat(provider);
+  if (['anthropic', 'openai_chat', 'openai_responses'].includes(format)) return null;
+  if (format === 'gemini_native') return 'Gemini Native is not supported by the local route. Choose an Anthropic-compatible endpoint.';
+  return 'This upstream protocol is not supported by the local route.';
 }
 
 export function providerBaseUrl(provider: Provider) {

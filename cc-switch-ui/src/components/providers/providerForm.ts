@@ -1,8 +1,9 @@
 import type { Provider } from '@/api';
+import { providerApiFormat, providerAuthMode, type ProviderApiFormat } from '@/lib/provider';
 import { providerPresets, type ProviderPreset } from '@/config/providerPresets';
 
 export type ApiKeyField = 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
-export type ApiFormat = 'anthropic' | 'openai_chat' | 'openai_responses' | 'gemini_native';
+export type ApiFormat = ProviderApiFormat;
 
 export interface ProviderFormData {
   id: string;
@@ -82,7 +83,7 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
 export function formFromProvider(provider: Provider): ProviderFormData {
   const env = providerEnv(provider);
   const meta = providerMeta(provider);
-  const authMode = meta.authMode === 'oauth_proxy' || meta.providerType === 'codex_oauth' ? 'oauth_proxy' : 'api_key';
+  const authMode = providerAuthMode(provider);
   const apiKeyField = meta.apiKeyField || findApiKeyField(env);
   const fallbackApiKeyField: ApiKeyField =
     apiKeyField === 'ANTHROPIC_AUTH_TOKEN' ? 'ANTHROPIC_API_KEY' : 'ANTHROPIC_AUTH_TOKEN';
@@ -97,7 +98,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     notes: provider.notes || '',
     apiKey: env[apiKeyField] || env[fallbackApiKeyField] || '',
     apiKeyField,
-    apiFormat: meta.apiFormat || 'anthropic',
+    apiFormat: providerApiFormat(provider) as ApiFormat,
     isFullUrl: meta.isFullUrl || false,
     model,
     haikuModel: env.ANTHROPIC_DEFAULT_HAIKU_MODEL || model,
@@ -106,7 +107,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     noAuth: meta.noAuth ?? (providerPresets.some((preset) => preset.id === provider.id && preset.noAuth)
       && !env.ANTHROPIC_BASE_URL && !env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY),
     promptCacheKey: meta.promptCacheKey || '',
-    codexAccountId: meta.authBinding?.accountId || '',
+    codexAccountId: typeof meta.authBinding === 'string' ? meta.authBinding : meta.authBinding?.accountId || '',
     codexFastMode: meta.codexFastMode || false,
     subagentModel: env.CLAUDE_CODE_SUBAGENT_MODEL || '',
     effortLevel: env.CLAUDE_CODE_EFFORT_LEVEL || '',
@@ -159,7 +160,7 @@ export function buildProvider(
     ...existingMeta,
     authMode,
     noAuth,
-    apiFormat: formData.apiFormat,
+    apiFormat: authMode === 'oauth_proxy' ? 'openai_responses' : formData.apiFormat,
     apiKeyField: formData.apiKeyField,
     isFullUrl: formData.isFullUrl,
   };
@@ -176,28 +177,26 @@ export function buildProvider(
     } else {
       delete meta.codexFastMode;
     }
-    meta.authBinding = {
-      source: 'managed_account',
-      authProvider: 'codex_oauth',
-    };
-    if (formData.codexAccountId.trim()) {
-      meta.authBinding = {
-        source: 'managed_account',
-        authProvider: 'codex_oauth',
-        accountId: formData.codexAccountId.trim(),
-      };
-    }
+    const binding: Record<string, unknown> = existingMeta.authBinding && typeof existingMeta.authBinding === 'object'
+      ? { ...existingMeta.authBinding } : {};
+    binding.source = 'managed_account';
+    binding.authProvider = 'codex_oauth';
+    if (formData.codexAccountId.trim()) binding.accountId = formData.codexAccountId.trim();
+    else delete binding.accountId;
+    meta.authBinding = binding;
   } else {
-    delete meta.providerType;
-    delete meta.authBinding;
-    delete meta.codexFastMode;
+    if (existingProvider && providerAuthMode(existingProvider) === 'oauth_proxy') {
+      delete meta.providerType;
+      delete meta.authBinding;
+      delete meta.codexFastMode;
+    }
   }
 
   return {
     ...existingProvider,
     id,
     name,
-    settingsConfig: { env },
+    settingsConfig: { ...(existingProvider?.settingsConfig as Record<string, unknown> | undefined), env },
     icon: selectedPreset?.icon ?? existingProvider?.icon,
     iconColor: selectedPreset?.iconColor ?? existingProvider?.iconColor,
     websiteUrl: selectedPreset?.websiteUrl || websiteUrl || undefined,
@@ -224,7 +223,7 @@ function providerMeta(provider: Provider): {
   noAuth?: boolean;
   authMode?: 'api_key' | 'oauth_proxy';
   providerType?: string;
-  authBinding?: { accountId?: string };
+  authBinding?: { accountId?: string } | string;
   codexFastMode?: boolean;
 } {
   return (provider.meta || {}) as {
@@ -235,7 +234,7 @@ function providerMeta(provider: Provider): {
     noAuth?: boolean;
     authMode?: 'api_key' | 'oauth_proxy';
     providerType?: string;
-    authBinding?: { accountId?: string };
+    authBinding?: { accountId?: string } | string;
     codexFastMode?: boolean;
   };
 }

@@ -1,5 +1,6 @@
 import { Server, Zap } from 'lucide-react';
 import type { Provider } from '@/api';
+import { providerRouteUnsupportedReason } from '@/lib/provider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -33,6 +34,7 @@ export function LocalRoutePanel({
 }: LocalRoutePanelProps) {
   const currentProvider = providers.find((provider) => provider.id === currentProviderId) ?? null;
   const targetProvider = providers.find((provider) => provider.id === proxyTargetId) ?? null;
+  const unsupportedReason = targetProvider ? providerRouteUnsupportedReason(targetProvider) : null;
   const targetMatchesSelection =
     !proxyRunning || !currentProvider || !targetProvider || currentProvider.id === targetProvider.id;
 
@@ -54,19 +56,26 @@ export function LocalRoutePanel({
         </div>
         <div className="space-y-2">
           <Label htmlFor="route-target">Route Target</Label>
-          <Select id="route-target" value={proxyTargetId ?? ''} onChange={(event) => onTargetChange(event.target.value)} disabled={busy || statusUnavailable}>
+          <Select id="route-target" value={proxyTargetId ?? ''} onChange={(event) => {
+            const provider = providers.find(item => item.id === event.target.value);
+            if (provider && !providerRouteUnsupportedReason(provider)) onTargetChange(provider.id);
+          }} disabled={busy || statusUnavailable}>
             <option value="" disabled>Select a provider</option>
-            {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+            {providers.map((provider) => {
+              const unsupported = providerRouteUnsupportedReason(provider);
+              return <option key={provider.id} value={provider.id} disabled={!!unsupported}>{provider.name}{unsupported ? ' (local route unavailable)' : ''}</option>;
+            })}
           </Select>
           <p className="text-xs leading-5 text-muted-foreground">This target is independent from the direct Provider selection. Stopping the route restores Direct Config.</p>
         </div>
+        {unsupportedReason && <p role="status" className="text-xs leading-5 text-muted-foreground">{unsupportedReason}</p>}
         {recoveryRequired && <p role="alert" className="text-xs leading-5 text-amber-300">The previous route was interrupted. Restore Direct Config before starting again.</p>}
         {proxyRunning || recoveryRequired ? (
           <Button variant={recoveryRequired ? 'default' : 'outline'} className="w-full" onClick={onStopProxy} disabled={busy || statusUnavailable}>
             {busy ? 'Updating...' : recoveryRequired ? 'Restore Direct Config' : 'Stop Route'}
           </Button>
         ) : (
-          <Button className="w-full" onClick={() => proxyTargetId && onStartProxy(proxyTargetId)} disabled={!proxyTargetId || busy || statusUnavailable}>
+          <Button className="w-full" onClick={() => targetProvider && !unsupportedReason && onStartProxy(targetProvider.id)} disabled={!targetProvider || !!unsupportedReason || busy || statusUnavailable}>
             <Zap className="h-4 w-4" />{busy ? 'Starting...' : 'Start Route'}
           </Button>
         )}

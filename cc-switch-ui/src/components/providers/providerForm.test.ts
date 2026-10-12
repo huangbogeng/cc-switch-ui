@@ -157,3 +157,37 @@ it('preserves stored values hidden by form defaults when editing a different fie
   const edited = buildEditedProvider(draft, null, base);
   expect(edited.name).toBe('Renamed'); expect(edited.meta).toEqual({}); expect(edited.settingsConfig).toEqual(base.settingsConfig);
 });
+
+it('preserves legacy Chat settings and unrelated top-level fields when only renaming', () => {
+  const existing: Provider = { id: 'legacy', name: 'Legacy', inFailoverQueue: false, meta: {}, settingsConfig: { api_format: 'openai_chat', customSetting: { keep: true }, env: { ANTHROPIC_AUTH_TOKEN: 'synthetic-key' } } };
+  const edited = buildProvider({ ...formFromProvider(existing), name: 'Renamed' }, null, existing);
+  expect(edited.meta).toMatchObject({ apiFormat: 'openai_chat' });
+  expect(edited.settingsConfig).toMatchObject({ api_format: 'openai_chat', customSetting: { keep: true } });
+});
+
+it('retains the inferred vendor protocol and auth adapter when editing an imported record', () => {
+  const existing: Provider = { id: 'imported', name: 'Imported', inFailoverQueue: false, settingsConfig: { env: {} }, meta: { providerType: 'deepseek' } };
+  const edited = buildProvider(formFromProvider(existing), null, existing);
+  expect(edited.meta).toMatchObject({ apiFormat: 'openai_chat', providerType: 'deepseek' });
+});
+
+it('preserves binding-only OAuth accounts, including unknown binding fields', () => {
+  const existing: Provider = { id: 'imported', name: 'Imported', inFailoverQueue: false, settingsConfig: { env: {} }, meta: { authBinding: { source: 'managed_account', authProvider: 'codex_oauth', accountId: 'synthetic-account', extra: 'keep' } } };
+  const form = formFromProvider(existing);
+  expect(form.authMode).toBe('oauth_proxy');
+  expect(form.apiFormat).toBe('openai_responses');
+  const edited = buildProvider(form, null, existing);
+  expect(edited.meta).toMatchObject({ providerType: 'codex_oauth', authBinding: { accountId: 'synthetic-account', extra: 'keep' } });
+  const defaultAccount = buildProvider({ ...form, codexAccountId: '' }, null, existing);
+  expect((defaultAccount.meta as { authBinding: object }).authBinding).not.toHaveProperty('accountId');
+});
+
+it('normalizes conflicting Codex protocol metadata while keeping configured models', () => {
+  const existing: Provider = { id: 'codex', name: 'Codex', inFailoverQueue: false, settingsConfig: { env: { ANTHROPIC_MODEL: 'existing-model' } }, meta: { providerType: 'codex_oauth', apiFormat: 'gemini_native' } };
+  const form = formFromProvider(existing);
+  expect(form.apiFormat).toBe('openai_responses');
+  expect(buildProvider({ ...form, apiFormat: 'openai_chat' }, null, existing).meta).toMatchObject({ apiFormat: 'openai_responses' });
+  expect(form.model).toBe('existing-model');
+  const preset = formFromPreset(providerPresets.find(item => item.id === 'codex')!);
+  expect([preset.model, preset.haikuModel, preset.sonnetModel, preset.opusModel]).toEqual(Array(4).fill('gpt-6.1-sol'));
+});

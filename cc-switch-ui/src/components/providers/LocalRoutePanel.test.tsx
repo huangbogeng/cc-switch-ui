@@ -77,3 +77,28 @@ it('disables route mutations when the current route status is unavailable', () =
   fireEvent.click(start);
   expect(onStartProxy).not.toHaveBeenCalled();
 });
+
+it('marks unsupported targets and blocks start without blocking route restoration', () => {
+  const gemini = { ...provider('gemini', 'Gemini'), meta: { apiFormat: 'gemini_native' } };
+  const onStartProxy = vi.fn();
+  const props = { providers: [gemini], currentProviderId: null, proxyTargetId: 'gemini', busy: false, onTargetChange: vi.fn(), onStartProxy, onStopProxy: vi.fn() };
+  const view = render(<LocalRoutePanel {...props} proxyRunning={false} />);
+  expect(screen.getByRole('option', { name: 'Gemini (local route unavailable)' })).toHaveProperty('disabled', true);
+  const start = screen.getByRole('button', { name: 'Start Route' });
+  expect(start).toHaveProperty('disabled', true);
+  fireEvent.click(start);
+  expect(onStartProxy).not.toHaveBeenCalled();
+  expect(screen.getByRole('status').textContent).toContain('Gemini Native is not supported');
+  view.rerender(<LocalRoutePanel {...props} proxyRunning />);
+  expect(screen.getByRole('button', { name: 'Stop Route' })).toHaveProperty('disabled', false);
+});
+
+it('ignores unsupported selection events while allowing a supported replacement', () => {
+  const gemini = { ...provider('gemini', 'Gemini'), meta: { apiFormat: 'gemini_native' } };
+  const onTargetChange = vi.fn();
+  render(<LocalRoutePanel providers={[gemini, provider('native', 'Native')]} currentProviderId={null} proxyRunning={false} proxyTargetId="native" busy={false} onTargetChange={onTargetChange} onStartProxy={vi.fn()} onStopProxy={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Route Target'), { target: { value: 'gemini' } });
+  expect(onTargetChange).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Route Target'), { target: { value: 'native' } });
+  expect(onTargetChange).toHaveBeenCalledWith('native');
+});

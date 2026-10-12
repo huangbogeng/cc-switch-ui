@@ -36,6 +36,18 @@ For a Codex subscription, authorize an account in **OAuth → ChatGPT Codex**,
 choose the default or bind that account in the provider editor, and start the
 route. See the [subscription setup steps](user-guide.md#codex-subscription-without-an-api-key--codex-订阅路由).
 
+The provider card and editor use the same protocol fallback order. Editing a
+legacy record retains its top-level settings and authentication adapter metadata;
+choosing a different format writes the higher-priority `meta.apiFormat` value.
+Codex OAuth displays a fixed Responses format and preserves the selected account
+binding. Unsupported protocols remain available as saved configurations but are
+marked unavailable in the route selector. An interrupted/running route can still
+be stopped or restored even if its target is now unsupported.
+
+Route-target failures are shown before any start request is made. A rejected
+selection must not start the previously selected route. The backend remains the
+final authority on supported protocols and validates again before takeover.
+
 ## Prompts and tool results
 
 - Native Anthropic forwarding preserves prompt text and its structure.

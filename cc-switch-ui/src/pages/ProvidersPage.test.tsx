@@ -10,7 +10,7 @@ vi.mock('../api', () => ({
   deleteProvider: vi.fn(), setProxyTarget: vi.fn(), startProxy: vi.fn(), stopProxy: vi.fn(),
 }));
 vi.mock('@/lib/fetchCache', () => ({ cacheGet: () => null, cacheSet: vi.fn() }));
-vi.mock('@/components/providers/LocalRoutePanel', () => ({ LocalRoutePanel: ({ onStopProxy, busy }: { onStopProxy: () => void; busy: boolean }) => <button disabled={busy} onClick={onStopProxy}>Stop test route</button> }));
+vi.mock('@/components/providers/LocalRoutePanel', () => ({ LocalRoutePanel: ({ onStopProxy, onStartProxy, onTargetChange, busy }: { onStopProxy: () => void; onStartProxy: (id: string) => void; onTargetChange: (id: string) => void; busy: boolean }) => <><button disabled={busy} onClick={onStopProxy}>Stop test route</button><button disabled={busy} onClick={() => onStartProxy('test')}>Start test route</button><button disabled={busy} onClick={() => onTargetChange('test')}>Change test route</button></> }));
 vi.mock('@/components/providers/ProviderCard', () => ({
   ProviderCard: ({ provider, onEdit, onSwitch, onDelete, busy }: { provider: api.Provider; onEdit: (provider: api.Provider) => void; onSwitch: (id: string) => void; onDelete: (id: string) => void; busy: boolean }) => (
     <><button onClick={() => onEdit(provider)}>Edit {provider.name}</button><button disabled={busy} onClick={() => onSwitch(provider.id)}>Select {provider.name}</button><button disabled={busy} onClick={() => onDelete(provider.id)}>Delete {provider.name}</button></>
@@ -133,4 +133,33 @@ it('keeps the provider draft and retries with an explicit observed conflict deci
   fireEvent.click(screen.getByRole('button', { name: 'Keep external changes' }));
   await waitFor(() => expect(api.saveProvider).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'keepTheirs', 'observed'));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Provider settings changed externally' })).toBeNull());
+});
+
+it('does not start an old route when target selection returns an application error', async () => {
+  vi.mocked(api.setProxyTarget).mockResolvedValue({ success: false, error: 'Unsupported route format' });
+  vi.mocked(api.startProxy).mockResolvedValue({ success: true });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByText('Start test route'));
+  expect(await screen.findByText('Unsupported route format')).toBeTruthy();
+  expect(api.startProxy).not.toHaveBeenCalled();
+  expect(api.getProxyStatus).toHaveBeenCalledTimes(2);
+});
+
+it('shows application-level target errors when switching a running route', async () => {
+  vi.mocked(api.getProxyStatus).mockResolvedValue({ running: true, listen_addr: null, active_target_provider_id: 'test', upstream_url: '', http_proxy_url: null, active_target_provider_name: 'Test' });
+  vi.mocked(api.setProxyTarget).mockResolvedValue({ success: false, error: 'Target not available' });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByText('Change test route'));
+  expect(await screen.findByText('Target not available')).toBeTruthy();
+  expect(api.startProxy).not.toHaveBeenCalled();
+  expect(api.getProxyStatus).toHaveBeenCalledTimes(2);
+});
+
+it('starts only after successful target selection', async () => {
+  vi.mocked(api.setProxyTarget).mockResolvedValue({ success: true });
+  vi.mocked(api.startProxy).mockResolvedValue({ success: true });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByText('Start test route'));
+  await waitFor(() => expect(api.startProxy).toHaveBeenCalledOnce());
+  expect(vi.mocked(api.setProxyTarget).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.startProxy).mock.invocationCallOrder[0]);
 });
