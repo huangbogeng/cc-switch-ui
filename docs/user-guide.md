@@ -77,3 +77,5 @@ Use the switch beside a collection title to enable or disable every managed skil
 For the MCP/Skills action contract and upstream comparison, see [interaction decisions](mcp-skills-design.md).
 
 Claude Code User Settings compares only fields you edited. Unedited fields retain external changes. A conflicting edit offers **Keep external changes** or **Use my changes**; cancelling keeps the draft. If the file changes again during confirmation, review is required again. Provider connection edits retain their existing conflict checks.
+
+In **Claude Code User Settings**, **Preview changes** reads the current live file and shows only the fields that saving would change. It uses the same merge and validation rules as Save. Preview creates no backups and changes no files; Save rechecks concurrent edits. Editing the draft clears the preview. This preview covers the two user settings in this panel.

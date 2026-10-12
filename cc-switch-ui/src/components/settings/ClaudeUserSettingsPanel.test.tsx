@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ClaudeUserSettingsPanel } from './ClaudeUserSettingsPanel';
-import { getClaudeUserSettings, saveClaudeUserSettings, restoreClaudeUserSettings } from '@/api';
+import { getClaudeUserSettings, saveClaudeUserSettings, restoreClaudeUserSettings, previewClaudeUserSettings } from '@/api';
 
 vi.mock('@/api', () => ({
-  getClaudeUserSettings: vi.fn(), saveClaudeUserSettings: vi.fn(), restoreClaudeUserSettings: vi.fn(),
+  getClaudeUserSettings: vi.fn(), saveClaudeUserSettings: vi.fn(), restoreClaudeUserSettings: vi.fn(), previewClaudeUserSettings: vi.fn(),
 }));
 const initial = {
   path: '/test/.claude/settings.json', revision: 'version-1',
@@ -86,4 +86,16 @@ it('retains the draft and requires an explicit choice for field conflicts', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Keep external changes' }));
   await waitFor(() => expect(saveClaudeUserSettings).toHaveBeenLastCalledWith('version-1', { timeoutMs: '4000', nonessentialTraffic: null }, initial.values, 'keepTheirs', 'latest'));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+it('previews without saving and clears the result when the draft changes', async () => {
+  vi.mocked(previewClaudeUserSettings).mockResolvedValue({ path: initial.path, revision: 'version-1', changes: [{ field: 'API_TIMEOUT_MS', before: '2000', after: '4000' }] });
+  render(<ClaudeUserSettingsPanel />);
+  const timeout = await screen.findByLabelText('API Timeout MS');
+  fireEvent.change(timeout, { target: { value: '4000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
+  await screen.findByText('2000 → 4000');
+  expect(saveClaudeUserSettings).not.toHaveBeenCalled();
+  fireEvent.change(timeout, { target: { value: '5000' } });
+  expect(screen.queryByText('2000 → 4000')).toBeNull();
 });
