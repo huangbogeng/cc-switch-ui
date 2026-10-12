@@ -13,13 +13,24 @@ pub fn transform(body: Bytes, is_streaming: bool) -> Result<UsageParseResult, Pr
 
     // Parse usage from non-streaming response
     let parser = UsageParser::new();
-    let record = parser.from_openai_json(&body);
 
     // Transform SSE aggregated response to Anthropic message format
-    let transformed = crate::proxy::responses_aggregate::responses_sse_to_anthropic_message(&body)
-        .map(|v| serde_json::to_vec(&v).unwrap_or_default())
-        .map(Bytes::from)
-        .unwrap_or(body);
+    let converted = if let Ok(response) = serde_json::from_slice(&body) {
+        crate::proxy::responses_aggregate::responses_json_to_anthropic_message(&response)
+    } else {
+        crate::proxy::responses_aggregate::responses_sse_to_anthropic_message(&body)
+    };
+    let converted = converted.map_err(ProviderError::ResponseTransformFailed)?;
+    let transformed = Bytes::from(
+        serde_json::to_vec(&converted)
+            .map_err(|error| ProviderError::ResponseTransformFailed(error.to_string()))?,
+    );
+    let mut record = parser.from_anthropic_json(&transformed);
+    if let Some(record) = &mut record {
+        record.cache_read_tokens = converted
+            .pointer("/usage/cache_read_input_tokens")
+            .and_then(serde_json::Value::as_i64);
+    }
 
     Ok(UsageParseResult {
         record,
@@ -43,7 +54,7 @@ mod tests {
     #[test]
     fn non_streaming_extracts_usage() {
         let body = Bytes::from_static(
-            br#"{"model":"gpt-5","usage":{"prompt_tokens":7,"completion_tokens":11}}"#,
+            br#"{"id":"r","model":"gpt-5","status":"completed","output":[],"usage":{"prompt_tokens":7,"completion_tokens":11}}"#,
         );
         let result = transform(body, false).expect("transform should succeed");
         let record = result.record.expect("usage record should exist");

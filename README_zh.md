@@ -39,7 +39,7 @@ CC Switch UI 将“直接 Provider”和“本地路由”作为两个彼此独�
 
 | 日常管理 | 路由与配置保护 |
 |----------|----------------|
-| **Providers** — 17 个预设、自定义端点、模型发现与搜索 | **Local Route** — Anthropic / OpenAI / Gemini 适配、流式转换、熔断与故障转移 |
+| **Providers** — 17 个预设、自定义端点、模型发现与搜索 | **Local Route** — Anthropic / OpenAI Chat / OpenAI Responses、流式转换、熔断与故障转移 |
 | **OAuth** — Codex、GitHub Copilot 多账号管理 | **Codex 订阅** — OAuth + 本地路由，不填写 API Key |
 | **MCP / Skills** — 导入、启停、集合管理与同步 | **安全写入** — 保留用户字段、检测冲突、恢复中断操作 |
 | **Usage** — 请求日志、会话导入、趋势与来源统计 | **Backup Center** — 数据库、配置文件和 Skills 的分层恢复 |
@@ -68,6 +68,8 @@ UI 内置 **17 个预设，覆盖 14 个服务商品牌**，也支持自定义�
 使用 OrcaRouter 时，可通过[项目专属链接注册或获取 API Key](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21)，然后选择内置的 **OrcaRouter** 预设。该预设可以从服务端获取当前模型列表。
 
 自定义 Provider 可选择 `anthropic`、`openai_chat`、`openai_responses` 或 Gemini 兼容协议。面对未知端点时，可在 Provider 编辑器中使用**检测端点类型**与**获取模型**。
+
+本地路由目前支持前三种协议。Gemini 原生转换尚未实现，预设保留用于配置与模型发现；选择或启动此类路由会明确报错。工具延迟加载和加密 reasoning 多轮回传等边界见[协议兼容说明](docs/protocol-compatibility.md)。
 
 ## 快速开始
 

@@ -25,6 +25,11 @@ All UI labels are English. **Dashboard** summarizes Direct Config, Local Route a
 
 切换服务商与切换路由目标是两个独立操作。路由运行时点击 **Select** 不会改变当前转发目标；请使用 **Route Target**。停止路由后，再检查 Dashboard / Providers 显示的直接配置。
 
+Local routing supports Anthropic, OpenAI Chat and OpenAI Responses endpoints.
+Gemini native conversion is not implemented and cannot be selected as a route.
+For native Claude tools and thinking-history behavior, choose an
+Anthropic-compatible endpoint. See [protocol compatibility](protocol-compatibility.md).
+
 ## Add a provider / 添加服务商
 
 1. Open **Providers → Add Provider** and choose a preset or custom configuration.
@@ -47,6 +52,13 @@ See the [provider editor guide](provider-editor.md) for concurrent edits and sav
 5. Confirm the route is running, then send a request from Claude Code. Review **Usage** for the request result.
 
 这条路径使用已授权的 ChatGPT OAuth 账号，由本地服务完成协议转换和凭证注入，Provider 表单不需要填写 API Key。它依赖本地路由服务运行；账号权限、模型可用性和限额仍由上游决定。不要把 ChatGPT 端点当作 Claude Code 原生 Anthropic 端点直接配置使用。
+
+For this route, mid-conversation `system` messages become `developer` inputs with
+their text and position preserved. The service requests encrypted reasoning for
+stateless tool loops; support still depends on the upstream model. If credentials
+are rejected, verify the provider's account binding and reconnect through the
+OAuth page. See [protocol compatibility](protocol-compatibility.md) for content
+handling, failure behavior and unsupported capabilities.
 
 **OAuth** also manages GitHub Copilot accounts and supports a GitHub Enterprise host where available. Connecting an account alone does not change the active route. Check the provider authentication mode and selected target before sending traffic.
 

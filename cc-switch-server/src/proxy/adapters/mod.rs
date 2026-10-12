@@ -26,6 +26,7 @@ mod deepseek;
 mod gemini;
 mod minimax;
 mod openrouter;
+mod protocol;
 mod responses;
 mod siliconflow;
 
@@ -37,6 +38,7 @@ pub use deepseek::DeepSeekAdapter;
 pub use gemini::GeminiAdapter;
 pub use minimax::MiniMaxAdapter;
 pub use openrouter::OpenRouterAdapter;
+pub use protocol::ProtocolAdapter;
 pub use responses::ResponsesAdapter;
 pub use siliconflow::SiliconFlowAdapter;
 

@@ -56,6 +56,10 @@ impl ProviderAdapter for ClaudeAdapter {
         let path = input.path.as_str();
         let upstream_url = if path.is_empty() || base.ends_with(path) {
             base.to_string()
+        } else if base.ends_with("/v1/messages") && path == "/v1/messages/count_tokens" {
+            format!("{base}/count_tokens")
+        } else if base.ends_with("/v1") && path.starts_with("/v1/") {
+            format!("{base}{}", &path[3..])
         } else {
             format!("{base}{path}")
         };
@@ -135,5 +139,23 @@ mod tests {
             .expect("transform should succeed");
 
         assert_eq!(output.upstream_url, "https://api.orcarouter.ai/v1/messages");
+    }
+
+    #[test]
+    fn counts_tokens_with_full_messages_endpoint() {
+        let output = ClaudeAdapter::new()
+            .transform_request(TransformInput {
+                body: json!({}),
+                upstream_url: "https://example.com/api/v1/messages".into(),
+                path: "/v1/messages/count_tokens".into(),
+                prompt_cache_key: None,
+                requested_stream: false,
+                codex_fast_mode: false,
+            })
+            .unwrap();
+        assert_eq!(
+            output.upstream_url,
+            "https://example.com/api/v1/messages/count_tokens"
+        );
     }
 }

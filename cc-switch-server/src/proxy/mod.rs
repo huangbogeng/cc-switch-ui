@@ -7,10 +7,14 @@ pub mod forwarder;
 pub mod handlers;
 pub mod headers;
 pub mod provider_router;
+mod reasoning_bridge;
 pub mod responses_aggregate;
+mod responses_contract;
 pub mod server;
 pub mod session;
 pub mod streaming;
+pub mod transform_chat;
+pub mod transform_content;
 pub mod transform_responses;
 pub mod types;
 

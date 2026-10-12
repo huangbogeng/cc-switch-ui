@@ -39,12 +39,14 @@ Changing the route target does not overwrite the selected direct provider. Stopp
 
 | Everyday management | Routing and configuration protection |
 |---------------------|--------------------------------------|
-| **Providers** — 17 presets, custom endpoints, model discovery and search | **Local Route** — Anthropic / OpenAI / Gemini adapters, streaming, circuit breaking and failover |
+| **Providers** — 17 presets, custom endpoints, model discovery and search | **Local Route** — Anthropic / OpenAI Chat / OpenAI Responses, streaming, circuit breaking and failover |
 | **OAuth** — Codex and GitHub Copilot multi-account management | **Codex subscription** — OAuth through the local route, without an API key |
 | **MCP / Skills** — import, enable/disable, collections and sync | **Guarded writes** — preserve user fields, detect conflicts and recover interrupted operations |
 | **Usage** — request logs, session imports, trends and source breakdown | **Backup Center** — database, configuration-file and Skills recovery |
 
 ## Supported providers
+
+Local-route capabilities vary by protocol. Gemini native conversion is not implemented; its preset remains available for configuration and model discovery. See [protocol compatibility](docs/protocol-compatibility.md).
 
 The UI includes **17 presets across 14 provider brands**, plus custom compatible endpoints. Logos are bundled locally and shared by the picker and provider list. Presets are starting configurations; account access and available models depend on the service.
 

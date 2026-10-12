@@ -37,7 +37,7 @@ where
 {
     async_stream::stream! {
         // SSE payload may split logical events across chunks; keep a rolling buffer.
-        let mut buffer = String::new();
+        let mut buffer = Vec::new();
         let mut message_id = String::new();
         let mut model = String::new();
         let mut sent_message_start = false;
@@ -68,7 +68,7 @@ where
                 }
             };
 
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
+            buffer.extend_from_slice(&bytes);
             while let Some(block) = take_sse_block(&mut buffer) {
                 let Some((_event_name, data)) = parse_sse_block(&block) else {
                     continue;

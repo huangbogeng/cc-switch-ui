@@ -177,6 +177,243 @@ fn read_json(path: &Path) -> Value {
 }
 
 #[tokio::test]
+async fn protocol_routes_preserve_prompts_and_convert_actual_http_responses() {
+    use axum::{
+        body::Body,
+        extract::{OriginalUri, State},
+        http::{header, HeaderMap},
+        response::Response,
+        routing::post,
+        Json, Router,
+    };
+    use tokio::sync::mpsc;
+    let (sender, mut captured) = mpsc::channel(16);
+    let app = Router::new().fallback(post(|State(sender): State<mpsc::Sender<(String,HeaderMap,Value)>>, OriginalUri(uri): OriginalUri, headers: HeaderMap, Json(body): Json<Value>| async move {
+        sender.send((uri.to_string(), headers, body.clone())).await.unwrap();
+        let path = uri.path();
+        if path.ends_with("count_tokens") {
+            return Response::builder().header(header::CONTENT_TYPE,"application/json").body(Body::from(r#"{"input_tokens":42}"#)).unwrap();
+        }
+        let chat = path.ends_with("chat/completions");
+        let responses = path.ends_with("responses");
+        if body["stream"] == true {
+            let events = if chat {
+                "data: {\"id\":\"chat\",\"model\":\"test\",\"choices\":[{\"delta\":{\"content\":\"stream ok\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n".to_string()
+            } else {
+                [
+                    ("response.created",json!({"response":{"id":"r","model":"test"}})),
+                    ("response.content_part.added",json!({"part":{"type":"output_text"}})),
+                    ("response.output_text.delta",json!({"delta":"stream ok"})),
+                    ("response.content_part.done",json!({})),
+                    ("response.completed",json!({"response":{"status":"completed","usage":{"input_tokens":3,"output_tokens":2}}}))
+                ].into_iter().map(|(name,data)|format!("event: {name}\ndata: {data}\n\n")).collect()
+            };
+            Response::builder().header(header::CONTENT_TYPE,"text/event-stream").body(Body::from(events)).unwrap()
+        } else {
+            let response = if chat { json!({"id":"chat","model":"test","choices":[{"message":{"content":"json ok"},"finish_reason":"stop"}]}) }
+                else if responses { json!({"id":"r","model":"test","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"json ok"}]}],"usage":{"input_tokens":3,"output_tokens":2}}) }
+                else { json!({"id":"native","type":"message","role":"assistant","model":"test","content":[{"type":"text","text":"json ok"}],"stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":2}}) };
+            Response::builder().header(header::CONTENT_TYPE,"application/json").header("retry-after","3").body(Body::from(response.to_string())).unwrap()
+        }
+    })).with_state(sender);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    struct Mock(tokio::task::JoinHandle<()>);
+    impl Drop for Mock {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _mock = Mock(task);
+    let mut service = Service::new();
+    service.start().await;
+    let fixture = json!({"model":"gpt-5[1m]", "stream":false,"max_tokens":800,
+        "system":[{"type":"text","text":"x-anthropic-billing-header: synthetic"},{"type":"text","text":"Preserve project policy","cache_control":{"type":"ephemeral"}}],
+        "thinking":{"type":"adaptive","display":"omitted"},"output_config":{"effort":"high"},"context_management":{"edits":[]},"future_field":{"preserve":"native"},
+        "tools":[{"name":"ToolSearch","input_schema":{"type":"object"}},{"name":"mcp__audit__echo","input_schema":{"type":"object"},"defer_loading":true}],
+        "messages":[{"role":"system","content":"mid-turn rule"},{"role":"assistant","content":[{"type":"tool_use","id":"search","name":"ToolSearch","input":{}}]},
+        {"role":"user","content":[{"type":"tool_result","tool_use_id":"search","content":[{"type":"tool_reference","tool_name":"mcp__audit__echo"}]},{"type":"text","text":"<system-reminder>keep this reminder</system-reminder>"}]}]});
+    for (id, kind, format) in [
+        ("protocol-native", "deepseek", "anthropic"),
+        ("protocol-chat", "openrouter", "openai_chat"),
+        ("protocol-responses", "openai_responses", "openai_responses"),
+    ] {
+        service.success("/api/providers",json!({"id":id,"name":id,"create":true,"settingsConfig":{"env":{"ANTHROPIC_BASE_URL":endpoint,"ANTHROPIC_AUTH_TOKEN":"synthetic-key"}},"meta":{"providerType":kind,"apiFormat":format}})).await;
+        service
+            .success("/api/proxy/target", json!({"provider_id":id}))
+            .await;
+        service.success("/api/proxy/start", Value::Null).await;
+        let url = format!(
+            "http://127.0.0.1:{}/v1/messages?beta=true",
+            service.proxy_port
+        );
+        let response = service
+            .client
+            .post(&url)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "test-capability")
+            .json(&fixture)
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        assert_eq!(response.headers()["retry-after"], "3");
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["content"][0]["text"],
+            "json ok"
+        );
+        let (path, headers, body) = captured.recv().await.unwrap();
+        assert_eq!(headers["authorization"], "Bearer synthetic-key");
+        match format {
+            "anthropic" => {
+                assert_eq!(path, "/v1/messages?beta=true");
+                assert_eq!(headers["anthropic-beta"], "test-capability");
+                assert_eq!(body, fixture);
+                let response = service
+                    .client
+                    .post(format!(
+                        "http://127.0.0.1:{}/v1/messages/count_tokens",
+                        service.proxy_port
+                    ))
+                    .json(&json!({"model":"test","messages":[]}))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(response.headers()["content-type"], "application/json");
+                assert_eq!(response.json::<Value>().await.unwrap()["input_tokens"], 42);
+                assert!(captured.recv().await.unwrap().0.ends_with("count_tokens"));
+            }
+            "openai_chat" => {
+                assert_eq!(path, "/v1/chat/completions");
+                assert_eq!(body["model"], "gpt-5");
+                assert_eq!(body["messages"][0]["content"], "Preserve project policy");
+                assert_eq!(body["messages"][1]["role"], "system");
+                assert!(body["messages"][3]["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("mcp__audit__echo"));
+                assert_eq!(
+                    body["messages"][4]["content"],
+                    "<system-reminder>keep this reminder</system-reminder>"
+                );
+            }
+            _ => {
+                assert_eq!(path, "/v1/responses");
+                assert_eq!(body["model"], "gpt-5");
+                assert_eq!(body["max_output_tokens"], 800);
+                assert_eq!(body["stream"], false);
+                assert_eq!(body["input"][0]["role"], "system");
+                assert!(body["input"][2]["output"][0]["text"]
+                    .as_str()
+                    .unwrap()
+                    .contains("mcp__audit__echo"));
+                assert_eq!(
+                    body["input"][3]["content"][0]["text"],
+                    "<system-reminder>keep this reminder</system-reminder>"
+                );
+            }
+        }
+        if format != "anthropic" {
+            let count = service
+                .client
+                .post(format!(
+                    "http://127.0.0.1:{}/v1/messages/count_tokens",
+                    service.proxy_port
+                ))
+                .json(&json!({"model":"test","messages":[]}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(count.status().as_u16(), 400);
+            assert!(captured.try_recv().is_err());
+            let mut streamed = fixture.clone();
+            streamed["stream"] = json!(true);
+            let response = service
+                .client
+                .post(&url)
+                .json(&streamed)
+                .send()
+                .await
+                .unwrap();
+            assert!(response.status().is_success());
+            assert_eq!(response.headers()["content-type"], "text/event-stream");
+            let stream = response.text().await.unwrap();
+            assert!(stream.contains("stream ok"));
+            assert_eq!(stream.matches("event: message_stop").count(), 1);
+            assert_eq!(captured.recv().await.unwrap().2["stream"], true);
+        }
+        service.success("/api/proxy/stop", Value::Null).await;
+    }
+    service.success("/api/providers",json!({"id":"protocol-gemini","name":"gemini","create":true,"settingsConfig":{"env":{"ANTHROPIC_BASE_URL":endpoint,"ANTHROPIC_AUTH_TOKEN":"synthetic-key"}},"meta":{"apiFormat":"gemini_native"}})).await;
+    let live_before = fs::read(service.path(".claude/settings.json")).unwrap();
+    let rejected = service
+        .post(
+            "/api/proxy/target",
+            json!({"provider_id":"protocol-gemini"}),
+        )
+        .await;
+    assert_eq!(rejected["success"], false);
+    assert!(rejected["error"]
+        .as_str()
+        .unwrap()
+        .contains("not implemented"));
+    assert_eq!(
+        service.get("/api/proxy/target").await["provider_id"],
+        "protocol-responses"
+    );
+    service
+        .db()
+        .execute(
+            "UPDATE providers SET meta=?1 WHERE id='protocol-responses'",
+            [json!({"apiFormat":"gemini_native"}).to_string()],
+        )
+        .unwrap();
+    assert_eq!(
+        service.post("/api/proxy/start", Value::Null).await["success"],
+        false
+    );
+    assert_eq!(
+        fs::read(service.path(".claude/settings.json")).unwrap(),
+        live_before
+    );
+    service
+        .db()
+        .execute(
+            "UPDATE providers SET meta=?1 WHERE id='protocol-responses'",
+            [json!({"apiFormat":"openai_responses"}).to_string()],
+        )
+        .unwrap();
+    service.success("/api/proxy/start", Value::Null).await;
+    // Even a record changed outside the guarded APIs cannot reach an upstream
+    // through an unimplemented conversion.
+    service
+        .db()
+        .execute(
+            "UPDATE providers SET meta=?1 WHERE id='protocol-responses'",
+            [json!({"providerType":"openrouter","apiFormat":"gemini_native"}).to_string()],
+        )
+        .unwrap();
+    let response = service
+        .client
+        .post(format!(
+            "http://127.0.0.1:{}/v1/messages",
+            service.proxy_port
+        ))
+        .json(&fixture)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 400);
+    assert!(response.json::<Value>().await.unwrap()["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not implemented"));
+    assert!(captured.try_recv().is_err());
+    service.success("/api/proxy/stop", Value::Null).await;
+}
+
+#[tokio::test]
 async fn provider_route_and_restart_preserve_user_owned_files() {
     // Actual loopback upstream; requests must arrive with the selected provider's credential.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
