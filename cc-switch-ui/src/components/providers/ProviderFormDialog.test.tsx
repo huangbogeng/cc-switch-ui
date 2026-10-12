@@ -1,5 +1,5 @@
-import { fetchProviderModels } from '@/api';
-vi.mock('@/api', () => ({ fetchProviderModels: vi.fn(), detectProviderEndpointType: vi.fn() }));
+import { fetchProviderModels, fetchCodexModels } from '@/api';
+vi.mock('@/api', () => ({ fetchProviderModels: vi.fn(), fetchCodexModels: vi.fn(), detectProviderEndpointType: vi.fn() }));
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { providerPresets } from '@/config/providerPresets';
@@ -73,7 +73,7 @@ it('ignores a response from the previous endpoint while a new model list is fetc
   expect(screen.queryByRole('radio', {name:/old-endpoint-model/})).toBeNull();
 });
 
-it('locks Codex OAuth to Responses and keeps model discovery disabled', () => {
+it('locks Codex OAuth to Responses and explains model discovery without an account', () => {
   const preset = providerPresets.find(item => item.id === 'codex')!;
   const submit = vi.fn();
   render(<ProviderFormDialog open editingId={null} selectedPreset={preset} initialFormData={{ ...formFromPreset(preset), apiFormat: 'gemini_native' }} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
@@ -81,6 +81,7 @@ it('locks Codex OAuth to Responses and keeps model discovery disabled', () => {
   expect(format).toHaveProperty('value', 'openai_responses');
   expect(format).toHaveProperty('disabled', true);
   expect(screen.getByRole('button', { name: 'Fetch models' })).toHaveProperty('disabled', true);
+  expect(screen.getByText(/Connect an account on the OAuth page and choose/)).toBeTruthy();
   fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
   expect(submit).toHaveBeenCalledWith(expect.objectContaining({ apiFormat: 'openai_responses' }));
 });
@@ -92,4 +93,60 @@ it('explains Gemini routing limits while allowing its configuration to be saved'
   expect(screen.getByText('Gemini Native can be saved for configuration and model discovery. Local routing is not supported.')).toBeTruthy();
   fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
   expect(submit).toHaveBeenCalledWith(expect.objectContaining({ apiFormat: 'gemini_native' }));
+});
+
+it('fetches the selected OAuth account catalog without an API key or endpoint', async () => {
+  vi.mocked(fetchCodexModels).mockResolvedValue({ models: [{ id: 'oauth-selected-model' }] });
+  vi.mocked(fetchProviderModels).mockClear();
+  const preset = providerPresets.find(item => item.id === 'codex')!;
+  const form = { ...formFromPreset(preset), baseUrl: '', apiKey: '', codexAccountId: 'fixture-b', model: 'configured-main' };
+  const submit = vi.fn();
+  render(<ProviderFormDialog open editingId="codex" selectedPreset={null} initialFormData={form} saving={false} codexAccounts={[{ id: 'fixture-a', login: 'Account A', is_default: true }, { id: 'fixture-b', login: 'Account B', is_default: false }]} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  await screen.findByRole('radio', { name: /oauth-selected-model/ });
+  expect(fetchCodexModels).toHaveBeenLastCalledWith('fixture-b');
+  expect(fetchProviderModels).not.toHaveBeenCalled();
+  expect(submit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('radio', { name: /oauth-selected-model/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply model' }));
+  expect(screen.getByLabelText('Main')).toHaveProperty('value', 'oauth-selected-model');
+});
+
+it('ignores the old OAuth response after account selection changes and fetches the default', async () => {
+  let finish!: (value: { models: { id: string }[] }) => void;
+  const pending = new Promise<{ models: { id: string }[] }>(resolve => { finish = resolve; });
+  vi.mocked(fetchCodexModels).mockImplementationOnce(() => pending).mockResolvedValue({ models: [{ id: 'default-account-model' }] });
+  const form = { ...formFromPreset(providerPresets.find(item => item.id === 'codex')!), codexAccountId: 'fixture-b' };
+  render(<ProviderFormDialog open editingId="codex" selectedPreset={null} initialFormData={form} saving={false} codexAccounts={[{ id: 'fixture-a', login: 'Account A', is_default: true }, { id: 'fixture-b', login: 'Account B', is_default: false }]} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  fireEvent.change(screen.getByLabelText('ChatGPT Account'), { target: { value: '' } });
+  await act(async () => { finish({ models: [{ id: 'old-account-model' }] }); });
+  expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  await screen.findByRole('radio', { name: /default-account-model/ });
+  expect(fetchCodexModels).toHaveBeenLastCalledWith(undefined);
+  expect(screen.queryByRole('radio', { name: /old-account-model/ })).toBeNull();
+});
+
+it('shows an OAuth discovery failure while retaining manually configured models', async () => {
+  vi.mocked(fetchCodexModels).mockRejectedValue(new Error('Sign in again on the OAuth page.'));
+  const form = { ...formFromPreset(providerPresets.find(item => item.id === 'codex')!), model: 'manual-model' };
+  render(<ProviderFormDialog open editingId="codex" selectedPreset={null} initialFormData={form} saving={false} codexAccounts={[{ id: 'fixture-a', login: 'Account A', is_default: true }]} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Sign in again on the OAuth page.');
+  expect(screen.getByLabelText('Main')).toHaveProperty('value', 'manual-model');
+  expect(screen.getByRole('button', { name: 'Fetch models' })).toHaveProperty('disabled', false);
+});
+
+it('discards the catalog if the bound OAuth account is disconnected', async () => {
+  vi.mocked(fetchCodexModels).mockResolvedValue({ models: [{ id: 'removed-account-model' }] });
+  const props = { open: true, editingId: 'codex', selectedPreset: null, initialFormData: { ...formFromPreset(providerPresets.find(item => item.id === 'codex')!), codexAccountId: 'fixture-b' }, saving: false, onPresetSelect: vi.fn(), onCancel: vi.fn(), onSubmit: vi.fn() };
+  const accountA = { id: 'fixture-a', login: 'Account A', is_default: true };
+  const accountB = { id: 'fixture-b', login: 'Account B', is_default: false };
+  const { rerender } = render(<ProviderFormDialog {...props} codexAccounts={[accountA, accountB]} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  await screen.findByRole('radio', { name: /removed-account-model/ });
+  rerender(<ProviderFormDialog {...props} codexAccounts={[accountA]} />);
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull());
+  expect(screen.getByRole('button', { name: 'Fetch models' })).toHaveProperty('disabled', true);
 });

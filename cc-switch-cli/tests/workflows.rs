@@ -177,6 +177,50 @@ fn read_json(path: &Path) -> Value {
 }
 
 #[tokio::test]
+async fn codex_model_discovery_is_authenticated_and_independent_of_route_startup() {
+    let mut service = Service::new();
+    service.start().await;
+    let original_live = service.live();
+    let endpoint = format!(
+        "http://127.0.0.1:{}/api/providers/codex-models",
+        service.admin_port
+    );
+    let response = service
+        .client
+        .post(&endpoint)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let absent = service
+        .request(Method::POST, "/api/providers/codex-models", json!({}), 400)
+        .await;
+    assert!(absent["error"].as_str().unwrap().contains("Connect"));
+    let stale = service
+        .request(
+            Method::POST,
+            "/api/providers/codex-models",
+            json!({"accountId":"missing-fixture"}),
+            400,
+        )
+        .await;
+    assert!(stale["error"].as_str().unwrap().contains("Selected"));
+    // The endpoint accepts only account selection, never a credential destination.
+    let response = service
+        .client
+        .post(&endpoint)
+        .bearer_auth(TOKEN)
+        .json(&json!({"baseUrl":"http://127.0.0.1:9","apiKey":"unused-fixture"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(service.get("/api/proxy/status").await["running"], false);
+    assert_eq!(service.live(), original_live);
+}
+
+#[tokio::test]
 async fn imported_oauth_signals_route_as_codex_without_api_key_fallback() {
     let mut service = Service::new();
     service.start().await;

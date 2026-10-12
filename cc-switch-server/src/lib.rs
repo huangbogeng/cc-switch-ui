@@ -407,6 +407,10 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             post(model_fetch::fetch_models_for_config),
         )
         .route(
+            "/api/providers/codex-models",
+            post(model_fetch::fetch_codex_models),
+        )
+        .route(
             "/api/providers/detect-endpoint-type",
             post(model_fetch::detect_endpoint_type),
         )

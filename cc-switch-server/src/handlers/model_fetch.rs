@@ -1,6 +1,33 @@
+use crate::state::AppState;
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{http::StatusCode, Json};
 use serde::Deserialize;
+use std::sync::Arc;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexModelsRequest {
+    pub account_id: Option<String>,
+}
+
+pub async fn fetch_codex_models(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<CodexModelsRequest>,
+) -> impl IntoResponse {
+    match state
+        .codex_oauth
+        .fetch_models(payload.account_id.as_deref())
+        .await
+    {
+        Ok(models) => Json(serde_json::json!({ "models": models })).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

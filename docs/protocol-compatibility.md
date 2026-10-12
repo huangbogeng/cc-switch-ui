@@ -130,6 +130,15 @@ before the route receives the next request.
 
 The ported helpers retain upstream attribution and its [MIT license](licenses/cc-switch-MIT.txt).
 
+Codex OAuth model discovery separately follows
+[cc-switch's catalog service at d0b57827](https://github.com/farion1231/cc-switch/blob/d0b57827e453fcab5620a89a4c452648ae371d42/src-tauri/src/services/codex_oauth_models.rs).
+It reads `chatgpt.com/backend-api/codex/models` using the selected managed account
+and the upstream catalog client identity (`codex_cli_rs`, version `0.159.0`).
+The generic API-key `/models` discovery path is unchanged. Catalog failures expose
+an actionable message and HTTP status without returning upstream response bodies,
+tokens or account headers to the browser. Discovery does not imply that every
+listed model is available for generation, and does not change generation prompts.
+
 This is a targeted compatibility port, not complete feature parity with the
 upstream project. Converters are protocol adapters, not a prompt-injection
 firewall. Project/Skill/MCP instructions still reach the model under Claude

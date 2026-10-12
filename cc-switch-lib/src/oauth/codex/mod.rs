@@ -25,6 +25,7 @@ use crate::database::ProxyConfig;
 use crate::oauth::copilot::{GitHubAccount, GitHubDeviceCodeResponse};
 use crate::oauth::{new_http_client, new_http_client_with_proxy};
 
+mod models;
 mod storage;
 pub(crate) mod types;
 

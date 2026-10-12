@@ -62,8 +62,11 @@ See the [provider editor guide](provider-editor.md) for concurrent edits and sav
 The Codex preset uses `gpt-6.1-sol` for new configurations. Saved providers keep
 their configured models when reopened; available models and access depend on the
 upstream account. **API Format** is fixed to OpenAI Responses for Codex OAuth.
-**Fetch models** remains disabled for this authentication mode; enter an available
-model ID manually. Editing a bound account preserves that binding, while selecting
+**Fetch models** uses the selected managed OAuth account (or the default account)
+to read the Codex catalog. Connect an account on the OAuth page first; model
+discovery does not require starting the local route or entering an API key.
+Account changes invalidate the model list. You can still enter a model ID manually.
+Editing a bound account preserves that binding, while selecting
 **Default account** deliberately removes the explicit account selection.
 
 For this route, mid-conversation `system` messages become `developer` inputs with

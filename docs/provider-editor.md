@@ -8,6 +8,14 @@ Saving the current direct provider applies edited provider-owned fields to Claud
 
 **Fetch models** opens a searchable picker without changing the draft. Choose Main, Haiku, Sonnet or Opus and explicitly **Apply model** to update only that role. Cancel leaves the draft unchanged. Unlisted configured models and manual IDs remain available; fetching does not prove model access. Editing the endpoint or credentials invalidates its cached list, and stale requests are ignored. Failed refreshes retain the previous list for the same endpoint. Choices render in batches of 100; inline suggestions are limited to 100. Save remains explicit.
 
+For Codex OAuth, the picker reads the selected connected account's Codex catalog;
+**Default account** follows the current default. No API key, custom endpoint or
+running local route is needed. The backend resolves and refreshes the managed
+token and uses the fixed Codex catalog endpoint. Switching accounts discards the
+previous list and ignores its pending responses. A missing or disconnected bound
+account does not fall back to another account. Reconnect on the OAuth page if the
+token is unavailable; manual model IDs remain editable after a failed fetch.
+
 ## Protocol and account preservation
 
 The editor resolves protocol metadata, legacy `api_format`, and provider defaults
