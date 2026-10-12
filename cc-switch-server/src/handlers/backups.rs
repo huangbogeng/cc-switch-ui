@@ -31,6 +31,13 @@ fn result(value: Result<serde_json::Value, AppError>) -> Response {
 fn json(value: impl serde::Serialize) -> Result<serde_json::Value, AppError> {
     serde_json::to_value(value).map_err(|source| AppError::JsonSerialize { source })
 }
+pub async fn storage() -> Response {
+    super::file_mutation(move || {
+        Json(serde_json::json!({"locations":cc_switch_lib::backup_storage::list()})).into_response()
+    })
+    .await
+}
+
 pub async fn list_files() -> Response {
     super::file_mutation(|| {
         result(

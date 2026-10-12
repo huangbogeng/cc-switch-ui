@@ -321,6 +321,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
 
     let app = Router::new()
         .route("/api/file-backups", get(handlers::backups::list_files))
+        .route("/api/backup-storage", get(handlers::backups::storage))
         .route(
             "/api/database-backups",
             get(handlers::backups::list).post(handlers::backups::create),
