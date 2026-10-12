@@ -109,11 +109,12 @@ pub async fn edit_provider(
         Err(error) => operation_error(cc_switch_lib::AppError::Message(error.to_string())),
     }
 }
-fn edit_provider_record(
+fn prepare_provider_edit(
     state: &AppState,
     request: &cc_switch_lib::provider_edit::EditRequest,
     route_active: bool,
-) -> Result<serde_json::Value, cc_switch_lib::AppError> {
+) -> Result<(cc_switch_lib::provider_edit::Plan, serde_json::Value, bool), cc_switch_lib::AppError>
+{
     use cc_switch_lib::{config, provider_edit, provider_operations, AppError};
     if provider_operations::recovery_pending() {
         return Err(AppError::ProviderInUse(
@@ -143,6 +144,15 @@ fn edit_provider_record(
         serde_json::json!({})
     };
     let plan = provider_edit::prepare(request, &old, &current, applied, state.proxy_listen_port)?;
+    Ok((plan, current, applied))
+}
+fn edit_provider_record(
+    state: &AppState,
+    request: &cc_switch_lib::provider_edit::EditRequest,
+    route_active: bool,
+) -> Result<serde_json::Value, cc_switch_lib::AppError> {
+    use cc_switch_lib::provider_operations;
+    let (plan, current, applied) = prepare_provider_edit(state, request, route_active)?;
     if applied {
         provider_operations::apply_edit_plan(
             &state.db,
@@ -155,6 +165,68 @@ fn edit_provider_record(
     }
     Ok(
         serde_json::json!({"success":true,"saved":true,"applied":applied,"message":if applied {"Saved and applied to direct config."} else {"Saved to the provider record. Live configuration was not changed."}}),
+    )
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreviewRequest {
+    pub provider: Provider,
+    pub base: Option<Provider>,
+}
+pub async fn preview_provider(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<PreviewRequest>,
+) -> axum::response::Response {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    let route_active = state.proxy_server.read().await.is_some();
+    match tokio::task::spawn_blocking(move || {
+        preview_provider_record(&state, request, route_active)
+    })
+    .await
+    {
+        Ok(Ok(result)) => Json(result).into_response(),
+        Ok(Err(error)) => operation_error(error),
+        Err(error) => operation_error(cc_switch_lib::AppError::Message(error.to_string())),
+    }
+}
+fn preview_provider_record(
+    state: &AppState,
+    request: PreviewRequest,
+    route_active: bool,
+) -> Result<serde_json::Value, cc_switch_lib::AppError> {
+    use cc_switch_lib::{config, provider_edit, provider_operations, AppError};
+    if provider_operations::recovery_pending() {
+        return Err(AppError::ProviderInUse(
+            "Recover the unfinished provider operation before previewing".into(),
+        ));
+    }
+    let (record_keys, live_keys, applied) = if let Some(base) = request.base {
+        let edit = provider_edit::EditRequest {
+            provider: request.provider,
+            base,
+            policy: provider_edit::Policy::Refuse,
+            resolution_revision: None,
+        };
+        let (plan, _, applied) = prepare_provider_edit(state, &edit, route_active)?;
+        (plan.record_keys, plan.live_keys, applied)
+    } else {
+        if state
+            .db
+            .get_provider(&request.provider.id, APP_TYPE)?
+            .is_some()
+        {
+            return Err(AppError::InvalidInput(
+                "Provider ID already exists; edit the existing record".into(),
+            ));
+        }
+        let mut provider = request.provider;
+        cc_switch_lib::providers::normalize_provider_schema(&mut provider);
+        provider_edit::validate(&provider)?;
+        (provider_edit::creation_keys(&provider)?, vec![], false)
+    };
+    Ok(
+        serde_json::json!({"applied":applied,"recordPath":config::get_app_config_dir().join("cc-switch.db").display().to_string(),"livePath":if applied {Some(live::get_live_settings_path().display().to_string())} else {None},"recordKeys":record_keys,"liveKeys":live_keys,"message":if applied {"Saving updates the provider record and edited direct connection fields."} else if route_active {"Saving updates the provider record only. The local route remains active."} else {"Saving updates the provider record only. Select this provider to apply it."}}),
     )
 }
 
@@ -403,6 +475,95 @@ mod tests {
             .await
             .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn preview_is_metadata_only_read_only_and_save_rechecks_later_live_changes() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        let base: Provider = serde_json::from_value(json!({"id":"preview","name":"Preview","settingsConfig":{"env":{"ANTHROPIC_AUTH_TOKEN":"sensitive-old-value"}},"meta":{}})).unwrap();
+        db.save_provider(APP_TYPE, &base).unwrap();
+        db.set_current_provider("preview", APP_TYPE).unwrap();
+        let state = Arc::new(AppState {
+            db: db.clone(),
+            token: "test".into(),
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+            proxy_host: "127.0.0.1".into(),
+            proxy_listen_port: 0,
+        });
+        let path = live::get_live_settings_path();
+        let original =
+            json!({"env":{"ANTHROPIC_AUTH_TOKEN":"sensitive-old-value","API_TIMEOUT_MS":"777"}});
+        cc_switch_lib::config::write_json_file(&path, &original).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let mut draft = base.clone();
+        draft.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("sensitive-new-value");
+        let (status, report) = body(
+            preview_provider(
+                State(state.clone()),
+                Json(PreviewRequest {
+                    provider: draft.clone(),
+                    base: Some(base.clone()),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(report["applied"], true);
+        assert_eq!(report["liveKeys"][0], "live/env/ANTHROPIC_AUTH_TOKEN");
+        assert!(!report.to_string().contains("sensitive"));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(
+            db.get_provider("preview", APP_TYPE)
+                .unwrap()
+                .unwrap()
+                .settings_config,
+            base.settings_config
+        );
+        assert!(!cc_switch_lib::provider_operations::recovery_pending());
+        assert!(!cc_switch_lib::config::get_app_config_dir()
+            .join("backups/live-first-write")
+            .exists());
+        let new: Provider =
+            serde_json::from_value(json!({"id":"new","name":"New","settingsConfig":{},"meta":{}}))
+                .unwrap();
+        let (_, report) = body(
+            preview_provider(
+                State(state.clone()),
+                Json(PreviewRequest {
+                    provider: new,
+                    base: None,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(report["applied"], false);
+        assert!(report["livePath"].is_null());
+        assert!(db.get_provider("new", APP_TYPE).unwrap().is_none());
+        cc_switch_lib::config::write_json_file(
+            &path,
+            &json!({"env":{"ANTHROPIC_AUTH_TOKEN":"later"}}),
+        )
+        .unwrap();
+        let (status, _) = body(
+            edit_provider(
+                State(state),
+                Json(cc_switch_lib::provider_edit::EditRequest {
+                    provider: draft,
+                    base,
+                    policy: cc_switch_lib::provider_edit::Policy::Refuse,
+                    resolution_revision: None,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
     }
 
     #[tokio::test]

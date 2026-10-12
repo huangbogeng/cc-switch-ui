@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
   saveProvider,
+  previewProvider,
   recoverProviderOperation,
   deleteProvider,
   switchProvider,
@@ -21,6 +22,7 @@ import { ProviderList } from '@/components/providers/ProviderList';
 import { ProviderFormDialog } from '@/components/providers/ProviderFormDialog';
 import {
   buildEditedProvider,
+  validateProviderDraft,
   emptyProviderForm,
   formFromPreset,
   formFromProvider,
@@ -242,22 +244,8 @@ export default function ProvidersPage() {
     setOperationNotice('');
 
     try {
-      const id = formData.id.trim();
+      validateProviderDraft(formData);
       const name = formData.name.trim();
-      if (!id || !name) {
-        throw new Error('Provider ID and name are required.');
-      }
-      if (formData.baseUrl.trim()) {
-        let endpoint: URL;
-        try {
-          endpoint = new URL(formData.baseUrl.trim());
-        } catch {
-          throw new Error('Base URL must be a valid absolute URL.');
-        }
-        if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
-          throw new Error('Base URL must use HTTP or HTTPS.');
-        }
-      }
       if (formData.authMode !== 'oauth_proxy' && !formData.noAuth && !formData.apiKey.trim()) {
         const providerName = selectedPreset?.name || name;
         const shouldContinue = await confirmAction(
@@ -391,6 +379,10 @@ export default function ProvidersPage() {
           setFormError('');
         }}
         onSubmit={handleSubmit}
+        onPreview={async (formData) => {
+          validateProviderDraft(formData);
+          return previewProvider(buildEditedProvider(formData, selectedPreset, editingBase), editingBase);
+        }}
       />
     </div>
   );

@@ -223,6 +223,18 @@ pub fn prepare(
         live_keys,
     })
 }
+pub fn creation_keys(provider: &Provider) -> Result<Vec<String>, AppError> {
+    let value =
+        serde_json::to_value(provider).map_err(|source| AppError::JsonSerialize { source })?;
+    let mut keys = vec![];
+    changed(
+        Some(&serde_json::json!({})),
+        Some(&value),
+        "record",
+        &mut keys,
+    );
+    Ok(keys)
+}
 pub fn validate(provider: &Provider) -> Result<(), AppError> {
     if provider.id.trim().is_empty()
         || provider.name.trim().is_empty()

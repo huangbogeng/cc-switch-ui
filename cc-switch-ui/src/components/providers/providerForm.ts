@@ -258,6 +258,15 @@ function setOptionalEnv(env: Record<string, string>, key: string, value: string)
   }
 }
 
+export function validateProviderDraft(form: ProviderFormData) {
+  if (!form.id.trim() || !form.name.trim()) throw new Error('Provider ID and name are required.');
+  if (form.baseUrl.trim()) {
+    let endpoint: URL;
+    try { endpoint = new URL(form.baseUrl.trim()); } catch { throw new Error('Base URL must be a valid absolute URL.'); }
+    if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') throw new Error('Base URL must use HTTP or HTTPS.');
+  }
+}
+
 /** Emit edits relative to the displayed baseline, preserving stored values hidden by form defaults. */
 export function buildEditedProvider(form: ProviderFormData, preset: ProviderPreset | null, base?: Provider): Provider {
   const desired = buildProvider(form, preset, base);
