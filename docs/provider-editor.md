@@ -6,7 +6,22 @@ Saving the current direct provider applies edited provider-owned fields to Claud
 
 **Preview save** lists the target database/live paths and field names that saving would change, without returning credential values. Existing-provider preview and save share the same merge planner and routing context. New-provider preview is record-only. Preview creates no backups, journals, or database changes; editing the draft clears it. Save rechecks the latest state. This previews saving the editor, not selecting a different provider.
 
-**Fetch models** opens a searchable picker without changing the draft. Choose Main, Haiku, Sonnet or Opus and explicitly **Apply model** to update only that role. Cancel leaves the draft unchanged. The fetched catalog also updates all four mapping menus: use the arrow beside a mapping to browse or search without fetching again. Opening a mapping menu shows the catalog regardless of the current model text; search covers the entire catalog, with results rendered in batches of 100. Each menu aligns to its input and remains within the viewport. Unlisted configured models and manual IDs remain available; fetching does not prove model access. Editing the endpoint, credentials or OAuth account invalidates its cached list, and stale requests are ignored. Failed refreshes retain the previous list for the same context. Save remains explicit.
+## Model discovery and mappings
+
+1. Click **Fetch models** to load a catalog and open the searchable picker. Fetching leaves all four mappings unchanged.
+2. Choose Main, Haiku, Sonnet or Opus, then **Apply model** to update only that role in the draft. Cancel closes the picker without applying a model; its fetched catalog remains available in the editor.
+3. Use the arrow beside any mapping to browse the same catalog without fetching again. Each menu opens with all candidates regardless of the current input text. Its separate search covers the entire catalog; **Show more** reveals additional batches of 100 results. Choosing a model changes only that mapping in the draft.
+4. **Choose model** reopens the large picker using the cached list. Use **Refresh models** inside it to request a new catalog. **Save** explicitly persists the draft.
+
+Each mapping remains a manually editable input. A configured ID missing from the
+catalog stays available in its menu. Menus align to their inputs, open above or
+below as space permits, and scroll within the viewport. Fetching does not prove
+generation access and never replaces all mappings automatically.
+
+The catalog is held only while the editor is open. Changing the endpoint,
+credentials, authentication mode or OAuth account invalidates it; late responses
+from the previous context are ignored. Changing a model mapping does not clear
+the list. A failed refresh retains the previous list for the same context.
 
 For Codex OAuth, the picker reads the selected connected account's Codex catalog;
 **Default account** follows the current default. No API key, custom endpoint or
@@ -28,7 +43,18 @@ responses. Editing mappings reuses the checked catalog for that account. Connect
 errors provide the server's sanitized guidance. This check leaves the draft and
 saved provider unchanged.
 
-API-key providers retain **Detect endpoint type** for identifying the wire protocol.
+The diagnostics catalog is a separate snapshot from the **Fetch models** picker.
+Checking the connection does not populate the mapping menus; fetching models does
+not mark Diagnostics as checked. For catalog comparisons, a trailing `[1m]`
+suffix is ignored, matching the local route's model normalization.
+
+| Provider mode | Action | What the result means |
+|---------------|--------|-----------------------|
+| Codex OAuth | **Check OAuth connection** | The managed account can reach its catalog; mappings are shown as **Listed in catalog**, **Not listed in catalog** or **Unset**. |
+| API key / custom endpoint | **Detect endpoint type** | Identifies the endpoint's wire protocol. It does not certify generation access. |
+
+OAuth Diagnostics does not send a generation request, change the draft or save
+the provider. Verify generation separately through the running local route.
 
 ## Protocol and account preservation
 
@@ -47,3 +73,6 @@ other edits keep it.
 Gemini Native can be retained for configuration/model discovery. Its local-route
 limitation is shown in the editor and route selector. See
 [protocol compatibility](protocol-compatibility.md) for conversion boundaries.
+
+See [frontend design conventions](frontend-design.md#provider-editor) for component
+ownership, menu geometry and interaction requirements.

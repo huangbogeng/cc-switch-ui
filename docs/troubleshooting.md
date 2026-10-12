@@ -28,6 +28,27 @@ Check that the provider uses Codex OAuth, that **ChatGPT Account** points to a c
 
 Codex 订阅路径不需要 API Key，但仍受账号权限和上游限额约束。不要在未启动本地路由时直接把 Claude Code 指向 ChatGPT 的 Codex API。
 
+## Model choices or OAuth Diagnostics are unavailable
+
+| Symptom | Check or action / 处理 |
+|---------|-----------------------|
+| OAuth **Fetch models** or **Check OAuth connection** is disabled | Connect on **OAuth → ChatGPT Codex**, then choose a connected account or a connected default in the editor. Wait for a current operation to finish. Neither action requires an API key or a running route. |
+| A bound account is missing or disconnected | Reconnect or deliberately select another account. A missing explicit binding does not fall back to the default account. |
+| Mapping arrows have no choices | Use **Fetch models** first. Closing its picker retains choices in all four menus. **Check OAuth connection** has a separate result and does not populate them. An empty catalog leaves manual inputs available. |
+| Choices disappear after changing accounts or reopening the editor | This is expected: catalogs belong to the open editor's connection context. Fetch again for the current account; configured mappings remain unchanged. |
+| The configured model is absent or **Not listed in catalog** | Keep or type the intended model ID. Catalog absence does not prove that generation is unavailable. Check an actual request through the local route. |
+| Refresh fails but old choices remain | The last successful list is retained only for the same discovery context. Resolve the displayed error and retry **Refresh models**; old choices are not evidence of a successful refresh. |
+| OAuth check succeeds but requests fail | Catalog reachability does not test generation, account limits or route activation. Check **Route Target**, route state and the request error in **Usage**. |
+
+If an upgraded UI still shows unreadable native options or the previous editor
+controls, reload the page to load the installed frontend. Check the installed
+version against [release notes](README.md); these guides also describe repository
+changes that may not be in your release. If the issue remains, report the browser,
+version and affected control with a redacted screenshot.
+
+详见[服务商编辑说明](provider-editor.md)；模型获取、连接检查和保存是独立操作，
+不会自动替换四个映射或自动保存配置。
+
 ## Deletion recovery keeps appearing
 
 A pending cleanup means the managed record was deleted but live cleanup did not finish. The panel intentionally survives navigation and restart until the operation is resolved. Merely dismissing a toast does not clear that operation.

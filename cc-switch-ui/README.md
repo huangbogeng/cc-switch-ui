@@ -2,7 +2,7 @@
 
 React frontend for **CC Switch Web**.
 
-[User documentation](../docs/README.md) · [Development guide](../docs/development.md) · [Design conventions](../docs/frontend-design.md)
+[User documentation](../docs/README.md) · [Provider editor](../docs/provider-editor.md) · [Development guide](../docs/development.md) · [Design conventions](../docs/frontend-design.md)
 
 Use Node.js 24.15+ and the committed npm lockfile. The UI is English; user-defined provider names and content keep their original language.
 
@@ -45,7 +45,7 @@ src/
 ├── api/                  # API client and shared frontend API types
 ├── components/
 │   ├── dashboard/        # Dashboard display panels
-│   ├── providers/        # Provider list, preset selector, provider form dialog
+│   ├── providers/        # Provider editor, model picker/mappings, OAuth diagnostics
 │   └── ui/               # Shared low-level UI primitives
 ├── config/               # Provider presets
 ├── lib/                  # Small reusable helpers
@@ -69,3 +69,9 @@ Do not switch back to Tailwind v4 casually; the current layout was tuned against
 Use `BrandMark` for the app logo and `ProviderLogo` for provider brands. Assets are shipped locally; keep logo mappings consistent between presets and saved providers, and retain [asset attribution](public/logos/README.md).
 
 Use `ToastNotice` and the shared notification viewport for transient outcomes. Keep field validation and actionable recovery controls in place. Shared cards, page headers and dialog classes define the layout; see the [design guide](../docs/frontend-design.md) before adding page-specific styles.
+
+The [provider editor design](../docs/frontend-design.md#provider-editor) assigns
+draft/catalog ownership, account-context invalidation and nested-menu behavior.
+Reuse the shared catalog for all four mapping inputs; keep OAuth Diagnostics as
+an independent read-only check. Centralize native-select colors in `src/index.css`
+and use the shared popover tokens for custom menus.

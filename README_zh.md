@@ -67,6 +67,8 @@ UI 内置 **17 个预设，覆盖 14 个服务商品牌**，也支持自定义�
 
 自定义 Provider 可选择 `anthropic`、`openai_chat`、`openai_responses` 或 Gemini 兼容协议。面对未知端点时，可在 Provider 编辑器中使用**检测端点类型**与**获取模型**。
 
+Codex OAuth 固定使用 Responses 协议，通过已连接账号执行 **Fetch models** 和 **Check OAuth connection**。获取的模型列表供四个可手动编辑的映射菜单共用；选择、诊断与显式保存的行为见[服务商编辑说明](docs/provider-editor.md)。文档覆盖当前源码，已发布版本的功能请核对发布说明。
+
 本地路由目前支持前三种协议。Gemini 原生转换尚未实现，预设保留用于配置与模型发现；选择或启动此类路由会明确报错。工具延迟加载和加密 reasoning 多轮回传等边界见[协议兼容说明](docs/protocol-compatibility.md)。
 
 ## 快速开始

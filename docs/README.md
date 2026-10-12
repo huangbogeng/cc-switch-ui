@@ -10,10 +10,11 @@ Current release: [v0.3.2 / 更新说明](releases/v0.3.2.md). Previous release: 
 |-------|---------------------------|
 | [User guide / 使用指南](user-guide.md) | Providers, Codex subscription routing, OAuth, MCP, Skills and usage |
 | [Upgrading / 升级指南](upgrading.md) | First upgrade from an older release, `update`, automatic backups and rollback |
-| [Troubleshooting / 常见问题](troubleshooting.md) | Login, route recovery, deletion cleanup and partial sync failures |
+| [Provider editor / 服务商编辑](provider-editor.md) | Model discovery and mappings, OAuth Diagnostics, account preservation and concurrent saves |
+| [Troubleshooting / 常见问题](troubleshooting.md) | Login, model discovery, OAuth checks, route recovery, deletion cleanup and partial sync failures |
 | [Configuration protection and recovery](configuration-recovery.md) | Detailed ownership, conflict detection, journals, snapshots and restore semantics |
 | [Development / 开发](development.md) | Toolchain, local servers, isolated workflow tests and upgrade regressions |
-| [Frontend design](frontend-design.md) | Shared layouts, dialogs, notifications, typography and branding |
+| [Frontend design](frontend-design.md) | Shared layouts, dropdown contrast and alignment, editor state ownership, dialogs and feedback |
 
 Start with the user guide for normal operations. See [protocol compatibility](protocol-compatibility.md) for local-route capabilities and prompt preservation. Use the recovery reference when an operation reports a conflict, partial result or pending recovery.
 
