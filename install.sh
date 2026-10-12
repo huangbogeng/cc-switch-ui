@@ -55,11 +55,10 @@ healthy() {
     return 1
 }
 capture_restart_options() {
-    local command_line="$1" executable="$2" option value index=0
-    local arguments=()
-    # ps does not retain argument boundaries. Preserve simple flags; reject ambiguous input.
-    read -r -a arguments <<< "${command_line#"$executable"}"
-    if [ "${arguments[0]:-}" = start ]; then index=1; fi
+    local option value index=1
+    local arguments=("$@")
+    [ "${arguments[$index]:-}" = start ] || fail 'Cannot preserve service arguments; stop it before upgrading'
+    index=$((index + 1))
     while [ "$index" -lt "${#arguments[@]}" ]; do
         option="${arguments[$index]}"
         case "$option" in
@@ -179,11 +178,21 @@ if [ -f "$DATA_DIR/cc-switch-server.pid" ]; then
     OLD_PID=$(cat "$DATA_DIR/cc-switch-server.pid")
     [[ "$OLD_PID" =~ ^[0-9]+$ ]] && [ "$OLD_PID" -gt 1 ] || fail 'Invalid service PID; stop existing services before upgrading'
     if alive "$OLD_PID"; then
-        COMMAND=$(ps -p "$OLD_PID" -o args=)
-        case "$COMMAND" in "$INSTALL_DIR/cc-switch-ui"|"$INSTALL_DIR/cc-switch-ui "*|"$INSTALL_DIR/cc-switch-server"|"$INSTALL_DIR/cc-switch-server "*|"$INSTALL_DIR/cc-switch-web"|"$INSTALL_DIR/cc-switch-web "*) ;;
-            *) fail "Service $OLD_PID is not from this installation; stop it before upgrading";; esac
-        EXECUTABLE="${COMMAND%% *}"
-        capture_restart_options "$COMMAND" "$EXECUTABLE"
+        SERVICE_ARGS=()
+        if [ "$(uname -s)" = Linux ]; then
+            # argv[0] may be a PATH name, relative path or an alias. Trust the kernel's
+            # executable identity, never a command-line prefix supplied by a process.
+            [ "$INSTALL_DIR/cc-switch-ui" -ef "/proc/$OLD_PID/exe" ] || fail "Service $OLD_PID is not from this installation; stop it before upgrading"
+            [ -r "/proc/$OLD_PID/cmdline" ] || fail 'Cannot read service arguments; stop it before upgrading'
+            while IFS= read -r -d '' argument; do SERVICE_ARGS+=("$argument"); done < "/proc/$OLD_PID/cmdline"
+        else
+            # Keep the conservative macOS fallback until executable identity is available.
+            COMMAND=$(ps -p "$OLD_PID" -o args=)
+            case "$COMMAND" in "$INSTALL_DIR/cc-switch-ui "*|"$INSTALL_DIR/cc-switch-server "*|"$INSTALL_DIR/cc-switch-web "*) ;;
+                *) fail "Service $OLD_PID is not from this installation; stop it before upgrading";; esac
+            read -r -a SERVICE_ARGS <<< "$COMMAND"
+        fi
+        capture_restart_options "${SERVICE_ARGS[@]}"
         stop_process "$OLD_PID" || fail 'Unable to stop existing service'
         WAS_RUNNING=1
     fi
