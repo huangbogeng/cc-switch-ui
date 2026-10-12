@@ -397,6 +397,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), String> {
             "/api/providers/detect-endpoint-type",
             post(model_fetch::detect_endpoint_type),
         )
+        .route("/api/providers/edit", post(providers::edit_provider))
         .route(
             "/api/providers/recover",
             post(providers::recover_provider_operation),

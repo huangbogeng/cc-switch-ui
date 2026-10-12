@@ -14,10 +14,12 @@ export function clearAuthToken() {
 
 export class ApiError extends Error {
   readonly saved: boolean;
-  constructor(message: string, saved = false) {
+  readonly conflictKeys?: string[];
+  readonly conflictRevision?: string;
+  constructor(message: string, saved = false, conflictKeys?: string[], conflictRevision?: string) {
     super(message);
     this.name = 'ApiError';
-    this.saved = saved;
+    this.saved = saved; this.conflictKeys = conflictKeys; this.conflictRevision = conflictRevision;
   }
 }
 
@@ -40,7 +42,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(body.error || `HTTP ${res.status}`, body.saved === true);
+    throw new ApiError(body.error || `HTTP ${res.status}`, body.saved === true, Array.isArray(body.conflictKeys) && body.conflictKeys.every((key: unknown) => typeof key === 'string') ? body.conflictKeys : undefined, typeof body.conflictRevision === 'string' ? body.conflictRevision : undefined);
   }
 
   return res.json() as Promise<T>;
@@ -298,10 +300,10 @@ export async function recoverProviderOperation() {
   return api<ProviderOperationResult>('/providers/recover', { method: 'POST' });
 }
 
-export async function saveProvider(provider: Provider, base?: Provider) {
-  return api<ProviderOperationResult>('/providers', {
+export async function saveProvider(provider: Provider, base?: Provider, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse', resolutionRevision?: string) {
+  return api<ProviderOperationResult>(base ? '/providers/edit' : '/providers', {
     method: 'POST',
-    body: JSON.stringify({ ...provider, ...(base ? { base } : { create: true }) }),
+    body: JSON.stringify(base ? { provider, base, policy, resolutionRevision } : { ...provider, create: true }),
   });
 }
 

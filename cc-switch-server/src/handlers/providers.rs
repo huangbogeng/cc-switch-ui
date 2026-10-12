@@ -95,6 +95,69 @@ pub struct ProviderSaveRequest {
     create: bool,
 }
 
+pub async fn edit_provider(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<cc_switch_lib::provider_edit::EditRequest>,
+) -> axum::response::Response {
+    let _mutation = super::super::state::PROVIDER_MUTATIONS.lock().await;
+    let route_active = state.proxy_server.read().await.is_some();
+    match tokio::task::spawn_blocking(move || edit_provider_record(&state, &request, route_active))
+        .await
+    {
+        Ok(Ok(result)) => Json(result).into_response(),
+        Ok(Err(error)) => operation_error(error),
+        Err(error) => operation_error(cc_switch_lib::AppError::Message(error.to_string())),
+    }
+}
+fn edit_provider_record(
+    state: &AppState,
+    request: &cc_switch_lib::provider_edit::EditRequest,
+    route_active: bool,
+) -> Result<serde_json::Value, cc_switch_lib::AppError> {
+    use cc_switch_lib::{config, provider_edit, provider_operations, AppError};
+    if provider_operations::recovery_pending() {
+        return Err(AppError::ProviderInUse(
+            "Recover the unfinished provider operation before editing".into(),
+        ));
+    }
+    let old = state
+        .db
+        .get_provider(&request.provider.id, APP_TYPE)?
+        .ok_or_else(|| {
+            AppError::InvalidInput("Provider no longer exists; cancel and refresh the list".into())
+        })?;
+    let applied =
+        cc_switch_lib::settings::get_effective_current_provider(&state.db, &AppType::ClaudeCode)?
+            .as_deref()
+            == Some(&old.id)
+            && !route_active;
+    if applied && state.db.get_live_backup(APP_TYPE)?.is_some() {
+        return Err(AppError::ProviderInUse(
+            "Restore the interrupted local route before editing".into(),
+        ));
+    }
+    let path = live::get_live_settings_path();
+    let current = if applied && path.exists() {
+        config::read_json_file(&path)?
+    } else {
+        serde_json::json!({})
+    };
+    let plan = provider_edit::prepare(request, &old, &current, applied, state.proxy_listen_port)?;
+    if applied {
+        provider_operations::apply_edit_plan(
+            &state.db,
+            &plan.provider,
+            &current,
+            &plan.live_after,
+        )?;
+    } else {
+        state.db.save_provider(APP_TYPE, &plan.provider)?;
+    }
+    Ok(
+        serde_json::json!({"success":true,"saved":true,"applied":applied,"message":if applied {"Saved and applied to direct config."} else {"Saved to the provider record. Live configuration was not changed."}}),
+    )
+}
+
 pub async fn save_provider(
     State(state): State<Arc<AppState>>,
     Json(request): Json<ProviderSaveRequest>,
@@ -225,7 +288,9 @@ pub async fn recover_provider_operation(State(state): State<Arc<AppState>>) -> i
 fn operation_error(error: cc_switch_lib::error::AppError) -> axum::response::Response {
     use cc_switch_lib::error::AppError;
     let status = match &error {
-        AppError::Conflict { .. } | AppError::ProviderInUse(_) => StatusCode::CONFLICT,
+        AppError::Conflict { .. }
+        | AppError::ProviderInUse(_)
+        | AppError::ProviderEditConflict { .. } => StatusCode::CONFLICT,
         AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     };
@@ -235,11 +300,12 @@ fn operation_error(error: cc_switch_lib::error::AppError) -> axum::response::Res
     } else {
         error.to_string()
     };
-    (
-        status,
-        Json(serde_json::json!({"error": message, "recovery_required": pending})),
-    )
-        .into_response()
+    let mut body = serde_json::json!({"error": message, "recovery_required": pending});
+    if let AppError::ProviderEditConflict { keys, revision } = error {
+        body["conflictKeys"] = serde_json::json!(keys);
+        body["conflictRevision"] = serde_json::json!(revision);
+    }
+    (status, Json(body)).into_response()
 }
 
 pub async fn delete_provider(
@@ -337,6 +403,98 @@ mod tests {
             .await
             .unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn editor_merges_external_record_fields_and_resolves_live_conflicts_atomically() {
+        let _env = TEST_ENV_LOCK.lock().await;
+        let home = TestHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        let base: Provider = serde_json::from_value(json!({"id":"edit","name":"Edit","settingsConfig":{"env":{"ANTHROPIC_AUTH_TOKEN":"old"}},"meta":{}})).unwrap();
+        db.save_provider(APP_TYPE, &base).unwrap();
+        db.set_current_provider("edit", APP_TYPE).unwrap();
+        let state = Arc::new(AppState {
+            db: db.clone(),
+            token: "test".into(),
+            codex_oauth: Arc::new(CodexOAuthManager::new(home.path.clone())),
+            copilot_oauth: Arc::new(CopilotAuthManager::new(home.path.clone())),
+            proxy_server: Arc::new(tokio::sync::RwLock::new(None)),
+            proxy_host: "127.0.0.1".into(),
+            proxy_listen_port: 0,
+        });
+        let path = live::get_live_settings_path();
+        let original = json!({"env":{"ANTHROPIC_AUTH_TOKEN":"external","API_TIMEOUT_MS":"777"},"permissions":{"allow":["Read"]}});
+        cc_switch_lib::config::write_json_file(&path, &original).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let mut old = base.clone();
+        old.notes = Some("outside".into());
+        db.save_provider(APP_TYPE, &old).unwrap();
+        let mut draft = base.clone();
+        draft.name = "Renamed".into();
+        draft.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("mine");
+        let (status, conflict) = body(
+            edit_provider(
+                State(state.clone()),
+                Json(cc_switch_lib::provider_edit::EditRequest {
+                    provider: draft.clone(),
+                    base: base.clone(),
+                    policy: cc_switch_lib::provider_edit::Policy::Refuse,
+                    resolution_revision: None,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(
+            db.get_provider("edit", APP_TYPE).unwrap().unwrap().name,
+            "Edit"
+        );
+        let (status, result) = body(
+            edit_provider(
+                State(state.clone()),
+                Json(cc_switch_lib::provider_edit::EditRequest {
+                    provider: draft,
+                    base,
+                    policy: cc_switch_lib::provider_edit::Policy::KeepTheirs,
+                    resolution_revision: Some(
+                        conflict["conflictRevision"].as_str().unwrap().into(),
+                    ),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(result["applied"], true);
+        let saved = db.get_provider("edit", APP_TYPE).unwrap().unwrap();
+        assert_eq!(saved.name, "Renamed");
+        assert_eq!(saved.notes.as_deref(), Some("outside"));
+        assert_eq!(
+            saved.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"],
+            "external"
+        );
+        assert_eq!(
+            cc_switch_lib::config::read_json_file::<Value>(&path).unwrap(),
+            original
+        );
+        assert!(!cc_switch_lib::provider_operations::recovery_pending());
+    }
+
+    #[tokio::test]
+    async fn provider_conflict_reply_redacts_values() {
+        let (status, result) = body(operation_error(
+            cc_switch_lib::AppError::ProviderEditConflict {
+                keys: vec!["live/env/ANTHROPIC_AUTH_TOKEN".into()],
+                revision: "observed".into(),
+            },
+        ))
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(result["conflictRevision"], "observed");
+        assert_eq!(result["conflictKeys"][0], "live/env/ANTHROPIC_AUTH_TOKEN");
+        assert!(result.get("provider").is_none());
     }
 
     #[tokio::test]

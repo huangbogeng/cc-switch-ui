@@ -148,6 +148,26 @@ pub fn apply(
     })
 }
 
+/// Publish a reviewed plan through the same durable write/database coordinator.
+pub fn apply_edit_plan(
+    db: &Database,
+    provider: &Provider,
+    observed: &Value,
+    after: &Value,
+) -> Result<(), AppError> {
+    run(db, Pending::new(Some(provider)), |current, _| {
+        if current != observed {
+            return Err(AppError::Conflict {
+                path:
+                    "live file changed again before publication; retry to review the latest state"
+                        .into(),
+            });
+        }
+        *current = after.clone();
+        Ok(())
+    })
+}
+
 /// Save the outgoing live snapshot, apply the selected provider and persist both
 /// selection stores. Returns whether live was applied. Caller serializes
 /// provider/route mutations and recovers first.
@@ -250,6 +270,25 @@ mod tests {
     use super::*;
     use crate::live::tests::{acquire_env_lock, cleanup, setup_test_home};
     use serde_json::json;
+
+    #[test]
+    fn reviewed_plan_rejects_a_later_live_change_before_writing_record_or_journal() {
+        let _env = acquire_env_lock();
+        let home = setup_test_home();
+        let db = Database::init().unwrap();
+        let provider: Provider = serde_json::from_value(
+            json!({"id":"plan","name":"Plan","settingsConfig":{},"meta":{}}),
+        )
+        .unwrap();
+        let path = config::get_claude_settings_path();
+        let newer = json!({"env":{"API_TIMEOUT_MS":"new"}});
+        config::write_json_file(&path, &newer).unwrap();
+        assert!(apply_edit_plan(&db, &provider, &json!({}), &json!({"env":{}})).is_err());
+        assert_eq!(config::read_json_file::<Value>(&path).unwrap(), newer);
+        assert!(db.get_provider("plan", APP).unwrap().is_none());
+        assert!(!recovery_pending());
+        cleanup(home);
+    }
 
     #[test]
     fn failed_database_commit_recovers_and_preserves_external_edits() {

@@ -36,7 +36,7 @@ it('sends the editor baseline and explains when a saved record was applied', asy
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
   fireEvent.click(await screen.findByText('Edit Test'));
   fireEvent.click(screen.getByText('Submit draft'));
-  await waitFor(() => expect(api.saveProvider).toHaveBeenCalledWith(expect.objectContaining({ settingsConfig: expect.objectContaining({ env: expect.objectContaining({ ANTHROPIC_AUTH_TOKEN: 'new-key' }) }) }), provider));
+  await waitFor(() => expect(api.saveProvider).toHaveBeenCalledWith(expect.objectContaining({ settingsConfig: expect.objectContaining({ env: expect.objectContaining({ ANTHROPIC_AUTH_TOKEN: 'new-key' }) }) }), provider, 'refuse', undefined));
   expect(await screen.findByRole('status')).toHaveProperty('textContent', 'Saved and applied to direct config. Recovered earlier save.');
   expect(screen.queryByRole('dialog')).toBeNull();
 });
@@ -121,4 +121,16 @@ it('refreshes records after a deletion loses its response', async () => {
   await screen.findByText('Deletion response lost');
   expect(screen.getByText('No providers yet')).toBeTruthy();
   expect(screen.queryByText('Edit Test')).toBeNull();
+});
+
+it('keeps the provider draft and retries with an explicit observed conflict decision', async () => {
+  vi.mocked(api.saveProvider).mockRejectedValueOnce(Object.assign(new Error('External change'), { conflictKeys: ['live/env/ANTHROPIC_AUTH_TOKEN'], conflictRevision: 'observed' })).mockResolvedValue({ success: true, applied: true });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByText('Edit Test'));
+  fireEvent.click(screen.getByText('Submit draft'));
+  await screen.findByRole('dialog', { name: 'Provider settings changed externally' });
+  expect(screen.getByText('live/env/ANTHROPIC_AUTH_TOKEN')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Keep external changes' }));
+  await waitFor(() => expect(api.saveProvider).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'keepTheirs', 'observed'));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Provider settings changed externally' })).toBeNull());
 });
