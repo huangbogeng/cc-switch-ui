@@ -175,3 +175,25 @@ it('updates all four mapping menus after fetching and selects each role without 
     expect(screen.getByLabelText(role)).toHaveProperty('value', 'catalog-b');
   }
 });
+
+it('offers OAuth diagnostics instead of API-key detection and retains the draft', async () => {
+  vi.mocked(fetchCodexModels).mockResolvedValue({ models: [{ id: 'gpt-6.1-sol' }] });
+  const form = formFromPreset(providerPresets.find(item => item.id === 'codex')!);
+  const submit = vi.fn();
+  render(<ProviderFormDialog open editingId="codex" selectedPreset={null} initialFormData={form} saving={false} codexAccounts={[{ id: 'fixture-a', login: 'Account A', is_default: true }]} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
+  fireEvent.click(screen.getByText('Diagnostics'));
+  expect(screen.queryByRole('button', { name: 'Detect endpoint type' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Check OAuth connection' }));
+  expect(await screen.findByRole('status')).toHaveProperty('textContent', 'OAuth model catalog reached successfully. 1 models returned.');
+  expect(submit).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Main')).toHaveProperty('value', form.model);
+  expect(screen.getByLabelText('API Format')).toHaveProperty('value', 'openai_responses');
+});
+
+it('retains endpoint type detection for API-key providers', () => {
+  const form = { ...formFromPreset(providerPresets.find(item => item.id === 'claude-official')!), authMode: 'api_key' as const, noAuth: false, baseUrl: 'https://fixture.example', apiKey: 'fixture-key' };
+  render(<ProviderFormDialog open editingId="fixture" selectedPreset={null} initialFormData={form} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={vi.fn()} />);
+  fireEvent.click(screen.getByText('Diagnostics'));
+  expect(screen.getByRole('button', { name: 'Detect endpoint type' })).toHaveProperty('disabled', false);
+  expect(screen.queryByRole('button', { name: 'Check OAuth connection' })).toBeNull();
+});
