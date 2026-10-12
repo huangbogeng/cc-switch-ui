@@ -284,5 +284,11 @@ export function buildEditedProvider(form: ProviderFormData, preset: ProviderPres
     }
     return after;
   };
-  return apply(displayed, desired, base) as Provider;
+  const edited = apply(displayed, desired, base) as Provider;
+  if ((desired.meta as Record<string, unknown>).providerType === 'codex_oauth') {
+    // A baseline-only diff otherwise leaves inferred OAuth metadata unwritten,
+    // while the editor displays the normalized, locked Responses contract.
+    return { ...edited, meta: { ...edited.meta as Record<string, unknown>, authMode: 'oauth_proxy', providerType: 'codex_oauth', apiFormat: 'openai_responses' } };
+  }
+  return edited;
 }

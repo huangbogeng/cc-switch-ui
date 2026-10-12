@@ -15,8 +15,12 @@ in the same order as the local route. A name-only edit keeps the effective
 protocol, top-level settings, authentication adapter and account binding.
 An explicit protocol edit updates `meta.apiFormat`, which takes precedence over
 legacy fields. Codex OAuth is always saved as OpenAI Responses and its protocol
-selector is read-only. Selecting the default account intentionally clears the
-explicit binding; other edits keep it.
+selector is read-only. An imported record identified by its OAuth mode or Codex
+binding is canonicalized by the actual save path, including a name-only edit;
+the chosen account and unrelated metadata remain intact. Saving an unchanged
+OAuth form also canonicalizes it while retaining the original conflict baseline.
+Selecting the default account intentionally clears the explicit binding;
+other edits keep it.
 
 Gemini Native can be retained for configuration/model discovery. Its local-route
 limitation is shown in the editor and route selector. See

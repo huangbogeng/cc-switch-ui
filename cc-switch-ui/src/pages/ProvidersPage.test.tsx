@@ -163,3 +163,13 @@ it('starts only after successful target selection', async () => {
   await waitFor(() => expect(api.startProxy).toHaveBeenCalledOnce());
   expect(vi.mocked(api.setProxyTarget).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.startProxy).mock.invocationCallOrder[0]);
 });
+
+it('saves inferred OAuth metadata through the actual editor submit path', async () => {
+  const imported: api.Provider = { id: 'legacy-binding', name: 'Imported OAuth', inFailoverQueue: false, settingsConfig: { env: { ANTHROPIC_MODEL: 'configured-model' } }, meta: { apiFormat: 'gemini_native', authBinding: { authProvider: 'codex_oauth', accountId: 'synthetic-account' } } };
+  vi.mocked(api.listProviders).mockResolvedValue({ providers: { [imported.id]: imported } });
+  vi.mocked(api.saveProvider).mockResolvedValue({ success: true, saved: true, applied: false });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProvidersPage /></QueryClientProvider>);
+  fireEvent.click(await screen.findByText('Edit Imported OAuth'));
+  fireEvent.click(screen.getByText('Submit draft'));
+  await waitFor(() => expect(api.saveProvider).toHaveBeenCalledWith(expect.objectContaining({ meta: expect.objectContaining({ providerType: 'codex_oauth', authMode: 'oauth_proxy', apiFormat: 'openai_responses', authBinding: imported.meta && (imported.meta as { authBinding: unknown }).authBinding }) }), imported, 'refuse', undefined));
+});
