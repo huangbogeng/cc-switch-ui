@@ -27,7 +27,7 @@ it('writes a validated user override with the loaded revision and preserves defa
   expect(saveClaudeUserSettings).not.toHaveBeenCalled();
   fireEvent.change(timeout, { target: { value: '4000' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save User Settings' }));
-  await waitFor(() => expect(saveClaudeUserSettings).toHaveBeenCalledWith('version-1', { timeoutMs: '4000', nonessentialTraffic: null }));
+  await waitFor(() => expect(saveClaudeUserSettings).toHaveBeenCalledWith('version-1', { timeoutMs: '4000', nonessentialTraffic: null }, initial.values, 'refuse', undefined));
   expect(await screen.findByRole('status')).toHaveProperty('textContent', 'User settings saved to the live file.');
 });
 
@@ -73,4 +73,17 @@ it('reports a completed write when refresh fails and prevents another write unti
   fireEvent.click(screen.getByRole('button', { name: 'Reload from file' }));
   await waitFor(() => expect(screen.getByLabelText('API Timeout MS')).toHaveProperty('value', '2000'));
   expect(saveClaudeUserSettings).toHaveBeenCalledOnce();
+});
+
+it('retains the draft and requires an explicit choice for field conflicts', async () => {
+  vi.mocked(saveClaudeUserSettings).mockRejectedValueOnce(Object.assign(new Error('Settings changed externally'), { conflictKeys: ['API_TIMEOUT_MS'], conflictRevision: 'latest' })).mockResolvedValue({ success: true });
+  render(<ClaudeUserSettingsPanel />);
+  const timeout = await screen.findByLabelText('API Timeout MS');
+  fireEvent.change(timeout, { target: { value: '4000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save User Settings' }));
+  await screen.findByRole('dialog', { name: 'Settings changed externally' });
+  expect(timeout).toHaveProperty('value', '4000');
+  fireEvent.click(screen.getByRole('button', { name: 'Keep external changes' }));
+  await waitFor(() => expect(saveClaudeUserSettings).toHaveBeenLastCalledWith('version-1', { timeoutMs: '4000', nonessentialTraffic: null }, initial.values, 'keepTheirs', 'latest'));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });

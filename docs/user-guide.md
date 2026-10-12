@@ -75,3 +75,5 @@ The **Usage** page distinguishes local proxy logs from imported Claude Code sess
 Use the switch beside a collection title to enable or disable every managed skill in that collection. A centered switch and the enabled count indicate a partially enabled group; clicking it enables the whole group. Group controls include members hidden by search or pagination. Individual skill switches remain independent. The group state is saved together and synced once; if file sync fails, the saved state remains visible and Sync can retry it.
 
 For the MCP/Skills action contract and upstream comparison, see [interaction decisions](mcp-skills-design.md).
+
+Claude Code User Settings compares only fields you edited. Unedited fields retain external changes. A conflicting edit offers **Keep external changes** or **Use my changes**; cancelling keeps the draft. If the file changes again during confirmation, review is required again. Provider connection edits retain their existing conflict checks.

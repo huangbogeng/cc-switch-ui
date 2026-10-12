@@ -1,4 +1,5 @@
 import { ToastNotice } from '@/components/ToastNotice';
+import { useDialog } from '@/lib/useDialog';
 import { useConfirm } from '@/lib/useConfirm';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -17,10 +18,12 @@ const defaults: ClaudeUserValues = { timeoutMs: null, nonessentialTraffic: null 
 
 export function ClaudeUserSettingsPanel() {
   const { confirmAction, confirmation } = useConfirm();
+  const [conflict, setConflict] = useState<{ keys: string[]; revision: string } | null>(null);
   const [snapshot, setSnapshot] = useState<ClaudeUserSettings | null>(null);
   const [values, setValues] = useState<ClaudeUserValues>(defaults);
   const [baseline, setBaseline] = useState(defaults);
   const [busy, setBusy] = useState(true);
+  const conflictRef = useDialog(conflict !== null, () => setConflict(null), !busy);
   const [needsReload, setNeedsReload] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -53,7 +56,7 @@ export function ClaudeUserSettingsPanel() {
     finally { setBusy(false); }
   };
 
-  const submit = async (restore: boolean) => {
+  const submit = async (restore: boolean, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse') => {
     if (!snapshot || busy || needsReload) return;
     setError('');
     setNotice('');
@@ -68,7 +71,8 @@ export function ClaudeUserSettingsPanel() {
     setBusy(true);
     try {
       if (restore) await restoreClaudeUserSettings(snapshot.revision);
-      else await saveClaudeUserSettings(snapshot.revision, values);
+      else await saveClaudeUserSettings(snapshot.revision, values, snapshot.values, policy, conflict?.revision);
+      setConflict(null);
       setNotice(restore ? 'User settings restored to the live file.' : 'User settings saved to the live file.');
       // A successful write is complete even if the follow-up read fails.
       setNeedsReload(true);
@@ -78,6 +82,10 @@ export function ClaudeUserSettingsPanel() {
       try { await load(); }
       catch (e) { setError(`The write completed, but refreshing failed: ${e instanceof Error ? e.message : 'Unknown error'}. Reload from file before editing again.`); }
     } catch (e) {
+      if (!restore && e instanceof Error && 'conflictKeys' in e && 'conflictRevision' in e && Array.isArray(e.conflictKeys) && typeof e.conflictRevision === 'string') {
+        setConflict({ keys: e.conflictKeys as string[], revision: e.conflictRevision });
+        return;
+      }
       setError(`${e instanceof Error ? e.message : 'Failed to update user settings'}. Reload from file to review the latest values, then retry.`);
     } finally { setBusy(false); }
   };
@@ -85,6 +93,19 @@ export function ClaudeUserSettingsPanel() {
   return (
     <Card>
       {confirmation}
+      {conflict && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div ref={conflictRef} role="dialog" aria-modal="true" aria-labelledby="settings-conflict-title" tabIndex={-1} className="dialog-panel w-full max-w-lg p-6 space-y-4">
+          <h2 id="settings-conflict-title" className="text-lg font-semibold">Settings changed externally</h2>
+          <p className="text-sm text-muted-foreground">Choose which conflicting changes to keep. Your other edits will be saved; fields you did not edit keep their latest values.</p>
+          <ul className="space-y-1 text-xs font-mono">{conflict.keys.map(key => <li key={key}>{key}</li>)}</ul>
+          {conflict.keys.length === 0 && <p className="text-sm">The file changed again. Review and confirm before retrying.</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => setConflict(null)}>Cancel</Button>
+            <Button variant="outline" disabled={busy} onClick={() => void submit(false, 'keepTheirs')}>Keep external changes</Button>
+            <Button disabled={busy} onClick={() => void submit(false, 'keepMine')}>Use my changes</Button>
+          </div>
+        </div>
+      </div>}
       <CardHeader>
         <CardTitle>Claude Code User Settings</CardTitle>
         <p className="text-xs text-muted-foreground">Saved directly to the live file. Provider switching preserves these settings. Start a new Claude Code session to pick up changes.</p>
@@ -93,7 +114,7 @@ export function ClaudeUserSettingsPanel() {
         {snapshot && <p className="break-all font-mono text-xs text-muted-foreground">{snapshot.path}</p>}
         {error && <ErrorAlert message={error} />}
         {notice && <ToastNotice message={notice} onDismiss={() => setNotice('')} />}
-        {snapshot && <fieldset disabled={busy || needsReload} className="space-y-4">
+        {snapshot && <fieldset disabled={busy || needsReload || conflict !== null} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="claude-api-timeout">API Timeout MS</Label>
             <Input id="claude-api-timeout" inputMode="numeric" value={values.timeoutMs ?? ''}
@@ -113,7 +134,7 @@ export function ClaudeUserSettingsPanel() {
           </div>
         </fieldset>}
         <div className="flex flex-wrap gap-2">
-          <Button disabled={!snapshot || busy || needsReload || !dirty} onClick={() => void submit(false)}>Save User Settings</Button>
+          <Button disabled={!snapshot || busy || needsReload || !dirty || conflict !== null} onClick={() => void submit(false)}>Save User Settings</Button>
           <Button variant="secondary" disabled={busy} onClick={() => void reload()}>Reload from file</Button>
           <Button variant="secondary" disabled={!snapshot?.initialValues || busy || needsReload} onClick={() => void submit(true)}>Restore user settings</Button>
         </div>

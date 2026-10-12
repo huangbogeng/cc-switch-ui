@@ -10,6 +10,8 @@ pub enum AppError {
     ProviderInUse(String),
     #[error("Configuration changed externally; retry the operation: {path}")]
     Conflict { path: String },
+    #[error("User settings changed externally; choose which changes to keep")]
+    SettingsConflict { keys: Vec<String>, revision: String },
     #[error("配置错误: {0}")]
     Config(String),
     #[error("无效输入: {0}")]

@@ -40,6 +40,96 @@ pub struct SaveRequest {
     pub values: UserValues,
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ConflictPolicy {
+    #[default]
+    Refuse,
+    KeepMine,
+    KeepTheirs,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MergeRequest {
+    pub revision: String,
+    pub baseline: UserValues,
+    pub values: UserValues,
+    #[serde(default)]
+    pub policy: ConflictPolicy,
+    pub resolution_revision: Option<String>,
+}
+
+pub fn merge(path: &Path, request: &MergeRequest) -> Result<(), AppError> {
+    if revision(&request.baseline) != request.revision {
+        return Err(AppError::InvalidInput(
+            "Baseline does not match the loaded revision".into(),
+        ));
+    }
+    patch(
+        path,
+        &request.revision,
+        &request.values,
+        true,
+        Some(request),
+    )
+}
+
+fn merge_values(current: &UserValues, request: &MergeRequest) -> Result<UserValues, AppError> {
+    let fields = [
+        (
+            TIMEOUT,
+            &request.baseline.timeout_ms,
+            &request.values.timeout_ms,
+            &current.timeout_ms,
+        ),
+        (
+            TRAFFIC,
+            &request.baseline.nonessential_traffic,
+            &request.values.nonessential_traffic,
+            &current.nonessential_traffic,
+        ),
+    ];
+    let keys: Vec<_> = fields
+        .iter()
+        .filter(|(_, base, desired, now)| base != desired && now != base && now != desired)
+        .map(|(key, _, _, _)| key.to_string())
+        .collect();
+    let current_revision = revision(current);
+    let resolving = !matches!(request.policy, ConflictPolicy::Refuse);
+    if (!keys.is_empty() && !resolving)
+        || (resolving && request.resolution_revision.as_deref() != Some(&current_revision))
+    {
+        return Err(AppError::SettingsConflict {
+            keys,
+            revision: current_revision,
+        });
+    }
+    let choose = |base: &Option<String>, desired: &Option<String>, now: &Option<String>| {
+        if base == desired
+            || (matches!(request.policy, ConflictPolicy::KeepTheirs)
+                && now != base
+                && now != desired)
+        {
+            now.clone()
+        } else {
+            desired.clone()
+        }
+    };
+    Ok(UserValues {
+        timeout_ms: choose(
+            &request.baseline.timeout_ms,
+            &request.values.timeout_ms,
+            &current.timeout_ms,
+        ),
+        nonessential_traffic: choose(
+            &request.baseline.nonessential_traffic,
+            &request.values.nonessential_traffic,
+            &current.nonessential_traffic,
+        ),
+    })
+}
+
 pub fn read(path: &Path) -> Result<UserSettings, AppError> {
     let value = match std::fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| AppError::json(path, e))?,
@@ -97,14 +187,14 @@ fn revision(values: &UserValues) -> String {
 }
 
 pub fn save(path: &Path, request: &SaveRequest) -> Result<(), AppError> {
-    patch(path, &request.revision, &request.values, true)
+    patch(path, &request.revision, &request.values, true, None)
 }
 
 pub fn restore(path: &Path, expected_revision: &str) -> Result<(), AppError> {
     let original = read_first_write_backup(path)?
         .ok_or_else(|| AppError::InvalidInput("No first-write backup is available".into()))?;
     // Restore only this panel's two user fields, not the full snapshot or credentials.
-    patch(path, expected_revision, &values_of(&original)?, false)
+    patch(path, expected_revision, &values_of(&original)?, false, None)
 }
 
 fn patch(
@@ -112,10 +202,18 @@ fn patch(
     expected_revision: &str,
     desired: &UserValues,
     validate: bool,
+    merge_request: Option<&MergeRequest>,
 ) -> Result<(), AppError> {
     update_json_file(path, |current| {
         let old = values_of(current)?;
-        if revision(&old) != expected_revision {
+        let merged;
+        let desired = if let Some(request) = merge_request {
+            merged = merge_values(&old, request)?;
+            &merged
+        } else {
+            desired
+        };
+        if merge_request.is_none() && revision(&old) != expected_revision {
             return Err(AppError::Conflict {
                 path: path.display().to_string(),
             });
@@ -171,6 +269,83 @@ fn patch(
 mod tests {
     use super::*;
     use crate::live::tests::{acquire_env_lock, cleanup, setup_test_home};
+
+    #[test]
+    fn merge_preserves_unedited_fields_and_guards_explicit_resolution() {
+        let base = UserValues {
+            timeout_ms: Some("2000".into()),
+            nonessential_traffic: None,
+        };
+        let mut request = MergeRequest {
+            revision: revision(&base),
+            baseline: base,
+            values: UserValues {
+                timeout_ms: Some("4000".into()),
+                nonessential_traffic: None,
+            },
+            policy: ConflictPolicy::Refuse,
+            resolution_revision: None,
+        };
+        let mut current = UserValues {
+            timeout_ms: Some("2000".into()),
+            nonessential_traffic: Some("1".into()),
+        };
+        let result = merge_values(&current, &request).unwrap();
+        assert_eq!(result.timeout_ms.as_deref(), Some("4000"));
+        assert_eq!(result.nonessential_traffic, current.nonessential_traffic);
+        assert_eq!(merge_values(&result, &request).unwrap(), result);
+        current.timeout_ms = Some("3000".into());
+        assert!(
+            matches!(merge_values(&current, &request), Err(AppError::SettingsConflict { keys, .. }) if keys == [TIMEOUT])
+        );
+        request.policy = ConflictPolicy::KeepTheirs;
+        request.resolution_revision = Some(revision(&current));
+        assert_eq!(merge_values(&current, &request).unwrap(), current);
+        request.policy = ConflictPolicy::KeepMine;
+        assert_eq!(merge_values(&current, &request).unwrap(), result);
+        assert!(matches!(
+            merge_values(&result, &request),
+            Err(AppError::SettingsConflict { .. })
+        ));
+    }
+
+    #[test]
+    fn conflicting_merge_preserves_live_then_saves_only_edited_keys() {
+        let _env = acquire_env_lock();
+        let home = setup_test_home();
+        let path = crate::config::get_claude_settings_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = br#"{ "env": {"API_TIMEOUT_MS":"3000","CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1","ANTHROPIC_AUTH_TOKEN":"keep"},"permissions":{"allow":["Read"]}}"#;
+        std::fs::write(&path, bytes).unwrap();
+        let base = UserValues {
+            timeout_ms: Some("2000".into()),
+            nonessential_traffic: None,
+        };
+        let mut request = MergeRequest {
+            revision: revision(&base),
+            baseline: base,
+            values: UserValues {
+                timeout_ms: Some("4000".into()),
+                nonessential_traffic: None,
+            },
+            policy: ConflictPolicy::Refuse,
+            resolution_revision: None,
+        };
+        assert!(matches!(
+            merge(&path, &request),
+            Err(AppError::SettingsConflict { .. })
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        request.policy = ConflictPolicy::KeepMine;
+        request.resolution_revision = Some(read(&path).unwrap().revision);
+        merge(&path, &request).unwrap();
+        let live: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(live["env"][TIMEOUT], "4000");
+        assert_eq!(live["env"][TRAFFIC], "1");
+        assert_eq!(live["env"]["ANTHROPIC_AUTH_TOKEN"], "keep");
+        assert_eq!(live["permissions"]["allow"][0], "Read");
+        cleanup(home);
+    }
 
     #[test]
     fn user_edits_rebase_unrelated_changes_and_restore_only_user_fields() {

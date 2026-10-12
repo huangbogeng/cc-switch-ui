@@ -14,10 +14,14 @@ export function clearAuthToken() {
 
 export class ApiError extends Error {
   readonly saved: boolean;
-  constructor(message: string, saved = false) {
+  readonly conflictKeys?: string[];
+  readonly conflictRevision?: string;
+  constructor(message: string, saved = false, conflictKeys?: string[], conflictRevision?: string) {
     super(message);
     this.name = 'ApiError';
     this.saved = saved;
+    this.conflictKeys = conflictKeys;
+    this.conflictRevision = conflictRevision;
   }
 }
 
@@ -40,7 +44,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(body.error || `HTTP ${res.status}`, body.saved === true);
+    throw new ApiError(body.error || `HTTP ${res.status}`, body.saved === true, Array.isArray(body.conflictKeys) && body.conflictKeys.every((key: unknown) => typeof key === 'string') ? body.conflictKeys : undefined, typeof body.conflictRevision === 'string' ? body.conflictRevision : undefined);
   }
 
   return res.json() as Promise<T>;
@@ -674,9 +678,9 @@ export function getClaudeUserSettings(options?: RequestInit) {
   return api<ClaudeUserSettings>('/settings/claude-user', options);
 }
 
-export function saveClaudeUserSettings(revision: string, values: ClaudeUserValues) {
-  return api<{ success: boolean }>('/settings/claude-user', {
-    method: 'PUT', body: JSON.stringify({ revision, values }),
+export function saveClaudeUserSettings(revision: string, values: ClaudeUserValues, baseline?: ClaudeUserValues, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse', resolutionRevision?: string) {
+  return api<{ success: boolean }>(baseline ? '/settings/claude-user/merge' : '/settings/claude-user', {
+    method: 'PUT', body: JSON.stringify({ revision, values, ...(baseline ? { baseline, policy, resolutionRevision } : {}) }),
   });
 }
 
