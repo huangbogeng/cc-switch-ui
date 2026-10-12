@@ -1,5 +1,6 @@
 import { ModelPickerDialog } from './ModelPickerDialog';
 import { ModelMappingInput } from './ModelMappingInput';
+import { CodexDiagnostics } from './CodexDiagnostics';
 import { ProviderLogo } from './ProviderLogo';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Download, Loader2 } from 'lucide-react';
@@ -376,6 +377,13 @@ export function ProviderFormDialog({
                 Diagnostics
               </summary>
               <div className="space-y-4 pt-4">
+                {usesOAuthProxy ? <CodexDiagnostics
+                  accountId={formData.codexAccountId.trim() || undefined}
+                  resolvedAccountId={modelAccountId}
+                  canCheck={hasModelAccount}
+                  disabled={saving || previewing || pickerOpen}
+                  configured={{ model: formData.model, haikuModel: formData.haikuModel, sonnetModel: formData.sonnetModel, opusModel: formData.opusModel }}
+                /> : (
                 <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -438,8 +446,7 @@ export function ProviderFormDialog({
                     </div>
                   )}
                 </div>
-
-
+                )}
               </div>
             </details>
 

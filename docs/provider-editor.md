@@ -16,6 +16,20 @@ previous list and ignores its pending responses. A missing or disconnected bound
 account does not fall back to another account. Reconnect on the OAuth page if the
 token is unavailable; manual model IDs remain editable after a failed fetch.
 
+## Diagnostics
+
+For Codex OAuth, **Diagnostics → Check OAuth connection** reads the model catalog
+using the selected managed account or the current default. No API key or running
+local route is needed. The result shows whether the catalog was reached and
+whether each configured mapping appears in it. Catalog presence is separate from
+generation access; manually configured models can remain valid when unlisted.
+Changes to the selected/default account clear previous results and ignore pending
+responses. Editing mappings reuses the checked catalog for that account. Connection
+errors provide the server's sanitized guidance. This check leaves the draft and
+saved provider unchanged.
+
+API-key providers retain **Detect endpoint type** for identifying the wire protocol.
+
 ## Protocol and account preservation
 
 The editor resolves protocol metadata, legacy `api_format`, and provider defaults
