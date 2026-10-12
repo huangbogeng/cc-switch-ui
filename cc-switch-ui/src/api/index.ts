@@ -19,7 +19,9 @@ export class ApiError extends Error {
   constructor(message: string, saved = false, conflictKeys?: string[], conflictRevision?: string) {
     super(message);
     this.name = 'ApiError';
-    this.saved = saved; this.conflictKeys = conflictKeys; this.conflictRevision = conflictRevision;
+    this.saved = saved;
+    this.conflictKeys = conflictKeys;
+    this.conflictRevision = conflictRevision;
   }
 }
 
@@ -676,9 +678,9 @@ export function getClaudeUserSettings(options?: RequestInit) {
   return api<ClaudeUserSettings>('/settings/claude-user', options);
 }
 
-export function saveClaudeUserSettings(revision: string, values: ClaudeUserValues) {
-  return api<{ success: boolean }>('/settings/claude-user', {
-    method: 'PUT', body: JSON.stringify({ revision, values }),
+export function saveClaudeUserSettings(revision: string, values: ClaudeUserValues, baseline?: ClaudeUserValues, policy: 'refuse' | 'keepMine' | 'keepTheirs' = 'refuse', resolutionRevision?: string) {
+  return api<{ success: boolean }>(baseline ? '/settings/claude-user/merge' : '/settings/claude-user', {
+    method: 'PUT', body: JSON.stringify({ revision, values, ...(baseline ? { baseline, policy, resolutionRevision } : {}) }),
   });
 }
 
@@ -748,6 +750,24 @@ export interface ImportCandidate { id: string; name: string; source: string }
 export function listImportCandidates(kind: ManagedKind) { return api<{ items: ImportCandidate[]; report: OperationReport }>(`/managed-items/${kind}/candidates`); }
 export function listRemovedItems(kind: ManagedKind) { return api<ImportCandidate[]>(`/managed-items/${kind}/removed`); }
 export function restoreRemovedItems(kind: ManagedKind, ids: string[]) { return api<OperationReport>(`/managed-items/${kind}/restore`, { method: 'POST', body: JSON.stringify({ ids }) }); }
+
+export interface ClaudeSettingsPreview {
+  path: string; revision: string;
+  changes: { field: string; before: string | null; after: string | null }[];
+}
+export function previewClaudeUserSettings(revision: string, values: ClaudeUserValues, baseline: ClaudeUserValues) {
+  return api<ClaudeSettingsPreview>('/settings/claude-user/preview', {
+    method: 'POST', body: JSON.stringify({ revision, values, baseline, policy: 'refuse' }),
+  });
+}
+
+export interface EnvironmentDiagnostics {
+  findings: { variable: string; application: string; source: string; kind: 'process' | 'shell' }[];
+  warnings: string[];
+}
+export function getEnvironmentDiagnostics() {
+  return api<EnvironmentDiagnostics>('/settings/environment-diagnostics');
+}
 
 export interface ProviderPreview {
   applied: boolean; recordPath: string; livePath: string | null;
