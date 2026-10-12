@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--new-binary', required=True)
 parser.add_argument('--old-binary', required=True)
+parser.add_argument('--prepare-old-profile', action='store_true',
+                    help='Initialize the profile using the old release, then test its updater and current-schema data')
 args, remaining = parser.parse_known_args()
 NEW = Path(args.new_binary).resolve()
 OLD = Path(args.old_binary).resolve()
@@ -61,6 +63,22 @@ class UpgradeTests(unittest.TestCase):
                         PATH=str(self.mock) + os.pathsep + self.env['PATH'])
         self.env.pop('CC_SWITCH_UI_DIR', None)
         self.processes = []
+        if args.prepare_old_profile:
+            # Build an actual old-release profile before the new program runs.
+            old = self.start_old()
+            old.terminate()
+            old.wait(timeout=10)
+            self.binding = json.dumps({'providerType': 'codex_oauth', 'authMode': 'oauth_proxy',
+                                       'authBinding': {'authProvider': 'codex_oauth', 'accountId': 'synthetic-account'}})
+            self.removed_record = json.dumps({'id': 'removed-fixture', 'name': 'Removed fixture'})
+            with sqlite3.connect(self.db) as c:
+                self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0], 5)
+                c.execute("UPDATE providers SET meta=? WHERE id='legacy'", [self.binding])
+                c.execute('INSERT INTO managed_removed VALUES(?,?,?,?,?)',
+                          ('claude_code', 'mcp', 'removed-fixture', 'Removed fixture', self.removed_record))
+        with sqlite3.connect(self.db) as c:
+            self.original_schema = c.execute('PRAGMA user_version').fetchone()[0]
+        self.original_migration_backups = len(list((self.data / 'backups/upgrades').glob('*.db')))
         self.package()
         self.mock_curl()
 
@@ -148,6 +166,9 @@ else:
             self.assertEqual(c.execute("select is_current from providers where id='legacy'").fetchone()[0], 1)
             self.assertEqual(c.execute("select enabled from skills where id='legacy'").fetchone()[0], 0)
             self.assertEqual(c.execute("select name from mcp_servers where id='legacy'").fetchone()[0], 'Legacy MCP')
+            if args.prepare_old_profile:
+                self.assertEqual(c.execute("SELECT meta FROM providers WHERE id='legacy'").fetchone()[0], self.binding)
+                self.assertEqual(c.execute("SELECT record_json FROM managed_removed WHERE item_key='removed-fixture'").fetchone()[0], self.removed_record)
         self.assertEqual((self.data / 'codex_oauth_auth.json').read_bytes(), self.oauth)
         self.assertEqual((self.data / 'skills/legacy/SKILL.md').read_text(), 'preserve source')
         self.assertEqual((self.home / '.claude/settings.json').read_text(), '{"unrelated":"preserve live"}')
@@ -158,11 +179,12 @@ else:
         self.assert_data(5)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'new frontend')
         backups = list((self.data / 'backups/upgrades').glob('*.db'))
-        self.assertEqual(len(backups), 1)
+        expected_backups = self.original_migration_backups + int(self.original_schema < 5)
+        self.assertEqual(len(backups), expected_backups)
         self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
         second = self.run_installer()
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-        self.assertEqual(len(list((self.data / 'backups/upgrades').glob('*.db'))), 1)
+        self.assertEqual(len(list((self.data / 'backups/upgrades').glob('*.db'))), expected_backups)
         with self.assertRaises(OSError):
             urllib.request.urlopen(f'http://127.0.0.1:{self.port}/health', timeout=.2)
 
@@ -173,6 +195,32 @@ else:
         self.assertIsNotNone(old.poll())
         self.wait_health()
         self.assert_data(5)
+
+    def test_published_old_updater_upgrades_idle_current_schema_profile(self):
+        if not args.prepare_old_profile:
+            self.skipTest('Requires a prepared release profile with an existing update command')
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_data(5)
+        self.assertEqual((self.install / 'dist/index.html').read_text(), 'new frontend')
+        self.assertEqual(subprocess.check_output([str(self.install / 'cc-switch-ui'), '--version'], text=True).strip().split()[-1], VERSION)
+        self.assertEqual(len(list((self.data / 'backups/upgrades').glob('*.db'))), self.original_migration_backups)
+        with self.assertRaises(OSError):
+            urllib.request.urlopen(f'http://127.0.0.1:{self.port}/health', timeout=.2)
+
+    def test_published_old_updater_upgrades_running_current_schema_profile(self):
+        if not args.prepare_old_profile:
+            self.skipTest('Requires a prepared release profile with an existing update command')
+        old = self.start_old(['--admin-token', 'preserved-test-token'])
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIsNotNone(old.poll())
+        self.wait_health()
+        self.assert_data(5)
+        self.assertEqual((self.install / 'dist/index.html').read_text(), 'new frontend')
+        request = urllib.request.Request(f'http://127.0.0.1:{self.port}/api/providers', headers={'Authorization': 'Bearer preserved-test-token'})
+        with urllib.request.urlopen(request, timeout=2) as response:
+            self.assertEqual(response.status, 200)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux executable identity')
     def test_path_launched_service_updates_and_preserves_spaced_token(self):
@@ -205,7 +253,7 @@ else:
         result = self.run_installer()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('not from this installation', result.stderr)
-        self.assertIsNone(foreign.poll()); self.assert_data(3)
+        self.assertIsNone(foreign.poll()); self.assert_data(self.original_schema)
 
     def test_running_upgrade_preserves_explicit_port_and_login_token(self):
         # Stored defaults deliberately differ from the currently running command.
@@ -229,7 +277,7 @@ else:
         self.assertEqual(hashlib.sha256((self.install / 'cc-switch-ui').read_bytes()).digest(), old_hash)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
         self.wait_health()
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
 
     def test_checksum_failure_leaves_running_old_service_untouched(self):
         old = self.start_old()
@@ -252,13 +300,13 @@ else:
         self.assertIn('Previous service and data restored', result.stderr)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
         self.wait_health()
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
 
     def test_failed_idle_upgrade_restores_data_and_keeps_service_stopped(self):
         self.package(failing=True)
         result = self.run_installer()
         self.assertNotEqual(result.returncode, 0)
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
         with self.assertRaises(OSError):
             urllib.request.urlopen(f'http://127.0.0.1:{self.port}/health', timeout=.2)
@@ -268,7 +316,7 @@ else:
         result = self.run_installer()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Release lacks a checksum', result.stderr)
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
 
     def test_fresh_install_is_validated_without_leaving_a_service_running(self):
@@ -300,7 +348,7 @@ else:
             self.assertIn('A service is still responding', result.stderr)
             self.assertEqual(self.db.read_bytes(), original)
             self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
-            self.assert_data(3)
+            self.assert_data(self.original_schema)
         finally:
             server.shutdown()
             server.server_close()
@@ -354,7 +402,7 @@ else:
         program_hash = hashlib.sha256((self.install / 'cc-switch-ui').read_bytes()).digest()
         result = self.run_update(force=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
         self.assertEqual(hashlib.sha256((self.install / 'cc-switch-ui').read_bytes()).digest(), program_hash)
         self.assertEqual((self.install / 'dist/index.html').read_text(), 'old frontend')
 
@@ -364,7 +412,7 @@ else:
         result = self.run_update()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('source build directories cannot be updated', result.stderr)
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
 
     def test_profile_upgrade_lock_blocks_other_installations_without_modification(self):
         lock = self.home / '.cc-switch.upgrade-lock'
@@ -385,7 +433,7 @@ else:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('not from this installation', result.stderr)
         self.assertIsNone(p.poll())
-        self.assert_data(3)
+        self.assert_data(self.original_schema)
 
 
 if __name__ == '__main__':

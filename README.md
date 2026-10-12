@@ -58,7 +58,6 @@ The UI includes **17 presets across 14 provider brands**, plus custom compatible
 | MiniMax | API key | MiniMax |
 | SiliconFlow | API key | SiliconFlow |
 | OpenRouter | API key | OpenRouter |
-| [OrcaRouter](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21) | API key | OrcaRouter |
 | Google | API key | Gemini Native |
 | Kimi | API key | Kimi, Kimi For Coding, Kimi For Coding Global |
 | Zhipu | API key | Zhipu GLM, Zhipu GLM en |
@@ -67,7 +66,6 @@ The UI includes **17 presets across 14 provider brands**, plus custom compatible
 | AiHubMix | API key | AiHubMix |
 | PPIO | API key | PPIO |
 
-To use OrcaRouter, [create an account or obtain an API key through the project link](https://www.orcarouter.ai/ref/ref_c975e760c319b5162c21), then select the built-in **OrcaRouter** preset. The preset can fetch the current model list from the service.
 
 Custom providers can use `anthropic`, `openai_chat`, `openai_responses`, or Gemini-compatible protocols. For an unknown endpoint, use **Detect endpoint type** and **Fetch models** in the provider editor.
 
@@ -130,6 +128,8 @@ Claude Code now sends requests to the local proxy, which adapts and forwards the
 The local service forwards requests with managed OAuth credentials and protocol conversion. Connecting an account does not start routing. Follow the [user guide](docs/user-guide.md) for the complete workflow.
 
 ## Updates and recovery
+
+See the [v0.3.2 release notes](docs/releases/v0.3.2.md) for protocol compatibility, configuration previews, preset changes and upgrade checks.
 
 ```bash
 cc-switch-ui update          # Latest stable release; Linux/macOS release installations

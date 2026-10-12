@@ -4,6 +4,24 @@
 
 This guide describes the current upgrade implementation. A merged PR does not itself publish a release. The installer requires a stable release archive, matching binary version and `.sha256` asset; older releases without checksums are rejected before replacing installed files.
 
+## Upgrading to v0.3.2 / 升级到 v0.3.2
+
+v0.3.2 retains database **schema 5**, the same as v0.3.1; upgrading that profile does not require another schema migration. The installer still retains the previous program and complete profile. Older schemas receive a private pre-migration database snapshot as before.
+
+After upgrading, review the effective API Format and Codex account binding, then choose **Route Target → Start Route**. Target-selection errors now stop startup instead of starting a previous target. Gemini Native and unknown protocols remain unavailable for local routing; stopping/restoring a route remains available. See [protocol compatibility](protocol-compatibility.md) before using converted tools or reasoning history.
+
+The OrcaRouter built-in preset, initial database seed and bundled brand asset are removed in v0.3.2. Existing provider records and their credentials are retained; manage any retained record as a custom provider. Existing Codex providers keep their model IDs; the `gpt-6.1-sol` default applies to newly created frontend presets, and access depends on the account.
+
+Linux installer process checks now recognize PATH, relative and alias launches using the running executable's identity, with exact argument boundaries. An already-installed v0.3.1 updater embeds its older installer logic until upgraded. If it refuses a valid PATH-launched service, use the versioned installer instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/huangbogeng/cc-switch-ui/v0.3.2/install.sh | bash
+```
+
+The Linux upgrade suite also starts the published v0.3.1 program to prepare a schema-5 profile, verifies account bindings and remembered removals survive replacement/rollback, and exercises that published program's own `update` command with idle and running installations. This uses isolated profiles, synthetic credentials and mock downloads.
+
+升级前备份完整 `~/.cc-switch`，另存重要 live 配置。v0.3.1 → v0.3.2 不增加数据库 schema；保留旧程序和数据副本，验证路由、账号和待恢复操作后再清理备份。旧版 updater 的 PATH 识别问题可通过上方固定版本安装脚本绕过。已有服务商记录和模型设置不会因为预设调整而被删除或改写。
+
 ## First upgrade from an older release / 旧版首次升级
 
 On Linux x86_64 or macOS Intel / Apple Silicon, an older binary without `update` needs the installer once:
@@ -37,6 +55,8 @@ Windows upgrades remain manual: retain the complete profile, download the new re
 迁移无需手动导出 Provider。数据库备份失败会在迁移前停止启动，迁移失败会回滚 schema 事务，较新且不支持的 schema 会被拒绝。成功迁移后的重复启动不会再产生该次 schema 升级快照。兼容范围是旧版 **CC Switch UI**，不包括直接共享上游桌面版的数据库。
 
 The installer preserves supported explicit launch options (`--host`, `--port`, `--proxy-port`, `--admin-token`, `--ui-dir`) or uses saved CLI defaults and the updating shell's environment. Ambiguous arguments and linked installation/data directories are rejected. Use one server per profile.
+
+On Linux, the v0.3.2 installer verifies `/proc/PID/exe` against the installed executable and reads NUL-separated arguments. macOS retains the conservative command-path check, so ambiguous launches or arguments may require stopping the service before updating.
 
 A randomly generated token from the old process cannot be recovered. The successful update prints startup details; its private `startup.log` contains the new token. A token explicitly passed as an option or exported in the updating shell can be retained. Never attach that log publicly without removing credentials.
 

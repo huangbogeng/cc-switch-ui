@@ -47,7 +47,7 @@ The record may already be saved. Import/Sync item reports distinguish completed,
 
 ## Configuration conflict or interrupted provider operation
 
-Reload the editor and compare external changes before saving again. **Recover operation** resumes a journaled provider action after its underlying filesystem/database error is fixed. Do not delete `provider-operation.json` to bypass recovery; it contains credentials and planned state. Invalid live JSON is rejected instead of overwritten.
+For editor field conflicts, choose **Keep external changes** or **Use my changes** after reviewing the affected field names; cancelling retains the draft. Another external change invalidates that confirmation. **Reload from file** is available when you deliberately want to replace the draft with current values. **Recover operation** resumes a journaled provider action after its underlying filesystem/database error is fixed. Do not delete `provider-operation.json` to bypass recovery; it contains credentials and planned state. Invalid live JSON is rejected instead of overwritten.
 
 ## Database restore prevents startup
 

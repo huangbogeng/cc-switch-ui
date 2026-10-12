@@ -113,7 +113,7 @@ mod tests {
         let output = adapter
             .transform_request(TransformInput {
                 body: json!({"model":"anthropic/claude-sonnet-4.6"}),
-                upstream_url: "https://api.orcarouter.ai".to_string(),
+                upstream_url: "https://gateway.example.com".to_string(),
                 path: "/v1/messages".to_string(),
                 prompt_cache_key: None,
                 requested_stream: true,
@@ -121,7 +121,10 @@ mod tests {
             })
             .expect("transform should succeed");
 
-        assert_eq!(output.upstream_url, "https://api.orcarouter.ai/v1/messages");
+        assert_eq!(
+            output.upstream_url,
+            "https://gateway.example.com/v1/messages"
+        );
     }
 
     #[test]
@@ -130,7 +133,7 @@ mod tests {
         let output = adapter
             .transform_request(TransformInput {
                 body: json!({}),
-                upstream_url: "https://api.orcarouter.ai/v1/messages".to_string(),
+                upstream_url: "https://gateway.example.com/v1/messages".to_string(),
                 path: "/v1/messages".to_string(),
                 prompt_cache_key: None,
                 requested_stream: true,
@@ -138,7 +141,10 @@ mod tests {
             })
             .expect("transform should succeed");
 
-        assert_eq!(output.upstream_url, "https://api.orcarouter.ai/v1/messages");
+        assert_eq!(
+            output.upstream_url,
+            "https://gateway.example.com/v1/messages"
+        );
     }
 
     #[test]
