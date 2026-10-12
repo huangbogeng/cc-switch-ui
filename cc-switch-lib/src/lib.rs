@@ -11,6 +11,7 @@ pub const DEFAULT_APP_TYPE: &str = "claude_code";
 pub mod app_store;
 pub mod config;
 pub mod database;
+pub mod environment;
 pub mod error;
 pub mod live;
 pub mod managed_deletion;

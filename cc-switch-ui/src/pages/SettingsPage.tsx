@@ -20,6 +20,7 @@ import { ToastNotice } from '@/components/ToastNotice';
 import { errorMessage } from '@/lib/errors';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { BackupCenter } from '@/components/settings/BackupCenter';
+import { EnvironmentDiagnosticsPanel } from '@/components/settings/EnvironmentDiagnosticsPanel';
 import { ClaudeUserSettingsPanel } from '@/components/settings/ClaudeUserSettingsPanel';
 
 export default function SettingsPage() {
@@ -181,6 +182,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-6 items-start xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
+          <EnvironmentDiagnosticsPanel />
           <div id="claude-user-settings"><ClaudeUserSettingsPanel /></div>
           <BackupCenter />
           <Card>

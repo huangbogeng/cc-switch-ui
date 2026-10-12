@@ -760,3 +760,11 @@ export function previewClaudeUserSettings(revision: string, values: ClaudeUserVa
     method: 'POST', body: JSON.stringify({ revision, values, baseline, policy: 'refuse' }),
   });
 }
+
+export interface EnvironmentDiagnostics {
+  findings: { variable: string; application: string; source: string; kind: 'process' | 'shell' }[];
+  warnings: string[];
+}
+export function getEnvironmentDiagnostics() {
+  return api<EnvironmentDiagnostics>('/settings/environment-diagnostics');
+}
