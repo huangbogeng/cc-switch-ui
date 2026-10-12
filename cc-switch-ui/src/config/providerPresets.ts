@@ -119,10 +119,10 @@ export const providerPresets: ProviderPreset[] = [
     settingsConfig: {
       env: {
         ANTHROPIC_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-        ANTHROPIC_MODEL: 'gpt-5.4',
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5.4-mini',
-        ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
-        ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5.4',
+        ANTHROPIC_MODEL: 'gpt-6.1-sol',
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-6.1-sol',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-6.1-sol',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-6.1-sol',
       },
     },
     icon: 'openai',

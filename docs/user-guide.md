@@ -30,6 +30,12 @@ Gemini native conversion is not implemented and cannot be selected as a route.
 For native Claude tools and thinking-history behavior, choose an
 Anthropic-compatible endpoint. See [protocol compatibility](protocol-compatibility.md).
 
+Unsupported targets are labelled **local route unavailable** and cannot be
+selected or started. If an existing target becomes unsupported, choose a
+supported replacement; **Stop Route** and **Restore Direct Config** remain
+available. Failed target changes display the server error and do not start a
+previous target.
+
 ## Add a provider / 添加服务商
 
 1. Open **Providers → Add Provider** and choose a preset or custom configuration.
@@ -52,6 +58,13 @@ See the [provider editor guide](provider-editor.md) for concurrent edits and sav
 5. Confirm the route is running, then send a request from Claude Code. Review **Usage** for the request result.
 
 这条路径使用已授权的 ChatGPT OAuth 账号，由本地服务完成协议转换和凭证注入，Provider 表单不需要填写 API Key。它依赖本地路由服务运行；账号权限、模型可用性和限额仍由上游决定。不要把 ChatGPT 端点当作 Claude Code 原生 Anthropic 端点直接配置使用。
+
+The Codex preset uses `gpt-6.1-sol` for new configurations. Saved providers keep
+their configured models when reopened; available models and access depend on the
+upstream account. **API Format** is fixed to OpenAI Responses for Codex OAuth.
+**Fetch models** remains disabled for this authentication mode; enter an available
+model ID manually. Editing a bound account preserves that binding, while selecting
+**Default account** deliberately removes the explicit account selection.
 
 For this route, mid-conversation `system` messages become `developer` inputs with
 their text and position preserved. The service requests encrypted reasoning for

@@ -28,13 +28,34 @@ upstream endpoint, not a change to the client protocol.
 The resolver uses `meta.apiFormat`, then the legacy `settingsConfig.api_format`,
 then the provider adapter's default. Credentials continue to come from the
 provider's authentication adapter. Managed Codex OAuth always uses its dedicated
-Responses contract, regardless of a conflicting format selector. **Direct
+Responses contract, regardless of a conflicting format selector. Backend adapter
+selection also recognizes the Codex-specific `authMode: oauth_proxy` declaration
+and Codex `authBinding.authProvider` / legacy `auth_provider` signals before stale
+provider or protocol hints. Missing managed authentication fails rather than
+falling back to an API key. **Direct
 Config → Select** writes direct connection settings; it does not run these
 converters.
 
 For a Codex subscription, authorize an account in **OAuth → ChatGPT Codex**,
 choose the default or bind that account in the provider editor, and start the
 route. See the [subscription setup steps](user-guide.md#codex-subscription-without-an-api-key--codex-订阅路由).
+
+The provider card and editor use the same protocol fallback order. Editing a
+legacy record retains its top-level settings and authentication adapter metadata;
+choosing a different format writes the higher-priority `meta.apiFormat` value.
+Codex OAuth displays a fixed Responses format and preserves the selected account
+binding. The actual editing save path persists the canonical Codex provider type,
+authentication mode and Responses format even on a name-only edit of an imported
+OAuth record. API-key records keep the baseline-diff preservation behavior.
+Saving an unchanged OAuth form also canonicalizes the record without mutating
+the original baseline used for conflict detection.
+Unsupported protocols remain available as saved configurations but are
+marked unavailable in the route selector. An interrupted/running route can still
+be stopped or restored even if its target is now unsupported.
+
+Route-target failures are shown before any start request is made. A rejected
+selection must not start the previously selected route. The backend remains the
+final authority on supported protocols and validates again before takeover.
 
 ## Prompts and tool results
 

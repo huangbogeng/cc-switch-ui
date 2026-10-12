@@ -106,7 +106,8 @@ export default function ProvidersPage() {
     try {
       setPendingAction('route');
       setProxyError('');
-      await setProxyTarget(providerId);
+      const targetResult = await setProxyTarget(providerId);
+      if (!targetResult.success) throw new Error(targetResult.error || 'Failed to update route target');
       const result = await startProxy();
       if (!result.success) throw new Error(result.error);
       await loadProxyStatus();
@@ -139,7 +140,8 @@ export default function ProvidersPage() {
     try {
       setPendingAction('route');
       setProxyError('');
-      await setProxyTarget(providerId);
+      const targetResult = await setProxyTarget(providerId);
+      if (!targetResult.success) throw new Error(targetResult.error || 'Failed to update route target');
       await loadProxyStatus();
     } catch (e) {
       await loadProxyStatus();

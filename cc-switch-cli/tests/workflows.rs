@@ -177,6 +177,47 @@ fn read_json(path: &Path) -> Value {
 }
 
 #[tokio::test]
+async fn imported_oauth_signals_route_as_codex_without_api_key_fallback() {
+    let mut service = Service::new();
+    service.start().await;
+    let original_live = service.live();
+    for (index, mut declaration) in [
+        json!({"authMode":"oauth_proxy"}),
+        json!({"authBinding":{"authProvider":"codex_oauth","accountId":"synthetic-account"}}),
+        json!({"authBinding":{"auth_provider":"codex_oauth","accountId":"synthetic-account"}}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for format in ["gemini_native", "anthropic"] {
+            let id = format!("legacy-auth-{index}-{format}");
+            declaration["apiFormat"] = json!(format);
+            service.success("/api/providers", json!({
+                "id":id,"name":id,"create":true,
+                "settingsConfig":{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9","ANTHROPIC_AUTH_TOKEN":"synthetic-unused-api-key"}},
+                "meta":declaration
+            })).await;
+            service
+                .success("/api/proxy/target", json!({"provider_id":id}))
+                .await;
+            service.success("/api/proxy/start", Value::Null).await;
+            assert_eq!(
+                service.get("/api/proxy/status").await["active_target_provider_id"],
+                id
+            );
+            // The isolated profile has no OAuth account. Authentication must
+            // fail locally, rather than using the fake API key or endpoint.
+            let response = service.client.post(format!("http://127.0.0.1:{}/v1/messages",service.proxy_port))
+                .json(&json!({"model":"synthetic-model","stream":false,"messages":[{"role":"user","content":"fixture"}]}))
+                .send().await.unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+            service.success("/api/proxy/stop", Value::Null).await;
+            assert_eq!(service.live(), original_live);
+        }
+    }
+}
+
+#[tokio::test]
 async fn protocol_routes_preserve_prompts_and_convert_actual_http_responses() {
     use axum::{
         body::Body,

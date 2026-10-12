@@ -30,10 +30,29 @@ impl ProviderRegistry {
     }
 
     /// Find an adapter for a provider by examining its metadata
-    /// First tries meta.providerType, then falls back to provider ID,
+    /// Managed Codex authentication declarations take priority over stale hints.
+    /// Otherwise first tries meta.providerType, then falls back to provider ID,
     /// then tries partial ID matching (for providers like "gemini-native" -> "gemini"),
     /// and finally falls back to meta.apiFormat for custom providers.
     pub fn find_for_provider(&self, provider: &Provider) -> Option<Arc<dyn ProviderAdapter>> {
+        // oauth_proxy is the UI's managed Codex mode. Imported records can
+        // declare it through mode or binding before acquiring providerType.
+        // Never silently route an explicit OAuth declaration via an API key.
+        let managed_codex = provider.meta.get("authMode").and_then(|v| v.as_str())
+            == Some("oauth_proxy")
+            || provider
+                .meta
+                .pointer("/authBinding/authProvider")
+                .and_then(|v| v.as_str())
+                == Some("codex_oauth")
+            || provider
+                .meta
+                .pointer("/authBinding/auth_provider")
+                .and_then(|v| v.as_str())
+                == Some("codex_oauth");
+        if managed_codex {
+            return self.get("codex_oauth");
+        }
         // Try meta.providerType first
         if let Some(provider_type) = provider.meta.get("providerType").and_then(|v| v.as_str()) {
             if let Some(adapter) = self.get(provider_type) {
@@ -150,6 +169,50 @@ mod tests {
             meta,
             in_failover_queue: false,
         }
+    }
+
+    #[test]
+    fn imported_codex_declarations_override_stale_format_and_adapter_hints() {
+        let mut registry = ProviderRegistry::new();
+        for kind in ["codex_oauth", "gemini", "claude", "deepseek", "copilot"] {
+            registry.register(Arc::new(TestAdapter(kind)));
+        }
+        for mut meta in [
+            json!({"authMode":"oauth_proxy"}),
+            json!({"authBinding":{"authProvider":"codex_oauth","accountId":"synthetic-account"}}),
+            json!({"authBinding":{"auth_provider":"codex_oauth","accountId":"synthetic-account"}}),
+        ] {
+            meta["apiFormat"] = json!("gemini_native");
+            meta["providerType"] = json!("gemini");
+            assert_eq!(
+                registry
+                    .find_for_provider(&provider("legacy-binding", meta))
+                    .unwrap()
+                    .provider_type(),
+                "codex_oauth"
+            );
+        }
+        assert_eq!(
+            registry
+                .find_for_provider(&provider("gemini", json!({"apiFormat":"gemini_native"})))
+                .unwrap()
+                .provider_type(),
+            "gemini"
+        );
+        assert_eq!(registry.find_for_provider(&provider("copilot",json!({"providerType":"copilot","authBinding":{"authProvider":"github_copilot"}}))).unwrap().provider_type(),"copilot");
+    }
+
+    #[test]
+    fn missing_managed_adapter_does_not_fall_back_to_api_key_auth() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Arc::new(TestAdapter("claude")));
+        registry.register(Arc::new(TestAdapter("gemini")));
+        assert!(registry
+            .find_for_provider(&provider(
+                "legacy-binding",
+                json!({"authMode":"oauth_proxy","apiFormat":"anthropic"})
+            ))
+            .is_none());
     }
 
     #[test]

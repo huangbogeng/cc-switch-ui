@@ -182,7 +182,7 @@ export function ProviderFormDialog({
           <form
             onSubmit={(event: FormEvent) => {
               event.preventDefault();
-              if (!saving && !previewing && !pickerOpen) onSubmit(formData);
+              if (!saving && !previewing && !pickerOpen) onSubmit({ ...formData, apiFormat: usesOAuthProxy ? 'openai_responses' : formData.apiFormat });
             }}
             className="space-y-5"
             noValidate
@@ -440,14 +440,22 @@ export function ProviderFormDialog({
                   <Label htmlFor="api-format">API Format</Label>
                   <Select
                     id="api-format"
-                    value={formData.apiFormat}
+                    disabled={usesOAuthProxy}
+                    aria-describedby="api-format-help"
+                    value={usesOAuthProxy ? 'openai_responses' : formData.apiFormat}
                     onChange={(e) => setFormData({ ...formData, apiFormat: e.target.value as ApiFormat })}
                   >
                     <option value="anthropic">Anthropic Messages</option>
                     <option value="openai_chat">OpenAI Chat</option>
                     <option value="openai_responses">OpenAI Responses</option>
-                    <option value="gemini_native">Gemini Native</option>
+                    <option value="gemini_native">Gemini Native (local route unavailable)</option>
+                    {!['anthropic', 'openai_chat', 'openai_responses', 'gemini_native'].includes(formData.apiFormat) && <option value={formData.apiFormat}>{formData.apiFormat || 'Unknown protocol'} (local route unavailable)</option>}
                   </Select>
+                  <p id="api-format-help" className="text-xs leading-5 text-muted-foreground">{usesOAuthProxy
+                    ? 'Codex OAuth uses OpenAI Responses through the local route.'
+                    : formData.apiFormat === 'gemini_native'
+                      ? 'Gemini Native can be saved for configuration and model discovery. Local routing is not supported.'
+                      : 'Choose the upstream endpoint format. Claude Code connects to the local route using Anthropic Messages.'}</p>
                 </div>
 
               </div>

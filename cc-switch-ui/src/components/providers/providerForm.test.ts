@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Provider } from '@/api';
 import { providerPresets } from '@/config/providerPresets';
-import { buildProvider, emptyProviderForm, formFromPreset, formFromProvider } from './providerForm';
+import { buildEditedProvider, buildProvider, emptyProviderForm, formFromPreset, formFromProvider } from './providerForm';
 
 function provider(overrides: Partial<Provider> = {}): Provider {
   return {
@@ -156,4 +156,63 @@ it('preserves stored values hidden by form defaults when editing a different fie
   const draft = formFromProvider(base); draft.name = 'Renamed';
   const edited = buildEditedProvider(draft, null, base);
   expect(edited.name).toBe('Renamed'); expect(edited.meta).toEqual({}); expect(edited.settingsConfig).toEqual(base.settingsConfig);
+});
+
+it('preserves legacy Chat settings and unrelated top-level fields when only renaming', () => {
+  const existing: Provider = { id: 'legacy', name: 'Legacy', inFailoverQueue: false, meta: {}, settingsConfig: { api_format: 'openai_chat', customSetting: { keep: true }, env: { ANTHROPIC_AUTH_TOKEN: 'synthetic-key' } } };
+  const edited = buildProvider({ ...formFromProvider(existing), name: 'Renamed' }, null, existing);
+  expect(edited.meta).toMatchObject({ apiFormat: 'openai_chat' });
+  expect(edited.settingsConfig).toMatchObject({ api_format: 'openai_chat', customSetting: { keep: true } });
+});
+
+it('retains the inferred vendor protocol and auth adapter when editing an imported record', () => {
+  const existing: Provider = { id: 'imported', name: 'Imported', inFailoverQueue: false, settingsConfig: { env: {} }, meta: { providerType: 'deepseek' } };
+  const edited = buildProvider(formFromProvider(existing), null, existing);
+  expect(edited.meta).toMatchObject({ apiFormat: 'openai_chat', providerType: 'deepseek' });
+});
+
+it('preserves binding-only OAuth accounts, including unknown binding fields', () => {
+  const existing: Provider = { id: 'imported', name: 'Imported', inFailoverQueue: false, settingsConfig: { env: {} }, meta: { authBinding: { source: 'managed_account', authProvider: 'codex_oauth', accountId: 'synthetic-account', extra: 'keep' } } };
+  const form = formFromProvider(existing);
+  expect(form.authMode).toBe('oauth_proxy');
+  expect(form.apiFormat).toBe('openai_responses');
+  const edited = buildProvider(form, null, existing);
+  expect(edited.meta).toMatchObject({ providerType: 'codex_oauth', authBinding: { accountId: 'synthetic-account', extra: 'keep' } });
+  const defaultAccount = buildProvider({ ...form, codexAccountId: '' }, null, existing);
+  expect((defaultAccount.meta as { authBinding: object }).authBinding).not.toHaveProperty('accountId');
+});
+
+it('normalizes conflicting Codex protocol metadata while keeping configured models', () => {
+  const existing: Provider = { id: 'codex', name: 'Codex', inFailoverQueue: false, settingsConfig: { env: { ANTHROPIC_MODEL: 'existing-model' } }, meta: { providerType: 'codex_oauth', apiFormat: 'gemini_native' } };
+  const form = formFromProvider(existing);
+  expect(form.apiFormat).toBe('openai_responses');
+  expect(buildProvider({ ...form, apiFormat: 'openai_chat' }, null, existing).meta).toMatchObject({ apiFormat: 'openai_responses' });
+  expect(form.model).toBe('existing-model');
+  const preset = formFromPreset(providerPresets.find(item => item.id === 'codex')!);
+  expect([preset.model, preset.haikuModel, preset.sonnetModel, preset.opusModel]).toEqual(Array(4).fill('gpt-6.1-sol'));
+});
+
+it.each([
+  { authMode: 'oauth_proxy' },
+  { authBinding: { authProvider: 'codex_oauth', accountId: 'synthetic-account', extra: 'keep' } },
+  { authBinding: { auth_provider: 'codex_oauth', accountId: 'synthetic-account' } },
+])('persists the locked Codex contract through a name-only edit of an imported record: %j', (oauthMeta) => {
+  const existing: Provider = { id: 'legacy-binding', name: 'Imported', inFailoverQueue: false, settingsConfig: { env: { ANTHROPIC_MODEL: 'configured-model' } }, meta: { ...oauthMeta, apiFormat: 'gemini_native', otherMetadata: 'keep' } };
+  const form = formFromProvider(existing);
+  const edited = buildEditedProvider({ ...form, name: 'Renamed' }, null, existing);
+  expect(edited.meta).toMatchObject({ authMode: 'oauth_proxy', providerType: 'codex_oauth', apiFormat: 'openai_responses', otherMetadata: 'keep' });
+  expect((edited.meta as Record<string, unknown>).authBinding).toEqual((existing.meta as Record<string, unknown>).authBinding);
+  expect(edited.settingsConfig).toEqual(existing.settingsConfig);
+  expect((existing.meta as Record<string, unknown>).apiFormat).toBe('gemini_native');
+  const unchangedDraft = buildEditedProvider(form, null, existing);
+  expect(unchangedDraft).not.toBe(existing);
+  expect(unchangedDraft.meta).toMatchObject({ authMode: 'oauth_proxy', providerType: 'codex_oauth', apiFormat: 'openai_responses' });
+  expect((existing.meta as Record<string, unknown>).apiFormat).toBe('gemini_native');
+});
+
+it('does not canonicalize an API-key record during an unrelated edit', () => {
+  const existing: Provider = { id: 'legacy-chat', name: 'Chat', inFailoverQueue: false, settingsConfig: { api_format: 'openai_chat', extra: 'keep', env: {} }, meta: { otherMetadata: 'keep' } };
+  const edited = buildEditedProvider({ ...formFromProvider(existing), name: 'Renamed' }, null, existing);
+  expect(edited.meta).toEqual(existing.meta);
+  expect(edited.settingsConfig).toEqual(existing.settingsConfig);
 });
