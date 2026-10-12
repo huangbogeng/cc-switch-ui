@@ -22,6 +22,26 @@ Unavailable status means the UI could not confirm the backend state. It does not
 
 **Restore Direct Config** indicates an interrupted takeover retains a backup. Resolve that recovery before **Start Route**. Port bind failure does not write live config; a failed takeover write stops the newly bound listener. If a selected provider differs from **Route Target**, that is expected: one controls the configuration after stopping; the other controls current proxy forwarding.
 
+## A page fails to load after updating
+
+An open tab or cached entry may reference an old page file removed by the upgrade,
+producing **Failed to fetch dynamically imported module** (browser wording varies).
+Save any editable work first, then use **Reload interface** or reload/reopen the
+UI. If an older cached page persists, perform a hard refresh. Reloading does not
+change saved provider records; a restarted service may require its current Admin
+Token.
+
+Current builds serve the UI entry with `Cache-Control: no-store` and revalidate
+assets. Missing assets are not cached. Page-loading failures retain the sidebar
+and offer an explicit reload rather than reloading automatically. A network
+interruption can produce the same error: if it persists after reloading, check
+`cc-switch-ui status`, service reachability and that the installed package contains
+its `dist` directory. Custom `--ui-dir`/`CC_SWITCH_UI_DIR` must point to the matching
+frontend build. Do not delete OAuth stores or reset providers to repair page files.
+
+更新后旧标签页可能仍引用旧版页面文件。先保存可编辑的内容，再刷新或重新打开
+网页；仍失败时检查服务及前端目录是否配套，不需要重新创建账号或 Provider。
+
 ## Codex authorization succeeds but requests fail
 
 Check that the provider uses Codex OAuth, that **ChatGPT Account** points to a connected account or the intended default, and that **Route Target** is the Codex provider with the route running. Authorization alone does not activate routing. Review the request error in **Usage**; reconnect if authorization has expired, and verify the requested model is available to that account.

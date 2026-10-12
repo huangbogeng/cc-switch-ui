@@ -19,6 +19,13 @@ saved mappings. Select any intended models, then explicitly **Save**. Verify
 generation through **Route Target → Start Route** and a request from Claude Code.
 See the [editor guide](provider-editor.md) for cache and account behavior.
 
+An already-open tab may still reference page files from the previous bundle. Use
+**Reload interface** or reopen the UI if a dynamically imported module fails to
+load; see [page loading recovery](troubleshooting.md#a-page-fails-to-load-after-updating).
+The new server prevents entry caching and the new UI keeps navigation available
+on page-load failure. Older pages need an initial manual reload to receive this
+behavior.
+
 The Linux CI upgrade matrix includes published v0.3.2 alongside v0.1.9, v0.2.0
 and v0.3.1. The v0.3.1/v0.3.2 cases prepare profiles with the published program
 and exercise its own updater with idle/running installations, synthetic account

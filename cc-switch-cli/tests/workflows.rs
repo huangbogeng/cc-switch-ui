@@ -13,6 +13,67 @@ use tempfile::TempDir;
 
 const TOKEN: &str = "workflow-test-admin-token";
 
+#[tokio::test]
+async fn ui_upgrade_serves_fresh_entry_and_does_not_cache_missing_chunks() {
+    let mut service = Service::new();
+    fs::create_dir_all(service.path("ui/assets")).unwrap();
+    fs::write(
+        service.path("ui/index.html"),
+        "<script src='assets/old.js'></script>",
+    )
+    .unwrap();
+    fs::write(service.path("ui/assets/old.js"), "export default 'old'").unwrap();
+    service.start().await;
+    let url = |path: &str| format!("http://127.0.0.1:{}{path}", service.admin_port);
+    let entry = service.client.get(url("/ui/")).send().await.unwrap();
+    assert_eq!(entry.status(), 200);
+    assert_eq!(entry.headers()["cache-control"], "no-store");
+    assert!(entry.text().await.unwrap().contains("old.js"));
+    let asset = service
+        .client
+        .get(url("/ui/assets/old.js"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(asset.status(), 200);
+    assert_eq!(asset.headers()["cache-control"], "no-cache");
+
+    // An upgrade replaces the bundle while an open tab still references old.js.
+    fs::write(
+        service.path("ui/index.html"),
+        "<script src='assets/new.js'></script>",
+    )
+    .unwrap();
+    fs::remove_file(service.path("ui/assets/old.js")).unwrap();
+    fs::write(service.path("ui/assets/new.js"), "export default 'new'").unwrap();
+    for path in ["/ui/", "/ui/index.html"] {
+        let entry = service.client.get(url(path)).send().await.unwrap();
+        assert_eq!(entry.status(), 200);
+        assert_eq!(entry.headers()["cache-control"], "no-store");
+        assert!(entry.text().await.unwrap().contains("new.js"));
+    }
+    let missing = service
+        .client
+        .get(url("/ui/assets/old.js"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), 404);
+    assert_eq!(missing.headers()["cache-control"], "no-store");
+    let asset = service
+        .client
+        .get(url("/ui/assets/new.js"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(asset.status(), 200);
+    assert_eq!(asset.headers()["cache-control"], "no-cache");
+    assert!(asset.text().await.unwrap().contains("'new'"));
+    let health = service.client.get(url("/health")).send().await.unwrap();
+    assert_eq!(health.status(), 200);
+    assert!(!health.headers().contains_key("cache-control"));
+}
+
 struct Service {
     child: Option<Child>,
     home: TempDir,
@@ -89,6 +150,9 @@ impl Service {
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone().unwrap()))
             .stderr(Stdio::from(log));
+        if self.path("ui").is_dir() {
+            command.arg("--ui-dir").arg(self.path("ui"));
+        }
         self.child = Some(command.spawn().unwrap());
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
