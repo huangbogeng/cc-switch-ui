@@ -47,15 +47,28 @@ previous target.
 
 The **Claude Official** preset clears third-party connection settings and relies on your existing Claude Code login. It does not create an Anthropic subscription or authenticate Claude Code for you.
 
-See the [provider editor guide](provider-editor.md) for concurrent edits and save behavior.
+**Fetch models** loads choices for Main, Haiku, Sonnet and Opus without replacing
+their configured values. Apply one model in the large picker, or close it and
+use the arrow beside each mapping to search the same catalog. Manual IDs remain
+editable. **Choose model** reopens the cached picker; **Refresh models** requests
+a new list. Selections change the draft; click **Save** when finished.
+
+获取一次模型后，四个映射菜单会共用列表，无需逐项重新获取。打开菜单时不会根据
+当前输入值自动过滤；使用菜单内的搜索框查找模型，超过 100 个结果可点击
+**Show more**。关闭编辑器或更换连接信息后需要重新获取。
+
+See the [provider editor guide](provider-editor.md) for discovery, diagnostics,
+concurrent edits and save behavior.
 
 ## Codex subscription without an API key / Codex 订阅路由
 
 1. Open **OAuth → ChatGPT Codex → Connect**. Follow the displayed verification URL and device code.
 2. Return to the UI and wait for authorization to finish. For multiple accounts, choose the default or bind a specific account in the provider editor.
 3. Open **Providers → Add Provider**, choose **Codex**, and review **ChatGPT Account** and the model settings. Leave **Default account** to follow the default OAuth account.
-4. Save the provider. Choose it in **Local Route → Route Target**, then click **Start Route**.
-5. Confirm the route is running, then send a request from Claude Code. Review **Usage** for the request result.
+4. Use **Fetch models** to load that account's catalog, then select or type the model for each mapping. Fetching does not overwrite existing mappings.
+5. Open **Diagnostics → Check OAuth connection** to check catalog reachability and whether the configured mappings are listed. This is optional and does not save the provider or test generation.
+6. Save the provider. Choose it in **Local Route → Route Target**, then click **Start Route**.
+7. Confirm the route is running, then send a request from Claude Code. Review **Usage** for the request result.
 
 这条路径使用已授权的 ChatGPT OAuth 账号，由本地服务完成协议转换和凭证注入，Provider 表单不需要填写 API Key。它依赖本地路由服务运行；账号权限、模型可用性和限额仍由上游决定。不要把 ChatGPT 端点当作 Claude Code 原生 Anthropic 端点直接配置使用。
 
@@ -68,6 +81,12 @@ discovery does not require starting the local route or entering an API key.
 Account changes invalidate the model list. You can still enter a model ID manually.
 Editing a bound account preserves that binding, while selecting
 **Default account** deliberately removes the explicit account selection.
+
+OAuth 的 **Check OAuth connection** 使用所选账号或当前默认账号，不需要启动路由。
+它与 **Fetch models** 分别保留检查结果和选模列表：检查连接不会填充映射菜单。
+**Listed in catalog** 仅表示模型出现在目录里，**Not listed in catalog** 也不会阻止
+手动填写；实际生成权限需通过路由请求确认。API Key Provider 的
+**Detect endpoint type** 用于判断协议类型，作用不同。
 
 For this route, mid-conversation `system` messages become `developer` inputs with
 their text and position preserved. The service requests encrypted reasoning for

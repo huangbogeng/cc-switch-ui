@@ -69,6 +69,8 @@ The UI includes **17 presets across 14 provider brands**, plus custom compatible
 
 Custom providers can use `anthropic`, `openai_chat`, `openai_responses`, or Gemini-compatible protocols. For an unknown endpoint, use **Detect endpoint type** and **Fetch models** in the provider editor.
 
+Codex OAuth uses the connected account for **Fetch models** and **Check OAuth connection**, with a fixed Responses protocol. Fetched choices are shared by all four editable model mappings. See the [provider editor guide](docs/provider-editor.md) for selection, diagnostics and explicit save behavior; consult release notes for availability in published binaries.
+
 ## Quick start
 
 ### 1. Install on Linux or macOS
