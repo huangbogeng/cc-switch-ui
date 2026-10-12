@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fetchProviderModels } from '@/api';
+vi.mock('@/api', () => ({ fetchProviderModels: vi.fn(), detectProviderEndpointType: vi.fn() }));
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { providerPresets } from '@/config/providerPresets';
 import { ProviderFormDialog } from './ProviderFormDialog';
@@ -35,4 +37,38 @@ it('previews the current draft without saving and invalidates the result after e
   expect(onSubmit).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Changed' } });
   expect(screen.queryByText('Record only')).toBeNull();
+});
+
+it('fetches without editing, then applies a model only to the selected role', async () => {
+  vi.mocked(fetchProviderModels).mockResolvedValue({ models:[{id:'picked-model'}] });
+  const preset = providerPresets.find(item => item.id === 'claude-official')!;
+  const form = formFromPreset(preset); form.baseUrl = 'https://provider.example'; form.apiKey = 'test-key'; form.noAuth = false; form.authMode = 'api_key'; form.model = 'original-main';
+  const submit = vi.fn();
+  render(<ProviderFormDialog open editingId="test" selectedPreset={null} initialFormData={form} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} />);
+  fireEvent.click(screen.getByRole('button', {name:'Fetch models'}));
+  await screen.findByRole('dialog', {name:'Choose model'});
+  expect(submit).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Use for'), {target:{value:'sonnetModel'}});
+  fireEvent.click(screen.getByRole('radio', {name:/picked-model/})); fireEvent.click(screen.getByRole('button', {name:'Apply model'}));
+  expect(screen.getByLabelText('Main')).toHaveProperty('value','original-main'); expect(screen.getByLabelText('Sonnet')).toHaveProperty('value','picked-model');
+  fireEvent.change(screen.getByLabelText('Base URL'), {target:{value:'https://changed.example'}});
+  await waitFor(() => expect(screen.getByRole('button', {name:'Fetch models'})).toBeTruthy());
+  expect(screen.queryByRole('button', {name:'Choose model'})).toBeNull();
+});
+
+it('ignores a response from the previous endpoint while a new model list is fetched', async () => {
+  let finish!: (value: { models: { id: string }[] }) => void;
+  const pending = new Promise<{ models: { id: string }[] }>(resolve => { finish = resolve; });
+  vi.mocked(fetchProviderModels).mockImplementationOnce(() => pending).mockResolvedValue({ models:[{id:'new-endpoint-model'}] });
+  const form = formFromPreset(providerPresets.find(item => item.id === 'claude-official')!);
+  Object.assign(form, {baseUrl:'https://old.example',apiKey:'test-key',noAuth:false,authMode:'api_key'});
+  render(<ProviderFormDialog open editingId="test" selectedPreset={null} initialFormData={form} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', {name:'Fetch models'}));
+  fireEvent.change(screen.getByLabelText('Base URL'), {target:{value:'https://new.example'}});
+  await waitFor(() => expect(screen.getByRole('button', {name:'Fetch models'})).toHaveProperty('disabled',false));
+  await act(async () => { finish({models:[{id:'old-endpoint-model'}]}); });
+  expect(screen.queryByRole('dialog', {name:'Choose model'})).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name:'Fetch models'}));
+  await screen.findByRole('radio', {name:/new-endpoint-model/});
+  expect(screen.queryByRole('radio', {name:/old-endpoint-model/})).toBeNull();
 });

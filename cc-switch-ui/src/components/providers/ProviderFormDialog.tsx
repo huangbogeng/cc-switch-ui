@@ -1,5 +1,6 @@
+import { ModelPickerDialog } from './ModelPickerDialog';
 import { ProviderLogo } from './ProviderLogo';
-import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,9 @@ export function ProviderFormDialog({
   const preview = previewState?.fingerprint === JSON.stringify(formData) ? previewState.result : null;
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [modelsFor, setModelsFor] = useState<string | null>(null);
+  const modelRequest = useRef(0);
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState('');
@@ -82,9 +86,15 @@ export function ProviderFormDialog({
     finally { setPreviewing(false); }
   };
 
+  const modelsContext = JSON.stringify([formData.baseUrl, formData.apiKey, formData.isFullUrl, formData.authMode, formData.noAuth, selectedPreset?.modelsUrl]);
+  useEffect(() => {
+    modelRequest.current += 1; setModelsFor(null); setFetchedModels([]); setFetchModelsError(''); setFetchingModels(false); setPickerOpen(false);
+    return () => { modelRequest.current += 1; };
+  }, [modelsContext, open]);
+  const availableModels = useMemo(() => modelsFor === modelsContext ? fetchedModels : [], [modelsFor, modelsContext, fetchedModels]);
   const modelOptions = useMemo(
-    () => fetchedModels.map((model) => model.id).filter((value, index, list) => list.indexOf(value) === index),
-    [fetchedModels]
+    () => availableModels.map((model) => model.id).filter((value, index, list) => list.indexOf(value) === index),
+    [availableModels]
   );
 
   if (!open) return null;
@@ -96,26 +106,17 @@ export function ProviderFormDialog({
   const canFetchModels = !!formData.baseUrl.trim() && (!showApiKey || !!formData.apiKey.trim() || isLikelyLocalBaseUrl(formData.baseUrl));
   const canDetectEndpointType = canFetchModels && !usesOAuthProxy;
 
-  const handleFetchModels = async () => {
-    setFetchingModels(true);
-    setFetchModelsError('');
+  const handleFetchModels = async (openOnSuccess = true) => {
+    const request = ++modelRequest.current;
+    setFetchingModels(true); setFetchModelsError('');
     try {
-      const response = await fetchProviderModels({
-        baseUrl: formData.baseUrl.trim(),
-        apiKey: formData.apiKey.trim(),
-        isFullUrl: formData.isFullUrl,
-        modelsUrl: selectedPreset?.modelsUrl,
-      });
-      setFetchedModels(response.models);
-      if (response.models.length === 0) {
-        setFetchModelsError('No models returned from this endpoint.');
-      }
-    } catch (e) {
-      setFetchedModels([]);
-      setFetchModelsError(e instanceof Error ? e.message : 'Failed to fetch models');
-    } finally {
-      setFetchingModels(false);
-    }
+      const response = await fetchProviderModels({ baseUrl: formData.baseUrl.trim(), apiKey: formData.apiKey.trim(), isFullUrl: formData.isFullUrl, modelsUrl: selectedPreset?.modelsUrl });
+      if (request !== modelRequest.current) return;
+      if (response.models.length === 0) { setFetchModelsError('No models returned from this endpoint.'); return; }
+      setFetchedModels(response.models); setModelsFor(modelsContext);
+      if (openOnSuccess) setPickerOpen(true);
+    } catch (e) { if (request === modelRequest.current) setFetchModelsError(e instanceof Error ? e.message : 'Failed to fetch models'); }
+    finally { if (request === modelRequest.current) setFetchingModels(false); }
   };
 
   const handleDetectEndpointType = async () => {
@@ -181,7 +182,7 @@ export function ProviderFormDialog({
           <form
             onSubmit={(event: FormEvent) => {
               event.preventDefault();
-              if (!saving && !previewing) onSubmit(formData);
+              if (!saving && !previewing && !pickerOpen) onSubmit(formData);
             }}
             className="space-y-5"
             noValidate
@@ -192,7 +193,7 @@ export function ProviderFormDialog({
               </div>
             )}
 
-            <fieldset disabled={saving || previewing} className="contents">
+            <fieldset disabled={saving || previewing || pickerOpen} className="contents">
             <FormSection title="Basic">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -304,7 +305,8 @@ export function ProviderFormDialog({
               </FormSection>
             )}
 
-            <FormSection title="Models">
+            <FormSection title="Models" action={<Button type="button" size="sm" variant="outline" disabled={usesOAuthProxy || fetchingModels || !canFetchModels} onClick={() => { if (availableModels.length > 0) setPickerOpen(true); else void handleFetchModels(); }}>{fetchingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}{availableModels.length ? 'Choose model' : 'Fetch models'}</Button>}>
+              {fetchModelsError && !pickerOpen && <p role="alert" className="text-xs text-destructive">{fetchModelsError}</p>}
               <div className="grid gap-4 sm:grid-cols-2">
                 <ModelInput
                   id="model-main"
@@ -424,32 +426,7 @@ export function ProviderFormDialog({
                   )}
                 </div>
 
-                <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={handleFetchModels}
-                      disabled={usesOAuthProxy || fetchingModels || !canFetchModels}
-                    >
-                      {fetchingModels ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="mr-2 h-4 w-4" />
-                      )}
-                      Fetch models
-                    </Button>
-                    {modelOptions.length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {modelOptions.length} models fetched
-                      </span>
-                    )}
-                  </div>
-                  {fetchModelsError && (
-                    <p className="mt-3 text-sm text-muted-foreground">{fetchModelsError}</p>
-                  )}
-                </div>
+
               </div>
             </details>
 
@@ -561,14 +538,15 @@ export function ProviderFormDialog({
           </form>
         </CardContent>
       </Card>
+      {pickerOpen && modelsFor === modelsContext && <ModelPickerDialog models={availableModels} configured={{model:formData.model,haikuModel:formData.haikuModel,sonnetModel:formData.sonnetModel,opusModel:formData.opusModel}} loading={fetchingModels} error={fetchModelsError} onRefresh={() => void handleFetchModels(false)} onClose={() => setPickerOpen(false)} onApply={(role,id) => { setFormData({ ...formData, [role]:id }); setPickerOpen(false); }} />}
     </div>
   );
 }
 
-function FormSection({ title, children }: { title: string; children: ReactNode }) {
+function FormSection({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
     <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-      <h3 className="text-sm font-medium leading-5 text-muted-foreground">{title}</h3>
+      <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-medium leading-5 text-muted-foreground">{title}</h3>{action}</div>
       {children}
     </section>
   );
@@ -594,7 +572,7 @@ function ModelInput({
       <Input id={id} list={options?.length ? listId : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
       {options?.length ? (
         <datalist id={listId}>
-          {options.map((option) => (
+          {options.slice(0,100).map((option) => (
             <option key={option} value={option} />
           ))}
         </datalist>
