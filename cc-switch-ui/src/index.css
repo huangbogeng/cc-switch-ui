@@ -84,6 +84,21 @@
     cursor: pointer;
   }
 
+  /* Native menus need a dark scheme and an opaque surface of their own. */
+  select {
+    color-scheme: dark;
+  }
+
+  select option,
+  select optgroup {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
+
+  select option:disabled {
+    color: hsl(var(--muted-foreground));
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
