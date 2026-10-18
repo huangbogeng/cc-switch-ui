@@ -26,6 +26,7 @@ export interface ProviderFormData {
   codexFastMode: boolean;
   subagentModel: string;
   effortLevel: string;
+  contextWindow: string;
 }
 
 export const emptyProviderForm: ProviderFormData = {
@@ -49,6 +50,7 @@ export const emptyProviderForm: ProviderFormData = {
   codexFastMode: false,
   subagentModel: '',
   effortLevel: '',
+  contextWindow: '',
 };
 
 export function formFromPreset(preset: ProviderPreset): ProviderFormData {
@@ -77,6 +79,7 @@ export function formFromPreset(preset: ProviderPreset): ProviderFormData {
     codexFastMode: preset.codexFastMode || false,
     subagentModel: env.CLAUDE_CODE_SUBAGENT_MODEL || '',
     effortLevel: env.CLAUDE_CODE_EFFORT_LEVEL || '',
+    contextWindow: env.CLAUDE_CODE_MAX_CONTEXT_TOKENS || '',
   };
 }
 
@@ -111,6 +114,7 @@ export function formFromProvider(provider: Provider): ProviderFormData {
     codexFastMode: meta.codexFastMode || false,
     subagentModel: env.CLAUDE_CODE_SUBAGENT_MODEL || '',
     effortLevel: env.CLAUDE_CODE_EFFORT_LEVEL || '',
+    contextWindow: env.CLAUDE_CODE_MAX_CONTEXT_TOKENS || '',
   };
 }
 
@@ -152,6 +156,7 @@ export function buildProvider(
   setOptionalEnv(env, 'ANTHROPIC_DEFAULT_OPUS_MODEL', formData.opusModel || formData.model);
   setOptionalEnv(env, 'CLAUDE_CODE_SUBAGENT_MODEL', formData.subagentModel);
   setOptionalEnv(env, 'CLAUDE_CODE_EFFORT_LEVEL', formData.effortLevel);
+  setOptionalEnv(env, 'CLAUDE_CODE_MAX_CONTEXT_TOKENS', formData.contextWindow);
 
   const existingMeta = existingProvider?.meta && typeof existingProvider.meta === 'object'
     ? existingProvider.meta as Record<string, unknown>
@@ -259,6 +264,10 @@ function setOptionalEnv(env: Record<string, string>, key: string, value: string)
 
 export function validateProviderDraft(form: ProviderFormData) {
   if (!form.id.trim() || !form.name.trim()) throw new Error('Provider ID and name are required.');
+  const window = form.contextWindow.trim();
+  if (window && (!/^\d+$/.test(window) || !Number.isSafeInteger(Number(window)) || Number(window) <= 0)) {
+    throw new Error('Context window must be a positive whole number of tokens.');
+  }
   if (form.baseUrl.trim()) {
     let endpoint: URL;
     try { endpoint = new URL(form.baseUrl.trim()); } catch { throw new Error('Base URL must be a valid absolute URL.'); }

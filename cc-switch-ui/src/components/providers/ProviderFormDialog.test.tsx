@@ -26,6 +26,26 @@ describe('subscription provider editing', () => {
   });
 });
 
+it('edits an optional context window without changing the model or saving automatically', async () => {
+  const preset = providerPresets.find(item => item.id === 'claude-official')!;
+  const initial = { ...formFromPreset(preset), noAuth: false, model: 'custom-large-model' };
+  const submit = vi.fn();
+  const preview = vi.fn().mockResolvedValue({ applied: false, recordPath: '/test/db', livePath: null, recordKeys: ['record/settingsConfig/env/CLAUDE_CODE_MAX_CONTEXT_TOKENS'], liveKeys: [], message: 'Context draft preview' });
+  render(<ProviderFormDialog open editingId="gateway" selectedPreset={null} initialFormData={initial} saving={false} onPresetSelect={vi.fn()} onCancel={vi.fn()} onSubmit={submit} onPreview={preview} />);
+  fireEvent.click(screen.getByText('Advanced'));
+  const input = screen.getByLabelText('Context window (tokens)');
+  expect(input).toHaveProperty('value', '');
+  fireEvent.change(input, { target: { value: '1000000' } });
+  expect(screen.getByLabelText('Main')).toHaveProperty('value', 'custom-large-model');
+  expect(submit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Preview save' }));
+  await screen.findByText('Context draft preview');
+  expect(preview).toHaveBeenCalledWith(expect.objectContaining({ contextWindow: '1000000', model: 'custom-large-model' }));
+  expect(submit).not.toHaveBeenCalled();
+  fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ contextWindow: '1000000', model: 'custom-large-model' }));
+});
+
 it('previews the current draft without saving and invalidates the result after editing', async () => {
   const preset = providerPresets.find(item => item.id === 'claude-official')!;
   const provider = buildProvider(formFromPreset(preset), preset);

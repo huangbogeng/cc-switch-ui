@@ -60,6 +60,16 @@ a new list. Selections change the draft; click **Save** when finished.
 See the [provider editor guide](provider-editor.md) for discovery, diagnostics,
 concurrent edits and save behavior.
 
+Claude Code may assume 200K for an unknown third-party model ID. In **Advanced →
+Context window (tokens)**, enter only a gateway-confirmed token limit, such as
+`1000000` for a confirmed one-million-token window, then preview/save and restart
+Claude Code. This field does not change model identity or declare extra model
+capabilities. Known Claude IDs and local-route aliases have different window
+rules; see [custom model windows](provider-editor.md#custom-model-context-windows).
+
+该字段不自动根据模型名或 Fetch models 结果推断容量。若多个映射窗口不同，应采用
+适用模型中最小的已确认窗口；已有自动压缩阈值仍然有效。
+
 ## Codex subscription without an API key / Codex 订阅路由
 
 1. Open **OAuth → ChatGPT Codex → Connect**. Follow the displayed verification URL and device code.

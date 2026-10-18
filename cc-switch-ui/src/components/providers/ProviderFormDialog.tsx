@@ -481,6 +481,24 @@ export function ProviderFormDialog({
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="context-window">Context window (tokens)</Label>
+                <Input
+                  id="context-window"
+                  inputMode="numeric"
+                  aria-describedby="context-window-help"
+                  value={formData.contextWindow}
+                  onChange={(e) => setFormData({ ...formData, contextWindow: e.target.value })}
+                  placeholder="Optional: confirmed gateway/model limit"
+                />
+                <p id="context-window-help" className="text-xs leading-5 text-muted-foreground">
+                  For unrecognized custom model IDs in Claude Code. Enter the gateway's confirmed token limit;
+                  use the smallest supported window if mappings differ. Blank sets no provider override.
+                  Known Claude IDs and local-route aliases follow their own window rules.
+                  This does not change the upstream model or its capabilities.
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="prompt-cache-key">Prompt Cache Key</Label>
                 <Input
                   id="prompt-cache-key"
