@@ -131,7 +131,7 @@ The local service forwards requests with managed OAuth credentials and protocol 
 
 ## Updates and recovery
 
-See the [v0.3.3 release notes](docs/releases/v0.3.3.md) for Codex OAuth model discovery, diagnostics, model mapping menus and upgrade checks. The [v0.3.2 notes](docs/releases/v0.3.2.md) cover earlier protocol and configuration changes. Check [published releases](https://github.com/huangbogeng/cc-switch-ui/releases) for availability.
+See the [v0.3.4 release notes](docs/releases/v0.3.4.md) for explicit custom-model context windows and recovery regression coverage. The [v0.3.3 notes](docs/releases/v0.3.3.md) cover Codex OAuth model discovery, diagnostics and model mapping menus. Check [published releases](https://github.com/huangbogeng/cc-switch-ui/releases) for availability.
 
 ```bash
 cc-switch-ui update          # Latest stable release; Linux/macOS release installations

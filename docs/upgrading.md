@@ -4,6 +4,27 @@
 
 This guide describes the current upgrade implementation. A merged PR does not itself publish a release. The installer requires a stable release archive, matching binary version and `.sha256` asset; older releases without checksums are rejected before replacing installed files.
 
+## Upgrading to v0.3.4 / 升级到 v0.3.4
+
+v0.3.4 retains database **schema 5** and existing providers, model mappings and
+OAuth bindings. After publication, Linux/macOS release installations can use
+`cc-switch-ui update`; Windows installations replace the complete package while
+the service is stopped. Keep the previous program/profile recovery copies.
+
+Reload the UI after upgrading. For an unknown custom model, open **Providers →
+Edit provider → Advanced → Context window (tokens)** and enter only a confirmed
+gateway limit. Preview/save explicitly and restart Claude Code. Leaving the field
+blank adds no provider override. Known Claude IDs, picker profiles and local-route
+aliases follow separate window rules; see the [editor guide](provider-editor.md#custom-model-context-windows).
+
+The Linux upgrade/rollback matrix adds published v0.3.3 to the existing versions.
+Route recovery checks verify that unmodified takeover windows are removed after
+a service restart while user-edited compatibility fields survive. If a route was
+interrupted, restore direct config before starting it again.
+
+本次不新增数据库迁移。升级后刷新页面；窗口值以网关实际限制为准，不会因获取
+模型而自动放宽。保存后重启 Claude Code，确认既有映射与路由可用。
+
 ## Upgrading to v0.3.3 / 升级到 v0.3.3
 
 v0.3.3 retains database **schema 5**, as used by v0.3.1 and v0.3.2. Existing

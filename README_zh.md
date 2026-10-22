@@ -131,7 +131,7 @@ cc-switch-ui start --host 0.0.0.0 --port 5007 --proxy-port 15721
 
 ## 升级与恢复
 
-Codex OAuth 模型获取、连接诊断、映射菜单和升级检查见 [v0.3.3 发布说明](docs/releases/v0.3.3.md)；之前的协议与配置改动见 [v0.3.2 说明](docs/releases/v0.3.2.md)。实际发布状态请核对 [Releases](https://github.com/huangbogeng/cc-switch-ui/releases)。
+自定义模型上下文窗口设置与恢复回归检查见 [v0.3.4 发布说明](docs/releases/v0.3.4.md)；Codex OAuth 模型获取、连接诊断和映射菜单见 [v0.3.3 说明](docs/releases/v0.3.3.md)。实际发布状态请核对 [Releases](https://github.com/huangbogeng/cc-switch-ui/releases)。
 
 ```bash
 cc-switch-ui update          # 更新到稳定发布版本；Linux/macOS 发布包安装
