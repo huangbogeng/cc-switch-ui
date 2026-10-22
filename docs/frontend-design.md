@@ -27,6 +27,14 @@ a catalog must not replace configured mappings or save a provider. Preserve
 manual IDs and unrelated protocol/account metadata. The [editor guide](provider-editor.md)
 defines user-visible save and account behavior.
 
+Keep custom-model context limits opt-in under Advanced. Accept an explicit
+positive whole token count, preserve existing preset/provider values and use no
+automatic default for an unknown model. Explain gateway confirmation, shared
+window limits and known-model/local-route rules. Changing the window must leave
+model IDs, `modelPicker`/`behavesAs`, `modelOverrides` and compaction settings
+unchanged. The current schema and backend ownership rules already carry this
+environment field; use the existing preview/save path.
+
 | Component | Responsibility |
 |-----------|----------------|
 | `ProviderFormDialog` | Owns the draft and discovery catalog, account/endpoint context, pending-request invalidation and explicit save/preview actions. |

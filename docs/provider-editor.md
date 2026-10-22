@@ -31,6 +31,36 @@ previous list and ignores its pending responses. A missing or disconnected bound
 account does not fall back to another account. Reconnect on the OAuth page if the
 token is unavailable; manual model IDs remain editable after a failed fetch.
 
+## Custom model context windows
+
+If Claude Code reports that a gateway model is absent from its catalog, its
+default assumption can be 200,000 tokens. **Advanced → Context window (tokens)**
+lets you declare a confirmed token limit as a positive whole number. For a gateway
+confirmed to allow one million tokens, enter `1000000`. Keep the real model ID in
+the mappings. Fetching a catalog does not establish the model's usable window.
+
+The field writes `env.CLAUDE_CODE_MAX_CONTEXT_TOKENS` for this provider. It inherits
+an existing provider/preset value; an empty field adds no provider override.
+Clearing it removes only that provider's override, under the existing save and
+live-conflict rules. Global/user settings may still apply. Preview and Save stay
+explicit. No model names, picker profiles or compaction switches are inferred.
+
+Claude Code applies the variable to unrecognized custom IDs without a `[1m]`
+suffix. Known Claude IDs, `behavesAs` mappings and the local route's Claude aliases
+follow different window rules. The setting is global within a Claude Code
+process: use the smallest confirmed window among affected mappings. Existing
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` settings can still request earlier compaction.
+Restart Claude Code after changing its startup configuration.
+
+`behavesAs` selects a known model's client-side prompt profile, capability and
+effort defaults. It is a separate choice from declaring a window; assigning a
+200K profile solely to hide a warning can retain the smaller window. Use
+`modelOverrides` when identifying an actual known Claude model behind a provider
+alias. SDK mode can still emit an `unrecognized_model` diagnostic with a declared
+window; check the effective window as well as the message.
+
+See [Claude Code's window rules](https://code.claude.com/docs/en/model-config#correct-the-window-for-a-gateway-or-custom-model-id).
+
 ## Diagnostics
 
 For Codex OAuth, **Diagnostics → Check OAuth connection** reads the model catalog

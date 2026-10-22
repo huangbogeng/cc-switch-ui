@@ -48,6 +48,31 @@ Check that the provider uses Codex OAuth, that **ChatGPT Account** points to a c
 
 Codex 订阅路径不需要 API Key，但仍受账号权限和上游限额约束。不要在未启动本地路由时直接把 Claude Code 指向 ChatGPT 的 Codex API。
 
+## Claude Code assumes 200K for a custom model
+
+The model-catalog warning means Claude Code cannot resolve the configured ID to
+its own model metadata. Check the gateway's actual context limit first; an ID
+appearing in **Fetch models** does not establish that limit. An update may add new
+Claude models, but does not guarantee recognition of third-party names.
+
+For an unrecognized custom ID that does not start with `claude-` or contain
+`[1m]`, use **Provider editor → Advanced → Context window (tokens)** to set the
+confirmed window. A one-million-token gateway can use `1000000`. This changes
+client accounting and compaction assumptions, not upstream capacity. Reopen
+Claude Code, and check separate auto-compact settings if compaction remains early.
+See the [editor reference](provider-editor.md#custom-model-context-windows) for
+known-model/local-route limitations and the difference from `behavesAs`.
+
+The `[1m]` suffix is another client window selector when the endpoint supports
+that path. Check client and gateway behavior before using it. Disabling unknown
+model window enforcement defers recovery until a recognized API length error;
+it does not declare a usable window. Keep the guard enabled when limits or
+gateway error handling are uncertain.
+
+确认网关限制后再声明窗口，不能仅因模型名称含 DeepSeek 或目录中有该模型就自动
+设为 1M。`behavesAs` 会改变客户端采用的提示配置和能力默认值，不能仅当作消除
+警告的开关。当前配置与手动模型映射会保留，保存仍需显式操作。
+
 ## Model choices or OAuth Diagnostics are unavailable
 
 | Symptom | Check or action / 处理 |

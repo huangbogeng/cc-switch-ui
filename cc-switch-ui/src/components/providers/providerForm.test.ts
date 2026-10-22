@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Provider } from '@/api';
 import { providerPresets } from '@/config/providerPresets';
-import { buildEditedProvider, buildProvider, emptyProviderForm, formFromPreset, formFromProvider } from './providerForm';
+import { buildEditedProvider, buildProvider, emptyProviderForm, formFromPreset, formFromProvider, validateProviderDraft } from './providerForm';
 
 function provider(overrides: Partial<Provider> = {}): Provider {
   return {
@@ -14,6 +14,54 @@ function provider(overrides: Partial<Provider> = {}): Provider {
     ...overrides,
   };
 }
+
+describe('explicit custom-model context windows', () => {
+  it('leaves custom providers at the client default until a window is explicitly entered', () => {
+    const form = { ...emptyProviderForm, id: 'gateway', name: 'Gateway', model: 'custom-large-model' };
+    const result = buildProvider(form, null);
+    expect(result.settingsConfig).toEqual({ env: {
+      ANTHROPIC_MODEL: 'custom-large-model',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'custom-large-model',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'custom-large-model',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'custom-large-model',
+    } });
+  });
+
+  it('inherits an explicitly configured preset window', () => {
+    const kimi = providerPresets.find(item => item.id === 'kimi-for-coding')!;
+    expect(formFromPreset(kimi).contextWindow).toBe('262144');
+  });
+
+  it('updates only the declared window and retains model identity, picker profiles and other settings', () => {
+    const existing = provider({ settingsConfig: {
+      env: { ANTHROPIC_MODEL: 'custom-large-model', CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '180000' },
+      modelPicker: { options: [{ model: 'other-model', behavesAs: 'claude-sonnet-4-6' }] },
+      modelOverrides: { 'claude-sonnet-4-6': 'known-gateway-model' },
+    } });
+    const baseline = structuredClone(existing);
+    const form = formFromProvider(existing);
+    expect(form.contextWindow).toBe('262144');
+    const result = buildEditedProvider({ ...form, contextWindow: ' 1000000 ' }, null, existing);
+    const expected = structuredClone(existing);
+    (expected.settingsConfig as { env: Record<string, string> }).env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '1000000';
+    expect(result.settingsConfig).toEqual(expected.settingsConfig);
+    expect(existing).toEqual(baseline);
+  });
+
+  it('clears only the provider window override when the field is emptied', () => {
+    const existing = provider({ settingsConfig: { env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '180000' } } });
+    const result = buildEditedProvider({ ...formFromProvider(existing), contextWindow: '' }, null, existing);
+    expect(result.settingsConfig).toEqual({ env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '180000' } });
+  });
+
+  it.each(['0', '-1', '1M', '1e6', '200000.5', '9007199254740992'])('rejects an invalid window: %s', contextWindow => {
+    expect(() => validateProviderDraft({ ...emptyProviderForm, id: 'gateway', name: 'Gateway', contextWindow })).toThrow('Context window must be a positive whole number of tokens.');
+  });
+
+  it.each(['', '200000', ' 1000000 '])('accepts an unset window or an explicit token count: %s', contextWindow => {
+    expect(() => validateProviderDraft({ ...emptyProviderForm, id: 'gateway', name: 'Gateway', contextWindow })).not.toThrow();
+  });
+});
 
 describe('provider form serialization', () => {
   it('preserves the legacy API key field while editing', () => {
