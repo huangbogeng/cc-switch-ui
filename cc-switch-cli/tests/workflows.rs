@@ -601,7 +601,17 @@ async fn provider_route_and_restart_preserve_user_owned_files() {
         .unwrap();
     assert_eq!(unauthorized.status().as_u16(), 401);
     service.provider("direct", &endpoint).await;
-    service.provider("route", &endpoint).await;
+    service
+        .success(
+            "/api/providers",
+            json!({"id":"route","name":"route","create":true,
+            "settingsConfig":{"env":{"ANTHROPIC_AUTH_TOKEN":"fake-route",
+            "ANTHROPIC_BASE_URL":endpoint,
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS":"262144",
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW":"220000",
+            "CLAUDE_CODE_DISABLE_ARTIFACT":"1"}},"meta":{"apiFormat":"anthropic"}}),
+        )
+        .await;
     service
         .success("/api/providers/direct/switch", Value::Null)
         .await;
@@ -653,6 +663,17 @@ async fn provider_route_and_restart_preserve_user_owned_files() {
     service
         .request(Method::POST, "/api/database-backups", Value::Null, 409)
         .await;
+    // A user change must survive while unchanged route-owned fields are removed.
+    let mut live = service.live();
+    assert_eq!(live["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "262144");
+    assert_eq!(live["env"]["CLAUDE_CODE_AUTO_COMPACT_WINDOW"], "220000");
+    assert_eq!(live["env"]["CLAUDE_CODE_AUTO_MODE_SERVER"], "0");
+    live["env"]["CLAUDE_CODE_DISABLE_ARTIFACT"] = json!("0");
+    fs::write(
+        service.path(".claude/settings.json"),
+        serde_json::to_vec_pretty(&live).unwrap(),
+    )
+    .unwrap();
     // Abrupt process termination retains durable takeover state for an explicit Stop after restart.
     service.stop();
     service.start().await;
@@ -660,6 +681,18 @@ async fn provider_route_and_restart_preserve_user_owned_files() {
     assert_eq!(status["running"], false);
     assert_eq!(status["recovery_required"], true);
     service.success("/api/proxy/stop", Value::Null).await;
+    let restored = service.live();
+    for key in [
+        "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+        "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+        "CLAUDE_CODE_AUTO_MODE_SERVER",
+    ] {
+        assert!(
+            restored["env"].get(key).is_none(),
+            "route field {key} survived recovery"
+        );
+    }
+    assert_eq!(restored["env"]["CLAUDE_CODE_DISABLE_ARTIFACT"], "0");
     assert_eq!(service.live()["env"]["ANTHROPIC_AUTH_TOKEN"], "fake-direct");
     assert_eq!(service.live()["env"]["API_TIMEOUT_MS"], "2000");
     assert_eq!(
